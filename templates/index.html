@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Axiom Flow | Auto Trading Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <main class="page">
+      <header class="topbar">
+        <div class="brand">
+          <p class="eyebrow">Realtime Trading Service</p>
+          <h1>Axiom Flow Console</h1>
+        </div>
+        <div class="controls">
+          <div class="mode-switch" id="modeSwitch">
+            <button class="mode-btn" data-mode="paper">PAPER</button>
+            <button class="mode-btn" data-mode="live">LIVE</button>
+          </div>
+          <button class="ctl-btn" id="btnStart">시작</button>
+          <button class="ctl-btn" id="btnStop">중지</button>
+          <button class="ctl-btn" id="btnRestart">재시작</button>
+          <button class="ctl-btn" id="btnSync">강제 동기화</button>
+          <button class="ctl-btn" id="btnAuto">자동매매 OFF</button>
+          <button class="ctl-btn" id="btnResetDemo">데모 초기화(1000)</button>
+          <button class="ctl-btn" id="btnCloseMeme">밈 포지션 전체청산</button>
+        </div>
+      </header>
+
+      <section class="cards">
+        <article class="card metric"><h2>엔진 상태</h2><p id="mRunning">-</p></article>
+        <article class="card metric"><h2>모드</h2><p id="mMode">-</p></article>
+        <article class="card metric"><h2>데모 시드</h2><p id="mSeed">-</p></article>
+        <article class="card metric"><h2>총 평가금</h2><p id="mTotalEquity">-</p></article>
+        <article class="card metric"><h2>총 손익</h2><p id="mTotalPnl">-</p></article>
+        <article class="card metric"><h2>통합 승률</h2><p id="mWinrate">-</p></article>
+      </section>
+
+      <section class="layout">
+        <article class="card panel zone-meme">
+          <header><h2>밈 모델 비교</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>모델</th><th>평가금</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th><th>오픈</th></tr></thead>
+              <tbody id="memeModelRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-crypto">
+          <header><h2>크립토 모델 비교</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>모델</th><th>평가금</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th><th>오픈</th></tr></thead>
+              <tbody id="cryptoModelRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-meme">
+          <header><h2>MEME Open Positions</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Model</th><th>Symbol</th><th>Strategy</th><th>Value</th><th>PNL</th><th>Grade</th></tr></thead>
+              <tbody id="allMemePosRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-crypto">
+          <header><h2>CRYPTO Open Positions</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Model</th><th>Symbol</th><th>Lev</th><th>Exposure/Margin</th><th>UPNL(ROE)</th><th>Reason</th></tr></thead>
+              <tbody id="allCryptoPosRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel wide">
+          <header><h2>모델 탭 상세</h2></header>
+
+          <div class="tab-row">
+            <div class="tab-group" id="marketTabs">
+              <button class="tab-btn" data-market="meme">밈코인</button>
+              <button class="tab-btn" data-market="crypto">크립토</button>
+            </div>
+            <div class="tab-group" id="modelTabs">
+              <button class="tab-btn" data-model="A">안정 추세 예측모델</button>
+              <button class="tab-btn" data-model="B">흐름 추종 예측모델</button>
+              <button class="tab-btn" data-model="C">공격 모멘텀 예측모델</button>
+            </div>
+          </div>
+
+          <div class="method-box">
+            <h3 id="methodTitle">-</h3>
+            <p id="methodText">-</p>
+            <p id="methodStrengthText" class="param-guide"></p>
+            <p id="methodTuneText" class="param-guide"></p>
+            <p id="methodParamText" class="param-guide"></p>
+          </div>
+
+          <section class="cards detail-cards">
+            <article class="card metric"><h2>평가금</h2><p id="dEquity">-</p></article>
+            <article class="card metric"><h2>총 PNL</h2><p id="dTotalPnl">-</p></article>
+            <article class="card metric"><h2>실현 PNL</h2><p id="dRealized">-</p></article>
+            <article class="card metric"><h2>미실현 PNL</h2><p id="dUnrealized">-</p></article>
+            <article class="card metric"><h2>승률</h2><p id="dWinrate">-</p></article>
+            <article class="card metric"><h2>오픈 포지션</h2><p id="dOpen">-</p></article>
+          </section>
+
+          <div class="split-grid">
+            <article class="card panel-inner">
+              <header><h2 id="signalTitle">추론 시그널</h2></header>
+              <div class="table-wrap">
+                <table>
+                  <thead id="detailSignalHead"></thead>
+                  <tbody id="detailSignalRows"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="card panel-inner">
+              <header><h2 id="positionTitle">포지션</h2></header>
+              <div class="table-wrap">
+                <table>
+                  <thead id="detailPositionHead"></thead>
+                  <tbody id="detailPositionRows"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <article class="card panel-inner wide">
+            <header><h2 id="tradeTitle">거래 이력</h2></header>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>시각</th><th>소스</th><th>사이드</th><th>심볼</th><th>금액</th><th>PNL</th><th>사유</th></tr></thead>
+                <tbody id="detailTradeRows"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card panel-inner wide">
+            <header><h2 id="pnlTitle">일별 PNL</h2></header>
+            <svg class="mini-chart" id="detailPnlChart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>날짜</th><th>모델</th><th>평가금</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th></tr></thead>
+                <tbody id="detailDailyRows"></tbody>
+              </table>
+            </div>
+          </article>
+        </article>
+
+        <article class="card panel zone-meme">
+          <header><h2>밈 트렌드</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>심볼</th><th>히트</th></tr></thead>
+              <tbody id="trendTop"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-meme">
+          <header><h2>트렌드 소스 상태</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>소스</th><th>상태</th><th>건수</th><th>다음 재시도</th><th>오류</th></tr></thead>
+              <tbody id="trendSourceRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-meme">
+          <header><h2>밈 등급 기준 (S~G)</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>등급</th><th>점수 구간</th><th>의미</th></tr></thead>
+              <tbody id="memeGradeRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-meme">
+          <header><h2>신규 밈코인 피드</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>심볼</th><th>Age(min)</th><th>5m Vol</th><th>Liq</th><th>히트</th><th>Pump</th></tr></thead>
+              <tbody id="newMemeRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel">
+          <header><h2>팬텀 지갑 자산</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>자산</th><th>수량</th><th>가치(USD)</th></tr></thead>
+              <tbody id="walletRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel zone-crypto">
+          <header><h2>크립토 거래소 자산</h2></header>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>코인</th><th>가치(USD)</th><th>수량</th></tr></thead>
+              <tbody id="bybitAssetRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card panel wide">
+          <header><h2>Alerts / Errors</h2></header>
+          <div id="errorBar" class="error-bar">-</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>시각</th><th>레벨</th><th>제목</th><th>내용</th></tr></thead>
+              <tbody id="alertRows"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      window.APP_CONFIG = { refreshSeconds: {{ ui_refresh_seconds }} };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

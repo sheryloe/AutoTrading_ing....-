@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_auto_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-8099}:${APP_PORT:-8099}"
+    volumes:
+      - ./state.json:/app/state.json
+      - ./model_online.json:/app/model_online.json
+      - ./runtime_settings.json:/app/runtime_settings.json
+      - ./reports:/app/reports
+    command: ["python", "web_app.py"]
+
+  reporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_auto_reporter
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - app
+    environment:
+      DASHBOARD_URL: "http://app:${APP_PORT:-8099}/api/dashboard"
+      SNAPSHOT_SECONDS: "300"
+      MID_REPORT_SECONDS: "7200"
+      ROLLING_VALIDATION_DAYS: "30"
+      REPORT_DIR: "/app/reports"
+    volumes:
+      - ./reports:/app/reports
+    healthcheck:
+      disable: true
+    command: ["python", "scripts/dashboard_reporter.py"]

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+
+# Env / secrets
+.env
+
+# Runtime state
+state.json
+model_online.json
+runtime_settings.json
+
+# Logs
+*.log
+mini.out.log
+mini.err.log
+server.out.log
+server.err.log
+monitor_issues.log
+
+# Reports / snapshots / backups
+reports/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+tmp_page.html

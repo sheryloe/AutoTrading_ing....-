@@ -1,0 +1,349 @@
+:root {
+  --bg-0: #09101a;
+  --bg-1: #101d2f;
+  --bg-2: #172945;
+  --card: rgba(16, 26, 43, 0.86);
+  --line: rgba(113, 152, 200, 0.32);
+  --text: #e8f2ff;
+  --muted: #8ea7c7;
+  --good: #3dd67a;
+  --bad: #ff646e;
+  --warn: #ffca58;
+  --glow: rgba(89, 170, 255, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  background: radial-gradient(circle at 20% 10%, #17325a 0%, transparent 45%),
+    radial-gradient(circle at 80% -20%, #1b4b72 0%, transparent 40%),
+    linear-gradient(160deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
+  min-height: 100vh;
+}
+
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.12;
+}
+
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 28px 20px 40px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 2px 0 0;
+  font-size: 30px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(6, 10, 18, 0.42);
+}
+
+.mode-btn,
+.ctl-btn {
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: rgba(12, 19, 31, 0.85);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.mode-btn {
+  border: none;
+  border-radius: 999px;
+  min-width: 74px;
+}
+
+.mode-btn.active {
+  background: linear-gradient(120deg, #2f99ff, #2ee0b6);
+  color: #051320;
+}
+
+.ctl-btn:hover,
+.mode-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px var(--line), 0 10px 28px var(--glow);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+#marketSplitCards {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+
+.zone-meme {
+  border-color: rgba(81, 165, 255, 0.44);
+}
+
+.zone-crypto {
+  border-color: rgba(84, 210, 152, 0.44);
+}
+
+.metric {
+  padding: 12px 14px;
+}
+
+.metric h2 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.metric p {
+  margin: 8px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.panel {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-inner {
+  margin: 10px;
+  min-height: 240px;
+}
+
+.panel-inner header {
+  padding: 10px 12px;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+
+.mini-chart {
+  width: 100%;
+  height: 220px;
+  display: block;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(58, 106, 163, 0.16), rgba(7, 18, 33, 0.1));
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.detail-cards {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  margin: 10px;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+}
+
+.tab-group {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 26, 0.65);
+}
+
+.tab-btn {
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: rgba(12, 19, 31, 0.85);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: linear-gradient(120deg, #2f99ff, #2ee0b6);
+  color: #051320;
+}
+
+.method-box {
+  margin: 0 10px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(14, 24, 40, 0.72);
+}
+
+.method-box h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #c6ddf7;
+}
+
+.method-box p {
+  margin: 0;
+  font-size: 12px;
+  color: #9ec0e6;
+  line-height: 1.45;
+}
+
+.method-box .param-guide {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #c0d8f5;
+  white-space: pre-wrap;
+}
+
+.table-wrap {
+  overflow: auto;
+  max-height: 360px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px dashed rgba(133, 168, 214, 0.2);
+  white-space: nowrap;
+}
+
+th {
+  color: #a9c2e0;
+  font-weight: 500;
+}
+
+tbody tr:hover {
+  background: rgba(53, 93, 144, 0.17);
+}
+
+.pos {
+  color: var(--good);
+}
+
+.neg {
+  color: var(--bad);
+}
+
+.error-bar {
+  margin: 10px 12px 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(255, 202, 88, 0.12);
+  border: 1px solid rgba(255, 202, 88, 0.3);
+  color: #ffdf98;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+  #marketSplitCards {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 940px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+  .cards {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  #marketSplitCards {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  .detail-cards {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
