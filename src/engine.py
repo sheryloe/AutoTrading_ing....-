@@ -302,6 +302,18 @@ class TradingEngine:
     def _pid_alive(pid: int) -> bool:
         if pid <= 0:
             return False
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+                if handle:
+                    ctypes.windll.kernel32.CloseHandle(handle)
+                    return True
+                return False
+            except Exception:
+                return False
         try:
             os.kill(int(pid), 0)
             return True
@@ -1050,18 +1062,36 @@ class TradingEngine:
             wallet_assets = list(self.state.wallet_assets or [])
             bybit_assets = list(self.state.bybit_assets or [])
         now_ts = int(time.time())
-        lines: list[str] = [f"10분리포트 {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S')}"]
+        ts_text = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        mode_text = str(self.settings.trade_mode or "paper").upper()
+        auto_text = "ON" if bool(self.settings.enable_autotrade) else "OFF"
+        report_text = "ON" if bool(self.settings.telegram_report_enabled) else "OFF"
+
+        def _sgn(v: float) -> str:
+            return f"{float(v):+.2f}"
+
+        lines: list[str] = [
+            f"[10분 리포트] {ts_text}",
+            f"상태: {'RUNNING' if self.running else 'STOPPED'} | 모드: {mode_text} | 자동매매: {auto_text} | 주기리포트: {report_text}",
+            "",
+            "[자산 요약]",
+        ]
         for model_id in MODEL_IDS:
             meme_run = self._get_market_run(runs, "meme", model_id)
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             mm = self._model_metrics_market(model_id, meme_run, "meme")
             cm = self._model_metrics_market(model_id, crypto_run, "crypto")
+            core_name = self._display_model_name(model_id)
             meme_name = self._market_model_name("meme", model_id)
             crypto_name = self._market_model_name("crypto", model_id)
-            core_name = self._display_model_name(model_id)
             lines.append(
-                f"[{core_name}] MEME({meme_name}) pnl={float(mm.get('total_pnl_usd') or 0.0):+.2f} open={int(mm.get('open_positions') or 0)} "
-                f"| CRYPTO({crypto_name}) pnl={float(cm.get('total_pnl_usd') or 0.0):+.2f} open={int(cm.get('open_positions') or 0)}"
+                f"- {core_name}"
+            )
+            lines.append(
+                f"  · 밈({meme_name}): PNL {_sgn(float(mm.get('total_pnl_usd') or 0.0))} | OPEN {int(mm.get('open_positions') or 0)}"
+            )
+            lines.append(
+                f"  · 크립토({crypto_name}): PNL {_sgn(float(cm.get('total_pnl_usd') or 0.0))} | OPEN {int(cm.get('open_positions') or 0)}"
             )
             meme_alloc = self._fmt_last_entry_alloc(
                 dict((meme_run.get("last_entry_alloc") or {}).get("meme") or {}),
@@ -1071,27 +1101,28 @@ class TradingEngine:
                 dict((crypto_run.get("last_entry_alloc") or {}).get("crypto") or {}),
                 now_ts,
             )
-            lines.append(f"[{core_name}] 최근진입배분 MEME={meme_alloc} | CRYPTO={crypto_alloc}")
+            lines.append(f"  · 최근진입: 밈 {meme_alloc} | 크립토 {crypto_alloc}")
         wallet_total = sum(float(r.get("value_usd") or 0.0) for r in wallet_assets)
         bybit_total = sum(float(r.get("usd_value") or 0.0) for r in bybit_assets)
+        lines.append("")
         lines.append(f"팬텀 잔고(USD>=1): ${wallet_total:.2f}")
         lines.append(f"거래소 잔고: ${bybit_total:.2f}")
+        lines.append("")
+        lines.append("[자동튜닝 6시간]")
         for model_id in MODEL_IDS:
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             tune = self._read_model_runtime_tune_from_run(crypto_run or {}, model_id, now_ts)
             remain = max(0, int(tune.get("next_eval_ts") or 0) - now_ts)
             core_name = self._display_model_name(model_id)
             lines.append(
-                f"[{core_name}-자동튜닝/6h] next={remain // 60}m thr={float(tune['threshold']):.4f} "
-                f"tp_mul={float(tune['tp_mul']):.2f} sl_mul={float(tune['sl_mul']):.2f}"
+                f"- {core_name}: next {remain // 60}m | thr {float(tune['threshold']):.4f} | "
+                f"tp {float(tune['tp_mul']):.2f} | sl {float(tune['sl_mul']):.2f}"
             )
             if int(tune.get("last_eval_ts") or 0) > 0:
                 lines.append(
-                    f"[{core_name}-최근평가] closed={int(tune['last_eval_closed'])} "
-                    f"wr={float(tune['last_eval_win_rate']):.1f}% "
-                    f"pnl={float(tune['last_eval_pnl_usd']):+.2f} "
-                    f"pf={float(tune['last_eval_pf']):.2f} "
-                    f"({str(tune.get('last_eval_note') or '-')})"
+                    f"  · 최근평가: closed {int(tune['last_eval_closed'])}, wr {float(tune['last_eval_win_rate']):.1f}%, "
+                    f"pnl {_sgn(float(tune['last_eval_pnl_usd']))}, pf {float(tune['last_eval_pf']):.2f}, "
+                    f"note {str(tune.get('last_eval_note') or '-')}"
                 )
         return "\n".join(lines)
 
