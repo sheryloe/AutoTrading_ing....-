@@ -23,7 +23,8 @@ class TelegramBotClient:
         if not self.enabled:
             return []
         params = {"offset": int(offset), "timeout": int(timeout)}
-        res = self.session.get(f"{self.base_url}/getUpdates", params=params, timeout=self.timeout_seconds)
+        req_timeout = max(float(self.timeout_seconds), float(int(timeout) + 8))
+        res = self.session.get(f"{self.base_url}/getUpdates", params=params, timeout=req_timeout)
         res.raise_for_status()
         body = res.json()
         if not body.get("ok"):

@@ -48,7 +48,7 @@ RUN_TRADE_HISTORY_LIMIT = 9_999_999
 RUN_TRADE_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 190
 STATE_BACKUP_INTERVAL_SECONDS = 600
 STATE_BACKUP_MAX_FILES = 1000
-TELEGRAM_POLL_LOCK_STALE_SECONDS = 120
+TELEGRAM_POLL_LOCK_STALE_SECONDS = 30
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
     # A: strict quality-first profile
     "A": {"threshold": 0.078, "tp_mul": 1.00, "sl_mul": 0.82},
@@ -217,6 +217,7 @@ class TradingEngine:
         self._runtime_error_notice: dict[str, dict[str, Any]] = {}
         self._last_state_backup_ts = 0
         self._telegram_poll_lock_path = Path("reports") / "telegram_poll.lock"
+        self._telegram_webhook_init_done = False
 
         self._ensure_model_runs()
         self._sync_primary_views_from_model_a()
@@ -226,6 +227,7 @@ class TradingEngine:
         return self._running
 
     def _reload_settings(self) -> None:
+        prev_token = str(getattr(getattr(self, "telegram", None), "bot_token", "") or "")
         latest = load_settings()
         self.settings = latest
         self._enforce_paper_lock()
@@ -279,6 +281,8 @@ class TradingEngine:
         )
         self.alert_manager = AlertManager(self.settings.telegram_bot_token, self.settings.telegram_chat_id)
         self.telegram = TelegramBotClient(self.settings.telegram_bot_token)
+        if str(self.settings.telegram_bot_token or "") != prev_token:
+            self._telegram_webhook_init_done = False
 
     def _enforce_paper_lock(self) -> None:
         if not getattr(self.settings, "lock_paper_mode", False):
@@ -971,6 +975,9 @@ class TradingEngine:
     def _telegram_loop(self) -> None:
         while self._running:
             try:
+                if self.telegram.enabled and not bool(self._telegram_webhook_init_done):
+                    self.telegram.delete_webhook(drop_pending_updates=False)
+                    self._telegram_webhook_init_done = True
                 self._poll_telegram(int(time.time()))
             except Exception as exc:  # noqa: BLE001
                 self._emit_runtime_error(
@@ -4084,7 +4091,8 @@ class TradingEngine:
         with self._lock:
             offset = int(self.state.telegram_offset) + 1
         try:
-            updates = self.telegram.get_updates(offset=offset, timeout=0)
+            long_poll_timeout = max(10, min(30, int(self.settings.telegram_poll_interval_seconds) * 5))
+            updates = self.telegram.get_updates(offset=offset, timeout=long_poll_timeout)
         except Exception as exc:  # noqa: BLE001
             err_text = str(exc)
             low = err_text.lower()

@@ -337,14 +337,16 @@ class TrendCollector:
         self.google_api_key = str(google_api_key or "").strip()
         self.google_model = str(google_model or "gemini-2.5-flash").strip()
         self.google_trend_enabled = bool(google_trend_enabled)
-        self.google_trend_interval_seconds = max(60, int(google_trend_interval_seconds))
-        self.google_trend_cooldown_seconds = max(60, int(google_trend_cooldown_seconds))
+        self.google_trend_interval_seconds = max(300, int(google_trend_interval_seconds))
+        self.google_trend_cooldown_seconds = max(1800, int(google_trend_cooldown_seconds))
         self.google_trend_max_symbols = max(5, min(40, int(google_trend_max_symbols)))
         self._google_last_fetch_ts = 0
         self._google_backoff_until_ts = 0
         self._google_cache_events: list[TrendEvent] = []
         self._google_last_error = ""
         self._google_rate_limit_hits = 0
+        self._google_daily_calls: dict[str, int] = {}
+        self._google_daily_max_calls = 24
         self._trader_round_robin_idx = 0
         self._wallet_round_robin_idx = 0
         self._wallet_last_cursor: dict[str, str] = {}
@@ -768,7 +770,8 @@ class TrendCollector:
         now_ts: int | None = None,
     ) -> tuple[list[TrendEvent], dict[str, Any]]:
         now = int(now_ts or int(time.time()))
-        enabled = bool(self.google_trend_enabled and self.google_api_key)
+        enabled = bool(self.google_trend_enabled)
+        gemini_enabled = bool(self.google_api_key)
         meta: dict[str, Any] = {
             "enabled": enabled,
             "status": "disabled",
@@ -779,18 +782,6 @@ class TrendCollector:
         }
         if not enabled:
             return [], meta
-        if now < int(self._google_backoff_until_ts):
-            remain = int(self._google_backoff_until_ts - now)
-            meta.update(
-                {
-                    "status": "cooldown",
-                    "count": len(self._google_cache_events),
-                    "cached": True,
-                    "next_retry_seconds": remain,
-                    "error": self._google_last_error or "google_rate_limited",
-                }
-            )
-            return list(self._google_cache_events), meta
         if self._google_cache_events and (now - int(self._google_last_fetch_ts)) < self.google_trend_interval_seconds:
             remain = max(0, self.google_trend_interval_seconds - (now - int(self._google_last_fetch_ts)))
             meta.update(
@@ -799,6 +790,64 @@ class TrendCollector:
                     "count": len(self._google_cache_events),
                     "cached": True,
                     "next_retry_seconds": int(remain),
+                }
+            )
+            return list(self._google_cache_events), meta
+        if not gemini_enabled:
+            events = self._fetch_google_http_search_events(trend_query, now_ts=now)
+            self._google_last_fetch_ts = now
+            self._google_cache_events = list(events[:120])
+            meta.update(
+                {
+                    "status": "fallback_http",
+                    "count": len(self._google_cache_events),
+                    "cached": False,
+                    "next_retry_seconds": int(self.google_trend_interval_seconds),
+                    "error": "",
+                }
+            )
+            return list(self._google_cache_events), meta
+        if now < int(self._google_backoff_until_ts):
+            events = self._fetch_google_http_search_events(trend_query, now_ts=now)
+            if events:
+                self._google_last_fetch_ts = now
+                self._google_cache_events = list(events[:120])
+                meta.update(
+                    {
+                        "status": "fallback_http",
+                        "count": len(self._google_cache_events),
+                        "cached": False,
+                        "next_retry_seconds": int(self.google_trend_interval_seconds),
+                        "error": self._google_last_error or "gemini_cooldown",
+                    }
+                )
+                return list(self._google_cache_events), meta
+            remain = int(self._google_backoff_until_ts - now)
+            meta.update(
+                {
+                    "status": "cooldown",
+                    "count": len(self._google_cache_events),
+                    "cached": bool(self._google_cache_events),
+                    "next_retry_seconds": remain,
+                    "error": self._google_last_error or "google_rate_limited",
+                }
+            )
+            return list(self._google_cache_events), meta
+
+        day_key = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
+        used_today = int(self._google_daily_calls.get(day_key) or 0)
+        if used_today >= int(self._google_daily_max_calls):
+            events = self._fetch_google_http_search_events(trend_query, now_ts=now)
+            self._google_last_fetch_ts = now
+            if events:
+                self._google_cache_events = list(events[:120])
+            meta.update(
+                {
+                    "status": "fallback_http",
+                    "count": len(self._google_cache_events),
+                    "cached": not bool(events),
+                    "next_retry_seconds": int(self.google_trend_interval_seconds),
+                    "error": "gemini_daily_cap_reached",
                 }
             )
             return list(self._google_cache_events), meta
@@ -847,6 +896,7 @@ class TrendCollector:
                 parsed = res.json()
                 body = parsed if isinstance(parsed, dict) else {}
                 used_model = model
+                self._google_daily_calls[day_key] = int(used_today + 1)
                 break
             except requests.HTTPError as exc:
                 status = int(exc.response.status_code) if exc.response is not None else 0
@@ -878,6 +928,20 @@ class TrendCollector:
                     self._google_backoff_until_ts = now + int(cooldown)
                     err = f"rate_limited_429_cooldown_{int(cooldown)}s"
                     self._google_last_error = err
+                    fallback_events = self._fetch_google_http_search_events(trend_query, now_ts=now)
+                    if fallback_events:
+                        self._google_last_fetch_ts = now
+                        self._google_cache_events = list(fallback_events[:120])
+                        meta.update(
+                            {
+                                "status": "fallback_http",
+                                "count": len(self._google_cache_events),
+                                "cached": False,
+                                "next_retry_seconds": int(self.google_trend_interval_seconds),
+                                "error": err,
+                            }
+                        )
+                        return list(self._google_cache_events), meta
                     meta.update(
                         {
                             "status": "rate_limited",
@@ -990,6 +1054,51 @@ class TrendCollector:
             }
         )
         return list(self._google_cache_events), meta
+
+    def _fetch_google_http_search_events(self, trend_query: str, now_ts: int | None = None) -> list[TrendEvent]:
+        now = int(now_ts or int(time.time()))
+        query = str(trend_query or "").strip()
+        if not query:
+            query = '(memecoin OR "meme coin" OR $BONK OR $WIF OR $PEPE OR $FLOKI)'
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; AxiomFlowBot/1.0)"}
+        try:
+            res = self.session.get(
+                "https://news.google.com/rss/search",
+                params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+        except Exception:
+            return []
+
+        entries = self._parse_feed_entries(str(res.text or ""), max_items=20)
+        out: list[TrendEvent] = []
+        seen: set[tuple[str, str]] = set()
+        for title, desc in entries:
+            merged = f"{title} {desc}".strip()
+            symbols = extract_symbols(merged)
+            if not symbols:
+                continue
+            for sym in symbols:
+                ns = self._normalize_symbol(sym)
+                if not ns:
+                    continue
+                key = (ns, title[:80])
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(
+                    TrendEvent(
+                        source="google_http",
+                        symbol=ns,
+                        text=f"google_http: {title[:120]}",
+                        ts=now,
+                    )
+                )
+                if len(out) >= 120:
+                    return out
+        return out
 
 
 class SolscanProClient:
