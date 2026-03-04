@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import math
+import json
+import os
 import shutil
 import threading
 import time
@@ -46,6 +48,7 @@ RUN_TRADE_HISTORY_LIMIT = 9_999_999
 RUN_TRADE_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 190
 STATE_BACKUP_INTERVAL_SECONDS = 600
 STATE_BACKUP_MAX_FILES = 1000
+TELEGRAM_POLL_LOCK_STALE_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
     # A: strict quality-first profile
     "A": {"threshold": 0.078, "tp_mul": 1.00, "sl_mul": 0.82},
@@ -213,6 +216,7 @@ class TradingEngine:
         self._last_telegram_report = 0
         self._runtime_error_notice: dict[str, dict[str, Any]] = {}
         self._last_state_backup_ts = 0
+        self._telegram_poll_lock_path = Path("reports") / "telegram_poll.lock"
 
         self._ensure_model_runs()
         self._sync_primary_views_from_model_a()
@@ -293,6 +297,80 @@ class TradingEngine:
             save_state(self.settings.state_file, self.state)
             self._backup_state_file("auto", force=False)
             save_online_model(self.settings.model_file, self.model)
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        if pid <= 0:
+            return False
+        try:
+            os.kill(int(pid), 0)
+            return True
+        except OSError:
+            return False
+        except Exception:
+            return False
+
+    def _acquire_telegram_poll_lock(self, now_ts: int) -> bool:
+        path = self._telegram_poll_lock_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        me = int(os.getpid())
+        payload = {"pid": me, "ts": int(now_ts)}
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=True))
+            return True
+        except FileExistsError:
+            pass
+        except Exception:
+            return False
+
+        holder_pid = 0
+        holder_ts = 0
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            holder_pid = int(raw.get("pid") or 0)
+            holder_ts = int(raw.get("ts") or 0)
+        except Exception:
+            holder_pid = 0
+            holder_ts = 0
+
+        if holder_pid == me:
+            try:
+                path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+                return True
+            except Exception:
+                return False
+
+        is_stale = (int(now_ts) - int(holder_ts)) > TELEGRAM_POLL_LOCK_STALE_SECONDS
+        if holder_pid > 0 and self._pid_alive(holder_pid) and not is_stale:
+            return False
+
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            return False
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=True))
+            return True
+        except Exception:
+            return False
+
+    def _release_telegram_poll_lock(self) -> None:
+        path = self._telegram_poll_lock_path
+        me = int(os.getpid())
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if int(raw.get("pid") or 0) != me:
+                return
+        except Exception:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     def _backup_state_file(self, reason: str, force: bool = False) -> str:
         now = int(time.time())
@@ -709,6 +787,7 @@ class TradingEngine:
             self._telegram_thread.join(timeout=3)
         self._thread = None
         self._telegram_thread = None
+        self._release_telegram_poll_lock()
         self._persist()
 
     def restart(self) -> None:
@@ -3955,8 +4034,19 @@ class TradingEngine:
 
     def _poll_telegram(self, now: int) -> None:
         if not self.settings.telegram_polling_enabled or not self.telegram.enabled:
+            self._release_telegram_poll_lock()
             return
         if (now - self._last_telegram_poll) < self.settings.telegram_poll_interval_seconds:
+            return
+        if not self._acquire_telegram_poll_lock(now):
+            self._last_telegram_poll = now
+            self._emit_runtime_error(
+                "core:telegram_poll_lock",
+                "텔레그램 폴링 잠금 대기",
+                "다른 프로세스가 동일 봇 토큰으로 polling 중입니다. 단일 인스턴스만 실행하세요.",
+                level="warn",
+                cooldown_seconds=300,
+            )
             return
         self._last_telegram_poll = now
 
