@@ -346,7 +346,8 @@ class TrendCollector:
         self._google_last_error = ""
         self._google_rate_limit_hits = 0
         self._google_daily_calls: dict[str, int] = {}
-        self._google_daily_max_calls = 24
+        # Keep a soft daily ceiling well below free-tier maximum.
+        self._google_daily_max_calls = 300
         self._trader_round_robin_idx = 0
         self._wallet_round_robin_idx = 0
         self._wallet_last_cursor: dict[str, str] = {}
@@ -873,12 +874,8 @@ class TrendCollector:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.1, "maxOutputTokens": 600},
         }
-        fallback_models = [self.google_model, "gemini-2.0-flash", "gemini-1.5-flash"]
-        try_models: list[str] = []
-        for model in fallback_models:
-            m = str(model or "").strip()
-            if m and m not in try_models:
-                try_models.append(m)
+        requested_model = str(self.google_model or "gemini-2.5-flash").strip()
+        try_models: list[str] = [requested_model] if requested_model else ["gemini-2.5-flash"]
 
         body: dict[str, Any] = {}
         last_error = ""

@@ -60,6 +60,11 @@ def _acquire_singleton_lock(path: Path) -> None:
         holder_pid = 0
         holder_ts = 0
 
+    if holder_pid == me:
+        # Container restarts may reuse pid=1 while lock file remains on mounted volume.
+        path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+        return
+
     stale = (int(time.time()) - int(holder_ts)) > 120
     if holder_pid > 0 and _pid_alive(holder_pid) and not stale:
         print(f"[web_app] already running (pid={holder_pid})", flush=True)

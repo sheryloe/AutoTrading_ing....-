@@ -270,8 +270,8 @@ class TradingEngine:
             self.trend.google_api_key = str(self.settings.google_api_key or "").strip()
             self.trend.google_model = str(self.settings.google_model or "gemini-2.5-flash").strip()
             self.trend.google_trend_enabled = bool(self.settings.google_trend_enabled)
-            self.trend.google_trend_interval_seconds = max(60, int(self.settings.google_trend_interval_seconds))
-            self.trend.google_trend_cooldown_seconds = max(60, int(self.settings.google_trend_cooldown_seconds))
+            self.trend.google_trend_interval_seconds = max(300, int(self.settings.google_trend_interval_seconds))
+            self.trend.google_trend_cooldown_seconds = max(1800, int(self.settings.google_trend_cooldown_seconds))
             self.trend.google_trend_max_symbols = max(5, min(40, int(self.settings.google_trend_max_symbols)))
         self.bybit = BybitV5Client(
             self.settings.bybit_api_key,
@@ -1705,6 +1705,10 @@ class TradingEngine:
             }
         google_status = str(google_meta.get("status") or "ok")
         google_error = str(google_meta.get("error") or "")
+        if google_status == "fallback_http":
+            # HTTP fallback succeeded; expose as degraded-but-healthy to reduce noise.
+            google_status = "ok_fallback"
+            google_error = ""
         if google_status in {"rate_limited", "cooldown"}:
             # Quota cooldown is expected on free tier; keep status visible without noisy error text.
             google_status = "cooldown"
@@ -1752,7 +1756,14 @@ class TradingEngine:
             if int(hits) >= 2:
                 trending.add(sym)
         for sym, hits in google_counts.items():
-            if int(hits) >= 1:
+            non_google_hits = (
+                int(trader_counts.get(sym, 0))
+                + int(wallet_counts.get(sym, 0))
+                + int(news_counts.get(sym, 0))
+                + int(community_counts.get(sym, 0))
+            )
+            # Google-only mentions are noisy for meme discovery.
+            if int(hits) >= 2 and non_google_hits >= 1:
                 trending.add(sym)
         self._trend_cache_trending = set(trending)
         return {
@@ -1878,7 +1889,7 @@ class TradingEngine:
             news_hits = int(news_count.get(symbol, 0))
             community_hits = int(community_count.get(symbol, 0))
             google_hits = int(google_count.get(symbol, 0))
-            trend_hit = 1 if (symbol in trending or google_hits > 0) else 0
+            trend_hit = 1 if (symbol in trending) else 0
             normal_candidate = self._is_candidate(snap, trend_hit, trader_hits)
             relaxed_candidate = self._is_relaxed_demo_candidate(
                 snap,
@@ -2078,29 +2089,29 @@ class TradingEngine:
             return _clamp(score, 0.0, 1.0)
         if model_id == "B":
             score = (
-                (0.48 * probability)
-                + (0.52 * heuristic)
-                + (0.13 * features.get("trend_strength", 0.0))
-                + (0.12 * features.get("news_strength", 0.0))
-                + (0.12 * features.get("community_strength", 0.0))
-                + (0.14 * features.get("google_strength", 0.0))
-                + (0.10 * features.get("trader_strength", 0.0))
-                + (0.08 * features.get("tx_flow", 0.0))
-                + (0.04 * features.get("is_pump_fun", 0.0))
+                (0.50 * probability)
+                + (0.50 * heuristic)
+                + (0.16 * features.get("trend_strength", 0.0))
+                + (0.09 * features.get("news_strength", 0.0))
+                + (0.10 * features.get("community_strength", 0.0))
+                + (0.03 * features.get("google_strength", 0.0))
+                + (0.18 * features.get("trader_strength", 0.0))
+                + (0.10 * features.get("tx_flow", 0.0))
+                + (0.09 * features.get("is_pump_fun", 0.0))
                 - (0.05 * features.get("noise_penalty", 0.0))
                 - (0.05 * features.get("holder_risk", 0.0))
             )
             return _clamp(score, 0.0, 1.0)
         score = (
-            (0.28 * probability)
-            + (0.72 * heuristic)
-            + (0.22 * features.get("new_meme_instant", 0.0))
-            + (0.16 * features.get("tx_flow", 0.0))
-            + (0.12 * features.get("trend_strength", 0.0))
-            + (0.08 * features.get("is_pump_fun", 0.0))
-            + (0.08 * features.get("google_strength", 0.0))
+            (0.30 * probability)
+            + (0.70 * heuristic)
+            + (0.24 * features.get("new_meme_instant", 0.0))
+            + (0.19 * features.get("tx_flow", 0.0))
+            + (0.16 * features.get("trend_strength", 0.0))
+            + (0.14 * features.get("is_pump_fun", 0.0))
+            + (0.02 * features.get("google_strength", 0.0))
             + (0.06 * features.get("news_strength", 0.0))
-            - (0.02 * features.get("spread_proxy", 0.0))
+            - (0.03 * features.get("spread_proxy", 0.0))
             - (0.02 * features.get("holder_risk", 0.0))
         )
         return _clamp(score, 0.0, 1.0)
@@ -2296,7 +2307,7 @@ class TradingEngine:
         wallet_strength = _clamp(wallet_hits / 4.0, 0.0, 1.0)
         news_strength = _clamp(news_hits / 4.0, 0.0, 1.0)
         community_strength = _clamp(community_hits / 5.0, 0.0, 1.0)
-        google_strength = _clamp(google_hits / 3.0, 0.0, 1.0)
+        google_strength = _clamp(google_hits / 6.0, 0.0, 1.0)
         new_meme_quality = _clamp((liq_log * 0.45) + (vol_log * 0.55), 0.0, 1.0) * age_freshness
         new_meme_instant = 1.0 if (snap.age_minutes <= 8 and snap.buys_5m >= max(3, snap.sells_5m + 1)) else 0.0
         is_pump_fun = 1.0 if str(snap.token_address or "").strip().lower().endswith("pump") else 0.0
@@ -2331,21 +2342,21 @@ class TradingEngine:
     @staticmethod
     def _heuristic_score(features: dict[str, float]) -> float:
         base = 0.0
-        base += 0.22 * features.get("trend_strength", 0.0)
-        base += 0.16 * features.get("trader_strength", 0.0)
-        base += 0.06 * features.get("wallet_strength", 0.0)
-        base += 0.08 * features.get("news_strength", 0.0)
+        base += 0.24 * features.get("trend_strength", 0.0)
+        base += 0.19 * features.get("trader_strength", 0.0)
+        base += 0.08 * features.get("wallet_strength", 0.0)
+        base += 0.07 * features.get("news_strength", 0.0)
         base += 0.08 * features.get("community_strength", 0.0)
-        base += 0.10 * features.get("google_strength", 0.0)
+        base += 0.02 * features.get("google_strength", 0.0)
         base += 0.12 * features.get("buy_sell_ratio", 0.0)
-        base += 0.10 * features.get("tx_flow", 0.0)
-        base += 0.08 * features.get("liq_log", 0.0)
-        base += 0.08 * features.get("vol_log", 0.0)
-        base += 0.08 * features.get("new_meme_quality", 0.0)
-        base += 0.08 * features.get("new_meme_instant", 0.0)
-        base += 0.06 * features.get("is_pump_fun", 0.0)
-        base += 0.08 * features.get("smart_wallet_score", 0.0)
-        base += 0.03 * features.get("transfer_diversity", 0.0)
+        base += 0.12 * features.get("tx_flow", 0.0)
+        base += 0.07 * features.get("liq_log", 0.0)
+        base += 0.07 * features.get("vol_log", 0.0)
+        base += 0.09 * features.get("new_meme_quality", 0.0)
+        base += 0.10 * features.get("new_meme_instant", 0.0)
+        base += 0.10 * features.get("is_pump_fun", 0.0)
+        base += 0.09 * features.get("smart_wallet_score", 0.0)
+        base += 0.04 * features.get("transfer_diversity", 0.0)
         base -= 0.07 * features.get("spread_proxy", 0.0)
         base -= 0.09 * features.get("noise_penalty", 0.0)
         base -= 0.10 * features.get("holder_risk", 0.0)
@@ -2760,7 +2771,7 @@ class TradingEngine:
         news = int((trend_bundle.get("news_counts") or {}).get(sym, 0))
         community = int((trend_bundle.get("community_counts") or {}).get(sym, 0))
         google = int((trend_bundle.get("google_counts") or {}).get(sym, 0))
-        trend_hits = trader + news + community + google + (2 if sym in trending else 0)
+        trend_hits = trader + news + community + (google // 2) + (2 if sym in trending else 0)
         rank = int(row.get("market_cap_rank") or 0)
         if rank <= 0:
             rank = 10000
@@ -2769,10 +2780,10 @@ class TradingEngine:
         vol_quality = _clamp(math.log10(max(1.0, vol)) / 11.0, 0.0, 1.0)
         trend_score = (
             (2.0 if sym in trending else 0.0)
-            + min(2.0, float(trader) * 0.5)
-            + min(2.0, float(news) * 0.5)
-            + min(1.5, float(community) * 0.3)
-            + min(2.5, float(google) * 0.8)
+            + min(2.2, float(trader) * 0.6)
+            + min(2.0, float(news) * 0.55)
+            + min(1.6, float(community) * 0.35)
+            + min(1.0, float(google) * 0.2)
         )
         score = float(trend_score + (1.6 * rank_quality) + (0.8 * vol_quality))
         return (score, int(trend_hits))
@@ -2996,7 +3007,7 @@ class TradingEngine:
         community_hit = _clamp(float((trend_bundle.get("community_counts") or {}).get(sym, 0)) / 8.0, 0.0, 1.0)
         google_hit = _clamp(float((trend_bundle.get("google_counts") or {}).get(sym, 0)) / 4.0, 0.0, 1.0)
         return _clamp(
-            (0.30 * trend_hit) + (0.20 * news_hit) + (0.20 * community_hit) + (0.30 * google_hit),
+            (0.40 * trend_hit) + (0.25 * news_hit) + (0.25 * community_hit) + (0.10 * google_hit),
             0.0,
             1.0,
         )
