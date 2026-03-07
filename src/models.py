@@ -16,6 +16,8 @@ class TokenSnapshot:
     sells_5m: int
     age_minutes: float
     source: str
+    market_cap_usd: float = 0.0
+    fdv_usd: float = 0.0
 
     @property
     def buy_sell_ratio(self) -> float:
@@ -36,4 +38,3 @@ class TrendEvent:
     symbol: str
     text: str
     ts: int
-

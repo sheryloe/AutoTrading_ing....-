@@ -7,6 +7,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      LANG: "C.UTF-8"
+      LC_ALL: "C.UTF-8"
     ports:
       - "${APP_PORT:-8099}:${APP_PORT:-8099}"
     volumes:
@@ -27,6 +32,10 @@ services:
     depends_on:
       - app
     environment:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      LANG: "C.UTF-8"
+      LC_ALL: "C.UTF-8"
       DASHBOARD_URL: "http://app:${APP_PORT:-8099}/api/dashboard"
       SNAPSHOT_SECONDS: "300"
       MID_REPORT_SECONDS: "7200"

@@ -50,6 +50,8 @@ class Settings:
     lock_paper_mode: bool
     enable_autotrade: bool
     enable_live_execution: bool
+    live_enable_meme: bool
+    live_enable_crypto: bool
     scan_interval_seconds: int
     max_signals_per_cycle: int
     signal_cooldown_minutes: int
@@ -102,6 +104,8 @@ class Settings:
     watch_wallets: str
     solana_rpc_url: str
     phantom_wallet_address: str
+    solana_private_key: str
+    solana_reserve_sol: float
     min_wallet_asset_usd: float
     binance_api_key: str
     binance_api_secret: str
@@ -115,6 +119,11 @@ class Settings:
     bybit_leverage_max: float
     bybit_max_positions: int
     bybit_min_order_usd: float
+    crypto_min_entry_score: float
+    meme_autotrade_models: str
+    crypto_autotrade_models: str
+    live_meme_models: str
+    live_crypto_models: str
     bybit_symbols: str
     telegram_polling_enabled: bool
     telegram_poll_interval_seconds: int
@@ -129,10 +138,14 @@ class Settings:
     app_port: int
     demo_seed_usdt: float
     allow_demo_reset: bool
+    demo_reset_block_until_ts: int
+    model_autotune_interval_hours: int
     demo_enable_bybit: bool
     demo_enable_macro: bool
     macro_universe_source: str
     macro_top_n: int
+    macro_rank_min: int
+    macro_rank_max: int
     macro_trend_pool_size: int
     macro_trend_reselect_seconds: int
     macro_realtime_sources: str
@@ -152,6 +165,7 @@ class Settings:
     model_file: str
     state_file: str
     runtime_settings_file: str
+    runtime_feedback_db_file: str
 
     @property
     def is_live_mode(self) -> bool:
@@ -167,6 +181,8 @@ class Settings:
             lock_paper_mode=_to_bool(data.get("LOCK_PAPER_MODE"), False),
             enable_autotrade=_to_bool(data.get("ENABLE_AUTOTRADE"), True),
             enable_live_execution=_to_bool(data.get("ENABLE_LIVE_EXECUTION"), False),
+            live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
+            live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
             scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 20)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),
@@ -184,8 +200,9 @@ class Settings:
             google_api_key=_to_str(data.get("GOOGLE_API_KEY"), ""),
             google_model=_to_str(data.get("GOOGLE_MODEL"), "gemini-2.5-flash"),
             google_trend_enabled=_to_bool(data.get("GOOGLE_TREND_ENABLED"), True),
-            google_trend_interval_seconds=max(300, _to_int(data.get("GOOGLE_TREND_INTERVAL_SECONDS"), 1800)),
-            google_trend_cooldown_seconds=max(1800, _to_int(data.get("GOOGLE_TREND_COOLDOWN_SECONDS"), 21600)),
+            # Keep Gemini usage within free-tier constraints by default.
+            google_trend_interval_seconds=max(14000, _to_int(data.get("GOOGLE_TREND_INTERVAL_SECONDS"), 14000)),
+            google_trend_cooldown_seconds=max(14000, _to_int(data.get("GOOGLE_TREND_COOLDOWN_SECONDS"), 21600)),
             google_trend_max_symbols=max(5, min(40, _to_int(data.get("GOOGLE_TREND_MAX_SYMBOLS"), 15))),
             trend_cg_interval_seconds=max(60, _to_int(data.get("TREND_CG_INTERVAL_SECONDS"), 300)),
             trend_trader_interval_seconds=max(120, _to_int(data.get("TREND_TRADER_INTERVAL_SECONDS"), 600)),
@@ -226,11 +243,13 @@ class Settings:
             wallet_update_seconds=max(10, _to_int(data.get("WALLET_UPDATE_SECONDS"), 45)),
             watch_trader_accounts=_to_str(
                 data.get("WATCH_TRADER_ACCOUNTS"),
-                "lookonchain,HsakaTrades,blknoiz06,RookieXBT,pentosh1,CryptoKaleo,tier10k,zachxbt,murad,cobie,Ansem,0xMert_,TheFlowHorse,AltcoinSherpa,DegenSpartan,DefiIgnas,KookCapitalLLC,LedgerStatus,CryptoCred,CryptoHayes,zhusu,jfizzy,AP_Abacus,rektdiomedes,TheMoonCarl,scottmelker,cz_binance",
+                "lookonchain,HsakaTrades,blknoiz06,RookieXBT,pentosh1,CryptoKaleo,tier10k,zachxbt,murad,cobie,Ansem,0xMert_,TheFlowHorse,AltcoinSherpa,DegenSpartan,DefiIgnas,KookCapitalLLC,LedgerStatus,CryptoCred,CryptoHayes,zhusu,jfizzy,AP_Abacus,rektdiomedes,TheMoonCarl,scottmelker,cz_binance,Arthur_0x,TheCryptoDog,CanteringClark,MandoCT,KoroushAK,DonAlt,CryptoMichNL,IncomeSharks,CredibleCrypto,CryptoTony__,CryptoCapo_,MikybullCrypto,MMCrypto,CRYPTOBIRB,AviFelman,Qwatio,ByzGeneral,SalsaTekila,rektfencer,CryptoRover,AltcoinPsycho,MoonOverlord,CryptoGodJohn,TheCryptoLark,coinbureau,MessariCrypto,WuBlockchain,watcherguru,WhaleChart,CryptoSlate,CoinDesk,TheBlock__,db_news247,deitaone,CryptoBriefing,Cointelegraph,CoinMarketCap,coingecko,binance,Bybit_Official,okx,krakenfx,gate_io,kucoincom,MEXC_Official,solana,solanafloor,SolanaLegend,pumpdotfun,bonk_inu,dogwifcoin,RealFlokiInu,popcatsol,bome_meme,Slerfsol,jup_ag,raydiumprotocol,tensor_hq,MagicEden,birdeye_so,Dexscreener,geckoterminal,CryptoRank_io,tokenterminal,DefiLlama,aeyakovenko,GCRClassic,ilCapoOfCrypto,milesdeutscher,nansen_ai,ArkhamIntel,santimentfeed,glassnode,intotheblock",
             ),
             watch_wallets=_to_str(data.get("WATCH_WALLETS"), ""),
             solana_rpc_url=_to_str(data.get("SOLANA_RPC_URL"), "https://api.mainnet-beta.solana.com"),
             phantom_wallet_address=_to_str(data.get("PHANTOM_WALLET_ADDRESS"), ""),
+            solana_private_key=_to_str(data.get("SOLANA_PRIVATE_KEY"), ""),
+            solana_reserve_sol=max(0.0, _to_float(data.get("SOLANA_RESERVE_SOL"), 0.01)),
             min_wallet_asset_usd=max(0.0, _to_float(data.get("MIN_WALLET_ASSET_USD"), 1.0)),
             binance_api_key=_to_str(data.get("BINANCE_API_KEY"), ""),
             binance_api_secret=_to_str(data.get("BINANCE_API_SECRET"), ""),
@@ -244,6 +263,17 @@ class Settings:
             bybit_leverage_max=min(20.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 20.0))),
             bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 5)),
             bybit_min_order_usd=max(5.0, _to_float(data.get("BYBIT_MIN_ORDER_USD"), 10.0)),
+            crypto_min_entry_score=min(1.0, max(0.0, _to_float(data.get("CRYPTO_MIN_ENTRY_SCORE"), 0.30))),
+            meme_autotrade_models=_to_str(data.get("MEME_AUTOTRADE_MODELS"), "A,B,C"),
+            crypto_autotrade_models=_to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C"),
+            live_meme_models=_to_str(
+                data.get("LIVE_MEME_MODELS"),
+                _to_str(data.get("MEME_AUTOTRADE_MODELS"), "A,B,C"),
+            ),
+            live_crypto_models=_to_str(
+                data.get("LIVE_CRYPTO_MODELS"),
+                _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C"),
+            ),
             bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT"),
             telegram_polling_enabled=_to_bool(data.get("TELEGRAM_POLLING_ENABLED"), True),
             telegram_poll_interval_seconds=max(2, _to_int(data.get("TELEGRAM_POLL_INTERVAL_SECONDS"), 5)),
@@ -258,10 +288,22 @@ class Settings:
             app_port=max(1, _to_int(data.get("APP_PORT"), 5050)),
             demo_seed_usdt=max(50.0, _to_float(data.get("DEMO_SEED_USDT"), 1000.0)),
             allow_demo_reset=_to_bool(data.get("ALLOW_DEMO_RESET"), False),
+            demo_reset_block_until_ts=max(0, _to_int(data.get("DEMO_RESET_BLOCK_UNTIL_TS"), 0)),
+            model_autotune_interval_hours=(
+                6
+                if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 24) == 6
+                else (
+                    12
+                    if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 24) == 12
+                    else 24
+                )
+            ),
             demo_enable_bybit=_to_bool(data.get("DEMO_ENABLE_BYBIT"), False),
             demo_enable_macro=_to_bool(data.get("DEMO_ENABLE_MACRO"), True),
             macro_universe_source=_to_str(data.get("MACRO_UNIVERSE_SOURCE"), "coingecko").lower(),
             macro_top_n=max(50, min(2000, _to_int(data.get("MACRO_TOP_N"), 500))),
+            macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 10))),
+            macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 300))),
             macro_trend_pool_size=max(5, min(200, _to_int(data.get("MACRO_TREND_POOL_SIZE"), 30))),
             macro_trend_reselect_seconds=max(900, min(86400, _to_int(data.get("MACRO_TREND_RESELECT_SECONDS"), 14400))),
             macro_realtime_sources=_to_str(data.get("MACRO_REALTIME_SOURCES"), "binance,bybit"),
@@ -284,6 +326,7 @@ class Settings:
             model_file=_to_str(data.get("MODEL_FILE"), "model_online.json"),
             state_file=_to_str(data.get("STATE_FILE"), "state.json"),
             runtime_settings_file=_to_str(data.get("RUNTIME_SETTINGS_FILE"), "runtime_settings.json"),
+            runtime_feedback_db_file=_to_str(data.get("RUNTIME_FEEDBACK_DB_FILE"), "reports/runtime_feedback.db"),
         )
         if settings.bybit_leverage_max < settings.bybit_leverage_min:
             settings.bybit_leverage_min, settings.bybit_leverage_max = (
@@ -295,6 +338,8 @@ class Settings:
                 settings.demo_order_pct_max,
                 settings.demo_order_pct_min,
             )
+        if settings.macro_rank_max < settings.macro_rank_min:
+            settings.macro_rank_min, settings.macro_rank_max = settings.macro_rank_max, settings.macro_rank_min
         return settings
 
 
@@ -348,6 +393,8 @@ def settings_to_public_dict(settings: Settings) -> dict[str, Any]:
         data["coingecko_api_key"] = "***"
     if data.get("google_api_key"):
         data["google_api_key"] = "***"
+    if data.get("solana_private_key"):
+        data["solana_private_key"] = "***"
     if data.get("solscan_api_key"):
         data["solscan_api_key"] = "***"
     return data

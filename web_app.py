@@ -13,6 +13,12 @@ from flask import Flask, jsonify, render_template, request
 from src.config import load_settings
 from src.engine import TradingEngine
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 
 def _pid_alive(pid: int) -> bool:
     if int(pid) <= 0:
@@ -130,6 +136,7 @@ def home() -> Any:
         "index.html",
         ui_refresh_seconds=max(2, settings.ui_refresh_seconds),
         app_port=settings.app_port,
+        asset_version=int(time.time()),
     )
 
 
@@ -179,6 +186,80 @@ def api_autotrade() -> Any:
     return jsonify({"ok": True, "enabled": engine.settings.enable_autotrade})
 
 
+@app.post("/api/control/models")
+def api_set_models() -> Any:
+    data = request.get_json(silent=True) or {}
+    meme_models = data.get("meme_models")
+    crypto_models = data.get("crypto_models")
+    try:
+        applied = engine.set_autotrade_models_runtime(meme_models=meme_models, crypto_models=crypto_models)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "applied": applied})
+
+
+@app.post("/api/control/live-models")
+def api_set_live_models() -> Any:
+    data = request.get_json(silent=True) or {}
+    meme_models = data.get("meme_models")
+    crypto_models = data.get("crypto_models")
+    try:
+        applied = engine.set_live_models_runtime(meme_models=meme_models, crypto_models=crypto_models)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "applied": applied})
+
+
+@app.post("/api/control/live-markets")
+def api_set_live_markets() -> Any:
+    data = request.get_json(silent=True) or {}
+    meme_enabled = data.get("meme_enabled")
+    crypto_enabled = data.get("crypto_enabled")
+    def _to_bool_or_none(value: Any) -> bool | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        return None
+    applied = engine.set_live_markets(
+        meme_enabled=_to_bool_or_none(meme_enabled),
+        crypto_enabled=_to_bool_or_none(crypto_enabled),
+    )
+    return jsonify({"ok": True, "applied": applied})
+
+
+@app.post("/api/control/live-performance/anchor-now")
+def api_set_live_performance_anchor_now() -> Any:
+    data = request.get_json(silent=True) or {}
+    raw = data.get("reset_net_flow", True)
+    if isinstance(raw, bool):
+        reset_net_flow = raw
+    else:
+        reset_net_flow = str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    result = engine.set_live_performance_anchor_now(reset_net_flow=reset_net_flow)
+    return jsonify({"ok": True, "result": result})
+
+
+@app.post("/api/control/live-performance/flow")
+def api_adjust_live_performance_flow() -> Any:
+    data = request.get_json(silent=True) or {}
+    try:
+        delta_usd = float(data.get("delta_usd"))
+    except Exception:
+        return jsonify({"ok": False, "error": "delta_usd must be a number"}), 400
+    note = str(data.get("note") or "")
+    try:
+        result = engine.adjust_live_net_flow(delta_usd=delta_usd, note=note)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "result": result})
+
+
 @app.post("/api/control/force-sync")
 def api_force_sync() -> Any:
     engine.force_sync()
@@ -207,6 +288,40 @@ def api_reset_demo() -> Any:
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "result": result})
+
+
+@app.post("/api/control/reset-demo-crypto")
+def api_reset_demo_crypto() -> Any:
+    data = request.get_json(silent=True) or {}
+    seed = data.get("seed_usdt")
+    confirm_text = str(data.get("confirm_text") or "")
+    try:
+        seed_value = float(seed) if seed is not None else None
+    except Exception:
+        seed_value = None
+    try:
+        result = engine.reset_crypto_demo(seed_value, confirm_text=confirm_text, actor="api")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "result": result})
+
+
+@app.get("/api/settings/secrets")
+def api_get_secret_settings() -> Any:
+    return jsonify({"ok": True, "secrets": engine.secret_settings_payload()})
+
+
+@app.post("/api/settings/secrets")
+def api_update_secret_settings() -> Any:
+    data = request.get_json(silent=True) or {}
+    updates = data.get("updates") if isinstance(data, dict) else {}
+    if not isinstance(updates, dict):
+        return jsonify({"ok": False, "error": "updates must be object"}), 400
+    try:
+        secrets = engine.update_secret_settings(updates)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "secrets": secrets})
 
 
 if __name__ == "__main__":

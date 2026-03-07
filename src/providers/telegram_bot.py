@@ -35,15 +35,17 @@ class TelegramBotClient:
     def send_message(self, chat_id: str, text: str) -> tuple[bool, str]:
         if not self.enabled or not chat_id:
             return False, "telegram_disabled"
+        msg = str(text or "")
         payload = {
             "chat_id": str(chat_id),
-            "text": str(text or "")[:3900],
+            "text": msg[:3900],
             "disable_web_page_preview": True,
         }
         try:
             res = self.session.post(
                 f"{self.base_url}/sendMessage",
                 json=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
                 timeout=self.timeout_seconds,
             )
             res.raise_for_status()

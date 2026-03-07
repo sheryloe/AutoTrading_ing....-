@@ -61,6 +61,29 @@ class SolanaWalletTracker:
                 continue
         return out
 
+    def get_token_balance_raw(self, wallet_address: str, mint_address: str) -> dict[str, Any]:
+        mint = str(mint_address or "").strip()
+        if not wallet_address or not mint:
+            return {"raw_amount": 0, "decimals": 0, "qty": 0.0}
+        total_raw = 0
+        decimals = 0
+        for row in self.get_token_accounts(wallet_address):
+            try:
+                parsed = (((row or {}).get("account") or {}).get("data") or {}).get("parsed") or {}
+                info = (parsed.get("info") or {}) if isinstance(parsed, dict) else {}
+                token_mint = str(info.get("mint") or "").strip()
+                if token_mint != mint:
+                    continue
+                token_amount = dict(info.get("tokenAmount") or {})
+                raw = int(token_amount.get("amount") or 0)
+                dec = int(token_amount.get("decimals") or 0)
+                total_raw += max(0, raw)
+                decimals = max(decimals, dec)
+            except Exception:
+                continue
+        qty = float(total_raw) / float(10**max(0, decimals)) if total_raw > 0 else 0.0
+        return {"raw_amount": int(total_raw), "decimals": int(decimals), "qty": float(qty)}
+
     def _get_sol_price_usd(self) -> float:
         now = time.time()
         cached_price, cached_ts = self._sol_price_cache
@@ -85,15 +108,23 @@ class SolanaWalletTracker:
         wallet_address: str,
         dex: DexScreenerClient,
         min_asset_usd: float = 1.0,
+        include_token_addresses: set[str] | list[str] | tuple[str, ...] | None = None,
     ) -> list[dict[str, Any]]:
         if not wallet_address:
             return []
 
         out: list[dict[str, Any]] = []
         min_usd = max(0.0, float(min_asset_usd))
+        include_set: set[str] = set()
+        for raw in list(include_token_addresses or []):
+            token = str(raw or "").strip()
+            if token:
+                include_set.add(token)
 
         try:
-            sol_qty = self.get_sol_balance(wallet_address)
+            sol_result = self._rpc("getBalance", [wallet_address])
+            sol_lamports = int((sol_result or {}).get("value") or 0)
+            sol_qty = float(sol_lamports) / 1_000_000_000.0
             sol_price = self._get_sol_price_usd()
             sol_value = sol_qty * sol_price
             if sol_value >= min_usd:
@@ -103,6 +134,8 @@ class SolanaWalletTracker:
                         "name": "Solana",
                         "token_address": "So11111111111111111111111111111111111111112",
                         "qty": sol_qty,
+                        "raw_amount": int(sol_lamports),
+                        "decimals": 9,
                         "price_usd": sol_price,
                         "value_usd": sol_value,
                     }
@@ -121,7 +154,14 @@ class SolanaWalletTracker:
                 parsed = (((row or {}).get("account") or {}).get("data") or {}).get("parsed") or {}
                 info = (parsed.get("info") or {}) if isinstance(parsed, dict) else {}
                 mint = str(info.get("mint") or "").strip()
-                amount_ui = float((((info.get("tokenAmount") or {}).get("uiAmount")) or 0.0))
+                token_amount = dict(info.get("tokenAmount") or {})
+                amount_raw = int(token_amount.get("amount") or 0)
+                decimals = int(token_amount.get("decimals") or 0)
+                amount_ui_val = token_amount.get("uiAmount")
+                if amount_ui_val is None:
+                    amount_ui = float(amount_raw) / float(10**max(0, decimals))
+                else:
+                    amount_ui = float(amount_ui_val or 0.0)
                 if not mint or amount_ui <= 0:
                     continue
 
@@ -135,7 +175,8 @@ class SolanaWalletTracker:
                     }
                     snapshot_cache[mint] = snap
                 value_usd = amount_ui * float(snap["price_usd"])
-                if value_usd < min_usd:
+                force_include = mint in include_set
+                if value_usd < min_usd and not force_include:
                     continue
                 out.append(
                     {
@@ -143,6 +184,8 @@ class SolanaWalletTracker:
                         "name": str(snap["name"]),
                         "token_address": mint,
                         "qty": amount_ui,
+                        "raw_amount": int(amount_raw),
+                        "decimals": int(decimals),
                         "price_usd": float(snap["price_usd"]),
                         "value_usd": value_usd,
                     }

@@ -5,6 +5,7 @@ import re
 import time
 import calendar
 import threading
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -12,6 +13,7 @@ from xml.etree import ElementTree as ET
 import requests
 
 from src.models import TokenSnapshot, TrendEvent
+from src.runtime_feedback import RuntimeFeedbackStore
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -20,8 +22,11 @@ def _clamp(value: float, lo: float, hi: float) -> float:
 
 RSS_INSTANCES = (
     "https://rss.xcancel.com",
-    "https://nitter.poast.org",
-    "https://nitter.net",
+)
+
+X_FALLBACK_INSTANCES = (
+    "https://r.jina.ai/http://x.com",
+    "https://r.jina.ai/http://twitter.com",
 )
 
 SYMBOL_STOPWORDS = {
@@ -41,19 +46,65 @@ SYMBOL_STOPWORDS = {
     "RT",
     "USD",
     "USDT",
+    "HTTP",
+    "HTTPS",
+    "RSS",
+    "XML",
+    "ATOM",
+    "URL",
+    "LANG",
+    "EMPTY",
+    "FEED",
+    "RETRY",
+    "ERROR",
+    "FAILED",
+    "READER",
+    "WHITELISTED",
+    "SEARCH",
+    "TWEET",
+    "TWEETS",
+    "POST",
+    "POSTS",
+    "NEWS",
+    "ALERT",
+    "BREAKING",
+    "LOOKONCHAIN",
+    "XCANCEL",
+    "NITTER",
+    "DOT",
+    "AT",
+    "ID",
+    "ORIGINAL",
+    "SOURCE",
+    "PUMPFUN",
+    "MEMECOIN",
+    "CRYPTO",
 }
 
 SOLANA_WALLET_RE = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
+URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
+DOMAIN_RE = re.compile(r"\b[a-z0-9\-]+\.(?:com|net|org|io|xyz|info|ai|gg)\b", re.IGNORECASE)
 
 
 def extract_symbols(text: str) -> set[str]:
     body = str(text or "")
+    body = URL_RE.sub(" ", body)
+    body = DOMAIN_RE.sub(" ", body)
     out: set[str] = set()
-    for m in re.findall(r"\$([A-Za-z][A-Za-z0-9]{1,11})", body):
-        out.add(m.upper())
+    candidates: list[str] = []
+    for m in re.findall(r"[$#]([A-Za-z][A-Za-z0-9]{1,11})", body):
+        candidates.append(str(m or ""))
     for m in re.findall(r"\b[A-Z]{2,12}\b", body):
-        sym = m.strip().upper()
+        candidates.append(str(m or ""))
+    for m in candidates:
+        sym = str(m or "").strip().upper()
+        if not sym:
+            continue
         if sym in SYMBOL_STOPWORDS:
+            continue
+        if sym.isdigit():
+            continue
+        if len(set(sym)) == 1 and len(sym) >= 3:
             continue
         out.add(sym)
     return out
@@ -233,6 +284,14 @@ class DexScreenerClient:
         liq = float(((pair.get("liquidity") or {}).get("usd")) or 0.0)
         vol = float(((pair.get("volume") or {}).get("m5")) or 0.0)
         price = float(pair.get("priceUsd") or 0.0)
+        try:
+            market_cap_usd = float(pair.get("marketCap") or pair.get("marketcap") or 0.0)
+        except Exception:
+            market_cap_usd = 0.0
+        try:
+            fdv_usd = float(pair.get("fdv") or 0.0)
+        except Exception:
+            fdv_usd = 0.0
         if price <= 0:
             return None
         created_ms = pair.get("pairCreatedAt")
@@ -254,6 +313,8 @@ class DexScreenerClient:
             sells_5m=int(tx_m5.get("sells") or 0),
             age_minutes=age_minutes,
             source=source,
+            market_cap_usd=market_cap_usd,
+            fdv_usd=fdv_usd,
         )
 
 
@@ -317,9 +378,10 @@ class TrendCollector:
         google_api_key: str = "",
         google_model: str = "gemini-2.5-flash",
         google_trend_enabled: bool = True,
-        google_trend_interval_seconds: int = 600,
-        google_trend_cooldown_seconds: int = 10800,
+        google_trend_interval_seconds: int = 14000,
+        google_trend_cooldown_seconds: int = 21600,
         google_trend_max_symbols: int = 15,
+        runtime_feedback_store: RuntimeFeedbackStore | None = None,
     ) -> None:
         self.session = requests.Session()
         self.timeout_seconds = timeout_seconds
@@ -337,9 +399,10 @@ class TrendCollector:
         self.google_api_key = str(google_api_key or "").strip()
         self.google_model = str(google_model or "gemini-2.5-flash").strip()
         self.google_trend_enabled = bool(google_trend_enabled)
-        self.google_trend_interval_seconds = max(300, int(google_trend_interval_seconds))
-        self.google_trend_cooldown_seconds = max(1800, int(google_trend_cooldown_seconds))
+        self.google_trend_interval_seconds = max(14000, int(google_trend_interval_seconds))
+        self.google_trend_cooldown_seconds = max(14000, int(google_trend_cooldown_seconds))
         self.google_trend_max_symbols = max(5, min(40, int(google_trend_max_symbols)))
+        self.runtime_feedback_store = runtime_feedback_store
         self._google_last_fetch_ts = 0
         self._google_backoff_until_ts = 0
         self._google_cache_events: list[TrendEvent] = []
@@ -348,10 +411,177 @@ class TrendCollector:
         self._google_daily_calls: dict[str, int] = {}
         # Keep a soft daily ceiling well below free-tier maximum.
         self._google_daily_max_calls = 300
+        self._google_state_saved_ts = 0
+        self._google_last_feedback_sig = ""
+        self._google_last_feedback_ts = 0
         self._trader_round_robin_idx = 0
         self._wallet_round_robin_idx = 0
         self._wallet_last_cursor: dict[str, str] = {}
         self._dynamic_wallet_watch: dict[str, int] = {}
+        self._load_google_runtime_state()
+
+    def _trim_google_daily_calls(self, now_ts: int) -> None:
+        if not isinstance(self._google_daily_calls, dict):
+            self._google_daily_calls = {}
+            return
+        keep_keys: set[str] = set()
+        for i in range(0, 14):
+            day = datetime.fromtimestamp(int(now_ts) - (i * 86400), tz=timezone.utc).strftime("%Y-%m-%d")
+            keep_keys.add(day)
+        cleaned: dict[str, int] = {}
+        for k, v in self._google_daily_calls.items():
+            key = str(k or "").strip()
+            if key not in keep_keys:
+                continue
+            try:
+                n = max(0, int(v))
+            except Exception:
+                n = 0
+            cleaned[key] = n
+        self._google_daily_calls = cleaned
+
+    def _serialize_google_events(self, events: list[TrendEvent]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for ev in list(events or [])[:120]:
+            if isinstance(ev, TrendEvent):
+                out.append(asdict(ev))
+                continue
+            if isinstance(ev, dict):
+                out.append(
+                    {
+                        "source": str(ev.get("source") or "google_gemini"),
+                        "symbol": str(ev.get("symbol") or ""),
+                        "text": str(ev.get("text") or ""),
+                        "ts": int(ev.get("ts") or 0),
+                    }
+                )
+        return out
+
+    def _deserialize_google_events(self, rows: list[dict[str, Any]]) -> list[TrendEvent]:
+        out: list[TrendEvent] = []
+        for row in list(rows or [])[:120]:
+            if not isinstance(row, dict):
+                continue
+            out.append(
+                TrendEvent(
+                    source=str(row.get("source") or "google_gemini"),
+                    symbol=str(row.get("symbol") or ""),
+                    text=str(row.get("text") or ""),
+                    ts=int(row.get("ts") or 0),
+                )
+            )
+        return out
+
+    def _load_google_runtime_state(self) -> None:
+        store = self.runtime_feedback_store
+        if store is None:
+            return
+        try:
+            payload = store.load_kv("google_runtime_state")
+        except Exception:
+            return
+        if not isinstance(payload, dict) or not payload:
+            return
+        try:
+            self._google_last_fetch_ts = int(payload.get("last_fetch_ts") or 0)
+        except Exception:
+            self._google_last_fetch_ts = 0
+        try:
+            self._google_backoff_until_ts = int(payload.get("backoff_until_ts") or 0)
+        except Exception:
+            self._google_backoff_until_ts = 0
+        self._google_last_error = str(payload.get("last_error") or "")
+        try:
+            self._google_rate_limit_hits = max(0, int(payload.get("rate_limit_hits") or 0))
+        except Exception:
+            self._google_rate_limit_hits = 0
+        daily_calls = payload.get("daily_calls")
+        self._google_daily_calls = dict(daily_calls) if isinstance(daily_calls, dict) else {}
+        self._trim_google_daily_calls(int(time.time()))
+        events_raw = payload.get("cache_events")
+        if isinstance(events_raw, list):
+            self._google_cache_events = self._deserialize_google_events(events_raw)
+        try:
+            self._google_state_saved_ts = int(payload.get("saved_ts") or 0)
+        except Exception:
+            self._google_state_saved_ts = 0
+
+    def _save_google_runtime_state(self, now_ts: int, force: bool = False) -> None:
+        store = self.runtime_feedback_store
+        if store is None:
+            return
+        if not force and (int(now_ts) - int(self._google_state_saved_ts)) < 30:
+            return
+        self._trim_google_daily_calls(now_ts)
+        payload = {
+            "last_fetch_ts": int(self._google_last_fetch_ts),
+            "backoff_until_ts": int(self._google_backoff_until_ts),
+            "last_error": str(self._google_last_error or ""),
+            "rate_limit_hits": int(self._google_rate_limit_hits),
+            "daily_calls": dict(self._google_daily_calls or {}),
+            "cache_events": self._serialize_google_events(self._google_cache_events),
+            "saved_ts": int(now_ts),
+        }
+        try:
+            store.save_kv("google_runtime_state", payload, now_ts=now_ts)
+            self._google_state_saved_ts = int(now_ts)
+        except Exception:
+            return
+
+    def _record_google_feedback(
+        self,
+        *,
+        now_ts: int,
+        status: str,
+        error: str = "",
+        action: str = "",
+        detail: str = "",
+        level: str = "info",
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        store = self.runtime_feedback_store
+        if store is None:
+            return
+        st = str(status or "").strip() or "event"
+        err = str(error or "").strip()
+        sig = f"{st}|{err}|{str(action or '').strip()}"
+        if sig == self._google_last_feedback_sig and (int(now_ts) - int(self._google_last_feedback_ts)) < 60:
+            return
+        try:
+            store.append_event(
+                source="google_gemini",
+                level=str(level or "info").strip().lower(),
+                status=st,
+                error=err,
+                action=str(action or "").strip(),
+                detail=str(detail or "").strip(),
+                meta=dict(meta or {}),
+                now_ts=int(now_ts),
+            )
+            self._google_last_feedback_sig = sig
+            self._google_last_feedback_ts = int(now_ts)
+        except Exception:
+            return
+
+    def google_runtime_status(self) -> dict[str, Any]:
+        now = int(time.time())
+        day_key = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
+        self._trim_google_daily_calls(now)
+        return {
+            "enabled": bool(self.google_trend_enabled and self.google_api_key),
+            "model": str(self.google_model or "gemini-2.5-flash"),
+            "interval_seconds": int(self.google_trend_interval_seconds),
+            "cooldown_seconds": int(self.google_trend_cooldown_seconds),
+            "last_fetch_ts": int(self._google_last_fetch_ts),
+            "backoff_until_ts": int(self._google_backoff_until_ts),
+            "backoff_remaining_seconds": max(0, int(self._google_backoff_until_ts) - now),
+            "last_error": str(self._google_last_error or ""),
+            "rate_limit_hits": int(self._google_rate_limit_hits),
+            "daily_used": int(self._google_daily_calls.get(day_key) or 0),
+            "daily_cap": int(self._google_daily_max_calls),
+            "cache_count": len(self._google_cache_events),
+            "state_saved_ts": int(self._google_state_saved_ts),
+        }
 
     def _get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
         res = self.session.get(url, params=params, timeout=self.timeout_seconds)
@@ -563,7 +793,8 @@ class TrendCollector:
             uniq_accounts.append(key)
         accounts = uniq_accounts
         # Keep each cycle responsive by scanning a rotating subset.
-        batch_n = max(1, min(10, len(accounts)))
+        # Keep cycle latency bounded; combine with 5-minute source interval for near 30-minute full rotation at ~100 accounts.
+        batch_n = max(1, min(20, len(accounts)))
         if len(accounts) > batch_n:
             start = int(self._trader_round_robin_idx) % len(accounts)
             ordered = list(accounts[start:]) + list(accounts[:start])
@@ -575,21 +806,33 @@ class TrendCollector:
         headers = {"User-Agent": "Mozilla/5.0 (compatible; AxiomFlowBot/1.0)"}
         any_feed_success = False
         last_error = ""
+        fallback_budget = max(2, min(8, (len(target_accounts) // 2) + 1))
+        fallback_used = 0
         for account in target_accounts:
             fetched = False
             for instance in RSS_INSTANCES:
-                urls = [f"{instance}/{account}/rss"]
+                account_path = account
                 if "rss.xcancel.com" in instance:
-                    urls.append(f"{instance}/search/rss?f=tweets&q=from%3A{account}")
+                    account_path = str(account or "").lower()
+                    urls = [
+                        f"{instance}/search/rss?f=tweets&q=from%3A{account_path}",
+                    ]
+                else:
+                    urls = [f"{instance}/{account_path}/rss"]
                 for url in urls:
                     try:
-                        res = self.session.get(url, headers=headers, timeout=self.timeout_seconds)
-                        res.raise_for_status()
+                        res = self.session.get(url, headers=headers, timeout=min(2.5, float(self.timeout_seconds)))
                     except Exception as exc:
                         last_error = str(exc)
                         continue
                     body_text = str(res.text or "")
                     lowered_body = body_text.lower()
+                    if int(res.status_code) >= 400:
+                        if "rss reader not yet whitelisted" in lowered_body:
+                            last_error = "rss_not_whitelisted"
+                        else:
+                            last_error = f"http_{int(res.status_code)}"
+                        continue
                     if "rss reader not yet whitelisted" in lowered_body:
                         last_error = "rss_not_whitelisted"
                         continue
@@ -623,11 +866,130 @@ class TrendCollector:
                 if fetched:
                     break
             if not fetched:
+                # Fallback path: parse public X page via r.jina.ai mirror when RSS endpoints are blocked.
+                if fallback_used < fallback_budget:
+                    fallback_symbols = self._fetch_trader_x_fallback_symbols(account, now_ts=now_ts)
+                    if fallback_symbols:
+                        fallback_used += 1
+                        any_feed_success = True
+                        for sym in sorted(fallback_symbols)[:10]:
+                            events.append(
+                                TrendEvent(
+                                    source="trader_x",
+                                    symbol=sym,
+                                    text=f"@{account}: x_fallback",
+                                    ts=now_ts,
+                                )
+                            )
                 continue
         if not any_feed_success and target_accounts:
             reason = str(last_error or "rss_unreachable")
+            if (
+                reason.startswith("rss_not_whitelisted")
+                or reason.startswith("feed_entries_empty")
+                or reason.startswith("http_400")
+                or reason.startswith("http_403")
+                or reason.startswith("http_429")
+            ):
+                return events
             raise RuntimeError(f"trader_rss_unavailable:{reason[:180]}")
         return events
+
+    def _extract_symbols_from_x_markdown(
+        self,
+        markdown_text: str,
+        *,
+        max_posts: int = 8,
+        max_symbols: int = 12,
+    ) -> set[str]:
+        text = str(markdown_text or "")
+        if not text:
+            return set()
+        lines = [str(line or "").strip() for line in text.splitlines()]
+        lines = [line for line in lines if line]
+        if not lines:
+            return set()
+
+        snippets: list[str] = []
+        buffer: list[str] = []
+        in_posts = False
+        for line in lines[:1400]:
+            lower = line.lower()
+            if not in_posts and ("posts" in lower):
+                in_posts = True
+                buffer.clear()
+                continue
+            if not in_posts:
+                continue
+            if line.startswith("http://") or line.startswith("https://"):
+                continue
+            buffer.append(line)
+            buffer = buffer[-6:]
+            if "https://x.com/" in line and "/status/" in line:
+                snippet = " ".join(buffer[:-1]).strip()
+                if snippet:
+                    snippets.append(snippet)
+                buffer = []
+                if len(snippets) >= max(1, int(max_posts)):
+                    break
+
+        if not snippets:
+            snippets = [" ".join(lines[:220])]
+
+        symbols: list[str] = []
+        for snippet in snippets[: max(1, int(max_posts))]:
+            for m in re.findall(r"\$([A-Za-z][A-Za-z0-9]{1,11})", snippet):
+                sym = str(m or "").upper().strip()
+                if not sym or sym in SYMBOL_STOPWORDS:
+                    continue
+                symbols.append(sym)
+            if len(symbols) < max(1, int(max_symbols)):
+                for sym in extract_symbols(snippet):
+                    if sym in SYMBOL_STOPWORDS:
+                        continue
+                    symbols.append(sym)
+
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for sym in symbols:
+            key = str(sym or "").upper().strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            dedup.append(key)
+            if len(dedup) >= max(1, int(max_symbols)):
+                break
+        return set(dedup)
+
+    def _fetch_trader_x_fallback_symbols(self, account: str, *, now_ts: int | None = None) -> set[str]:
+        handle = str(account or "").strip().lstrip("@")
+        if not handle:
+            return set()
+        if not re.fullmatch(r"[A-Za-z0-9_]{1,32}", handle):
+            return set()
+
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; AxiomFlowBot/1.0)"}
+        timeout = min(6.0, max(2.0, float(self.timeout_seconds)))
+        for base in X_FALLBACK_INSTANCES:
+            url = f"{base}/{handle}"
+            try:
+                res = self.session.get(url, headers=headers, timeout=timeout)
+            except Exception:
+                continue
+            if int(getattr(res, "status_code", 0)) >= 400:
+                continue
+            body = str(getattr(res, "text", "") or "")
+            lowered = body.lower()
+            if not body:
+                continue
+            if "forbidden" in lowered and "403" in lowered:
+                continue
+            if "too many requests" in lowered and "429" in lowered:
+                continue
+            symbols = self._extract_symbols_from_x_markdown(body)
+            if symbols:
+                return symbols
+        return set()
 
     def fetch_reddit_events(
         self,
@@ -771,6 +1133,7 @@ class TrendCollector:
         now_ts: int | None = None,
     ) -> tuple[list[TrendEvent], dict[str, Any]]:
         now = int(now_ts or int(time.time()))
+        self._trim_google_daily_calls(now)
         enabled = bool(self.google_trend_enabled)
         gemini_enabled = bool(self.google_api_key)
         meta: dict[str, Any] = {
@@ -782,6 +1145,13 @@ class TrendCollector:
             "error": "",
         }
         if not enabled:
+            self._record_google_feedback(
+                now_ts=now,
+                status="disabled",
+                action="GOOGLE_TREND_ENABLED=false, Google 수집 비활성화 상태 유지",
+                level="info",
+                meta={"enabled": False},
+            )
             return [], meta
         if self._google_cache_events and (now - int(self._google_last_fetch_ts)) < self.google_trend_interval_seconds:
             remain = max(0, self.google_trend_interval_seconds - (now - int(self._google_last_fetch_ts)))
@@ -793,10 +1163,12 @@ class TrendCollector:
                     "next_retry_seconds": int(remain),
                 }
             )
+            self._save_google_runtime_state(now, force=False)
             return list(self._google_cache_events), meta
         if not gemini_enabled:
             events = self._fetch_google_http_search_events(trend_query, now_ts=now)
             self._google_last_fetch_ts = now
+            self._google_last_error = "google_api_key_missing"
             self._google_cache_events = list(events[:120])
             meta.update(
                 {
@@ -806,6 +1178,16 @@ class TrendCollector:
                     "next_retry_seconds": int(self.google_trend_interval_seconds),
                     "error": "",
                 }
+            )
+            self._save_google_runtime_state(now, force=True)
+            self._record_google_feedback(
+                now_ts=now,
+                status="fallback_http",
+                error="google_api_key_missing",
+                action="Gemini 키 없음 -> Google RSS 폴백 사용",
+                detail="Google API 키가 비어 있어 HTTP 검색으로 대체했습니다.",
+                level="warn",
+                meta=meta,
             )
             return list(self._google_cache_events), meta
         if now < int(self._google_backoff_until_ts):
@@ -822,6 +1204,16 @@ class TrendCollector:
                         "error": self._google_last_error or "gemini_cooldown",
                     }
                 )
+                self._save_google_runtime_state(now, force=True)
+                self._record_google_feedback(
+                    now_ts=now,
+                    status="fallback_http",
+                    error=str(meta.get("error") or "gemini_cooldown"),
+                    action="쿨다운 동안 HTTP 폴백 유지",
+                    detail="429 백오프 구간에서 Gemini 대신 HTTP 검색 결과를 사용합니다.",
+                    level="warn",
+                    meta=meta,
+                )
                 return list(self._google_cache_events), meta
             remain = int(self._google_backoff_until_ts - now)
             meta.update(
@@ -832,6 +1224,16 @@ class TrendCollector:
                     "next_retry_seconds": remain,
                     "error": self._google_last_error or "google_rate_limited",
                 }
+            )
+            self._save_google_runtime_state(now, force=True)
+            self._record_google_feedback(
+                now_ts=now,
+                status="cooldown",
+                error=str(meta.get("error") or ""),
+                action="백오프 종료 시점까지 Gemini 호출 건너뜀",
+                detail="쿨다운 시간 동안 캐시 결과만 반환합니다.",
+                level="warn",
+                meta=meta,
             )
             return list(self._google_cache_events), meta
 
@@ -850,6 +1252,16 @@ class TrendCollector:
                     "next_retry_seconds": int(self.google_trend_interval_seconds),
                     "error": "gemini_daily_cap_reached",
                 }
+            )
+            self._save_google_runtime_state(now, force=True)
+            self._record_google_feedback(
+                now_ts=now,
+                status="fallback_http",
+                error="gemini_daily_cap_reached",
+                action="일일 한도 도달 -> HTTP 폴백으로 전환",
+                detail="오늘 Gemini 호출 한도에 도달하여 HTTP 검색을 사용합니다.",
+                level="warn",
+                meta=meta,
             )
             return list(self._google_cache_events), meta
 
@@ -894,6 +1306,7 @@ class TrendCollector:
                 body = parsed if isinstance(parsed, dict) else {}
                 used_model = model
                 self._google_daily_calls[day_key] = int(used_today + 1)
+                self._trim_google_daily_calls(now)
                 break
             except requests.HTTPError as exc:
                 status = int(exc.response.status_code) if exc.response is not None else 0
@@ -938,6 +1351,16 @@ class TrendCollector:
                                 "error": err,
                             }
                         )
+                        self._save_google_runtime_state(now, force=True)
+                        self._record_google_feedback(
+                            now_ts=now,
+                            status="fallback_http",
+                            error=err,
+                            action="429 감지 -> 쿨다운 저장 후 HTTP 폴백",
+                            detail=f"Gemini 429로 {int(cooldown)}초 백오프를 적용했습니다.",
+                            level="warn",
+                            meta=meta,
+                        )
                         return list(self._google_cache_events), meta
                     meta.update(
                         {
@@ -947,6 +1370,16 @@ class TrendCollector:
                             "next_retry_seconds": int(cooldown),
                             "error": err,
                         }
+                    )
+                    self._save_google_runtime_state(now, force=True)
+                    self._record_google_feedback(
+                        now_ts=now,
+                        status="rate_limited",
+                        error=err,
+                        action="쿨다운 유지, 다음 재시도까지 캐시 사용",
+                        detail=f"Gemini 429로 {int(cooldown)}초 백오프 상태입니다.",
+                        level="warn",
+                        meta=meta,
                     )
                     return list(self._google_cache_events), meta
                 if status == 400 and "api key not valid" in detail.lower():
@@ -961,20 +1394,60 @@ class TrendCollector:
                             "error": "invalid_api_key",
                         }
                     )
+                    self._save_google_runtime_state(now, force=True)
+                    self._record_google_feedback(
+                        now_ts=now,
+                        status="disabled",
+                        error="invalid_api_key",
+                        action="Google API 키 검증 필요",
+                        detail="API 키가 유효하지 않아 Gemini 호출을 중단했습니다.",
+                        level="error",
+                        meta=meta,
+                    )
                     return list(self._google_cache_events), meta
                 if status in {400, 404}:
                     continue
                 self._google_last_error = last_error
                 meta.update({"status": "error", "error": last_error})
+                self._save_google_runtime_state(now, force=True)
+                self._record_google_feedback(
+                    now_ts=now,
+                    status="error",
+                    error=last_error,
+                    action="요청 파라미터/모델명/네트워크 점검 후 재시도",
+                    detail="Google API 호출 오류가 발생했습니다.",
+                    level="error",
+                    meta=meta,
+                )
                 return list(self._google_cache_events), meta
             except Exception as exc:
                 last_error = str(exc)
                 self._google_last_error = last_error
                 meta.update({"status": "error", "error": last_error})
+                self._save_google_runtime_state(now, force=True)
+                self._record_google_feedback(
+                    now_ts=now,
+                    status="error",
+                    error=last_error,
+                    action="네트워크/타임아웃 상태 확인 후 재시도",
+                    detail="Google API 일반 예외가 발생했습니다.",
+                    level="error",
+                    meta=meta,
+                )
                 return list(self._google_cache_events), meta
         if not body:
             self._google_last_error = last_error or "google_empty_response"
             meta.update({"status": "error", "error": self._google_last_error})
+            self._save_google_runtime_state(now, force=True)
+            self._record_google_feedback(
+                now_ts=now,
+                status="error",
+                error=self._google_last_error,
+                action="응답 포맷 확인 후 재시도",
+                detail="Google API 응답 본문이 비어 있습니다.",
+                level="error",
+                meta=meta,
+            )
             return list(self._google_cache_events), meta
 
         text_out = ""
@@ -1037,6 +1510,7 @@ class TrendCollector:
                 events.append(TrendEvent(source="google_gemini", symbol=ns, text=f"gemini: {line[:120]}", ts=now))
 
         self._google_last_fetch_ts = now
+        self._google_backoff_until_ts = 0
         self._google_last_error = ""
         self._google_rate_limit_hits = 0
         self._google_cache_events = list(events[:120])
@@ -1049,6 +1523,15 @@ class TrendCollector:
                 "error": "",
                 "model": used_model or self.google_model,
             }
+        )
+        self._save_google_runtime_state(now, force=True)
+        self._record_google_feedback(
+            now_ts=now,
+            status="ok",
+            action="Gemini 정상 응답, 캐시/호출카운트 갱신",
+            detail=f"model={used_model or self.google_model}",
+            level="info",
+            meta=meta,
         )
         return list(self._google_cache_events), meta
 
@@ -1516,16 +1999,19 @@ class MacroMarketClient:
             try:
                 yq, ym = self._fetch_bybit_public_quotes()
                 for symbol, price in yq.items():
-                    if symbol not in quotes:
-                        quotes[symbol] = price
-                        meta[symbol] = dict(ym.get(symbol) or {})
-                    else:
-                        row = meta.setdefault(symbol, {})
-                        yrow = ym.get(symbol) or {}
-                        if not row.get("change_24h"):
-                            row["change_24h"] = float(yrow.get("change_24h") or 0.0)
-                        if float(yrow.get("volume_24h") or 0.0) > float(row.get("volume_24h") or 0.0):
-                            row["volume_24h"] = float(yrow.get("volume_24h") or 0.0)
+                    px = float(price or 0.0)
+                    if px <= 0.0:
+                        continue
+                    prev = dict(meta.get(symbol) or {})
+                    yrow = dict(ym.get(symbol) or {})
+                    # For futures-style demo positions, prefer Bybit public ticker when available.
+                    quotes[symbol] = px
+                    meta[symbol] = {
+                        "change_24h": float(yrow.get("change_24h") or prev.get("change_24h") or 0.0),
+                        "volume_24h": max(float(yrow.get("volume_24h") or 0.0), float(prev.get("volume_24h") or 0.0)),
+                        "realtime_source": "bybit_public",
+                        "fallback_source": str(prev.get("realtime_source") or ""),
+                    }
             except Exception:
                 pass
 

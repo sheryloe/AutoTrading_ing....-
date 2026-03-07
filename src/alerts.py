@@ -20,13 +20,19 @@ class AlertManager:
         if not self.enabled:
             return False, "telegram_disabled"
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        msg = str(text or "")
         payload = {
             "chat_id": self.chat_id,
-            "text": str(text or "")[:3900],
+            "text": msg[:3900],
             "disable_web_page_preview": True,
         }
         try:
-            res = requests.post(url, json=payload, timeout=self.timeout_seconds)
+            res = requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                timeout=self.timeout_seconds,
+            )
             res.raise_for_status()
         except Exception as exc:  # noqa: BLE001
             return False, str(exc)
@@ -39,4 +45,3 @@ class AlertManager:
             "title": str(title or ""),
             "text": str(text or ""),
         }
-

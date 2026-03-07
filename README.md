@@ -1,73 +1,48 @@
-# Axiom Flow Console
+﻿# AutoTrading Console (Meme + Crypto)
 
-<div align="center">
-  <h1>실시간 자동매매 콘솔 (Meme + Crypto 분리 6모델)</h1>
-  <p>Flask 기반 대시보드 + 텔레그램 제어 + 6시간 자동 튜닝</p>
-  <p>
-    <code>meme_A</code> / <code>meme_B</code> / <code>meme_C</code> +
-    <code>crypto_A</code> / <code>crypto_B</code> / <code>crypto_C</code>
-  </p>
-</div>
+실전/데모 분리형 자동매매 콘솔입니다.  
+핵심은 **모델 6개(밈 3 + 크립토 3) 독립 운영**, **실전 선택형 체결**, **모델 튜닝/비교**입니다.
 
----
+## 1) 현재 화면/구조 요약
+- 워크스페이스: `데모`, `실전`, `밈 트렌드`, `크립토 트렌드`, `설정`
+- 실전 화면: `실전 밈` / `실전 크립토` 탭 분리
+- 실전 성과: `총자산`과 별도로 `성과 기준자산 + 순입출금 보정 + 보정 손익` 제공
+- 데모: 모델별 시드/포지션/이력/PNL 독립 관리
 
-## 1. 핵심 구조
+## 2) 모델 설명 (A/B/C)
+### 밈 모델
+- `A 도그리 밈 선별모델`: 고품질 밈코인 선별 진입 (지갑패턴/품질 게이트 중심)
+- `B 밈 장기홀딩 예측모델`: 장기 홀딩(기본 14일) 중심 전략
+- `C 밈 단타 모멘텀모델`: 단타/고회전 모멘텀 전략
 
-### 1) 시장 완전 분리
-- 밈코인과 크립토(선물 데모)를 런타임/포지션/PNL/이력 단위로 완전 분리
-- 활성 키: `meme_A,B,C` / `crypto_A,B,C`
-- 백업 키: `legacy_A,B,C` (마이그레이션 보존용)
+### 크립토 모델
+- `A 크립토 안정 추세모델`: 방어형 추세 추종
+- `B 크립토 흐름 추종모델`: 눌림 + 흐름 + 트렌드 균형형
+- `C 동그리 크립토 모멘텀모델`: 공격형 모멘텀
 
-### 2) 모델 이름 (한글)
-- 통합 모델
-  - `A`: 안정 추세 예측모델
-  - `B`: 흐름 추종 예측모델
-  - `C`: 공격 모멘텀 예측모델
-- 밈 모델
-  - `A`: 도그리 밈 선별모델
-  - `B`: 밈 장기홀딩 예측모델
-  - `C`: 밈 단타 모멘텀모델
-- 크립토 모델
-  - `A`: 크립토 안정 추세모델
-  - `B`: 크립토 흐름 추종모델
-  - `C`: 동그리 크립토 모멘텀모델
+## 3) 현재 PNL 스냅샷 (2026-03-07 12:14:55 KST 기준)
+### 밈 모델
+| 모델 | 평가금액 | 총 PNL | 실현 PNL | 승률 | 오픈 |
+|---|---:|---:|---:|---:|---:|
+| C 밈 단타 모멘텀모델 | $125,197.29 | $115,197.29 | $115,197.29 | 43.8% | 0 |
+| B 밈 장기홀딩 예측모델 | $12,376.36 | $2,376.36 | $2,376.36 | 27.3% | 0 |
+| A 도그리 밈 선별모델 | $5,771.03 | $-4,228.97 | $-4,228.97 | 0.0% | 0 |
 
-### 3) 초기화 안전장치
-- 기본: `ALLOW_DEMO_RESET=false`
-- 데모 초기화는 잠금 해제 + 확인 문구가 모두 필요
-- API/텔레그램/웹 UI 모두 동일 보호 적용
+### 크립토 모델
+| 모델 | 평가금액 | 총 PNL | 실현 PNL | 승률 | 오픈 |
+|---|---:|---:|---:|---:|---:|
+| A 크립토 안정 추세모델 | $11,392.52 | $1,392.52 | $0.00 | 0.0% | 2 |
+| C 동그리 크립토 모멘텀모델 | $10,376.29 | $376.29 | $0.00 | 0.0% | 4 |
+| B 크립토 흐름 추종모델 | $9,775.28 | $-224.72 | $-316.23 | 0.0% | 1 |
 
-### 4) 이력/백업
-- 모델별 거래 이력 장기 보존 (최대 190일, 상한 크게 확장)
-- 상태 백업 자동 생성: `reports/state_backups/`
+### 실전 성과(보정)
+- 성과 기준자산: `$206.90`
+- 순입출금 보정: `$0.00`
+- 보정 평가금액: `$220.11`
+- 보정 손익: `$13.22` (`+6.39%`)
 
----
-
-## 2. 폴더 구조
-
-```text
-d:\AI_Auto
-├─ src/
-│  ├─ engine.py
-│  ├─ config.py
-│  ├─ state.py
-│  ├─ providers/
-│  └─ data_sources/
-├─ static/
-│  ├─ app.js
-│  └─ style.css
-├─ templates/
-│  └─ index.html
-├─ reports/
-├─ web_app.py
-├─ .env.example
-└─ requirements.txt
-```
-
----
-
-## 3. 빠른 시작 (Windows)
-
+## 4) 실행 방법
+### 로컬 실행
 ```powershell
 cd d:\AI_Auto
 py -3 -m venv .venv
@@ -77,174 +52,40 @@ Copy-Item .env.example .env
 py -3 web_app.py
 ```
 
-- 기본 UI: `http://localhost:8099`
-
----
-
-## 4. Docker 실행
-
+### Docker 실행
 ```powershell
 cd d:\AI_Auto
 docker compose up -d --build
 ```
 
-- 중지:
+접속: `http://localhost:8099`
 
-```powershell
-docker compose down
-```
+## 5) 설정 방법 (.env)
+1. `.env.example`를 `.env`로 복사
+2. 아래 키만 본인 값 입력
+- `BYBIT_API_KEY`, `BYBIT_API_SECRET`
+- `PHANTOM_WALLET_ADDRESS`, `SOLANA_PRIVATE_KEY`
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+- `GOOGLE_API_KEY`, `COINGECKO_API_KEY`, `CMC_API_KEY`, `SOLSCAN_API_KEY`
+3. `TRADE_MODE=paper`로 충분히 검증 후 `live` 전환
 
----
+## 6) 보안 원칙
+- `.env`는 Git 추적 제외 (`.gitignore`)
+- 커밋 시 키 값은 절대 포함 금지 (`.env.example`은 빈 값 유지)
+- 실전 체결 전 `ENABLE_LIVE_EXECUTION=false` 상태에서 검증
 
-## 5. 환경변수 가이드
+## 7) 모델 튜닝 운영 원칙
+- 24시간 주기 평가
+- 성과 악화 구간에서만 튜닝
+- 기존 모델 덮어쓰기 대신 파생(variant) 생성
+- 1개월 후 상위 2~3개 모델 선발해 실전 반영
 
-### 필수/주요
-- `TRADE_MODE=paper`
-- `ENABLE_AUTOTRADE=true`
-- `DEMO_SEED_USDT=1000`
-- `ALLOW_DEMO_RESET=false`  (권장: 항상 false)
-- `DEMO_ENABLE_MACRO=true`
-- `PHANTOM_WALLET_ADDRESS=...`
-- `TELEGRAM_BOT_TOKEN=...`
-- `TELEGRAM_CHAT_ID=...` (최초에는 비워도 자동 학습 가능)
+## 8) 추가 문서
+- 중간 보고서: `docs/MID_REPORT_2026-03-07.md`
+- 보안 점검: `docs/SECURITY_REVIEW_2026-03-07.md`
 
-### 트렌드/외부 소스
-- `GOOGLE_API_KEY=...`
-- `COINGECKO_API_KEY=...`
-- `CMC_API_KEY=...`
-- `SOLSCAN_API_KEY=...`
-
-### 무료 티어 보호 권장값
-- `GOOGLE_TREND_INTERVAL_SECONDS=1800`
-- `GOOGLE_TREND_COOLDOWN_SECONDS=21600`
-- `TREND_ERROR_BACKOFF_SECONDS=900`
-- `SOLSCAN_BUDGET_WINDOW_SECONDS=300`
-
----
-
-## 6. 텔레그램 설정 (1:1 기준)
-
-1. BotFather에서 봇 생성 후 토큰 발급
-2. `.env`에 `TELEGRAM_BOT_TOKEN` 입력
-3. 서버 실행 후 봇에게 `/start` 전송
-4. 자동 등록 실패 시:
-   - `https://api.telegram.org/bot<토큰>/getUpdates`
-   - `message.chat.id` 값을 `TELEGRAM_CHAT_ID`로 설정
-
----
-
-## 7. 텔레그램 명령어 (상세)
-
-### 상태/손익
-- `/status` 전체 상태 요약
-- `/status_meme` 밈 모델 상태만
-- `/status_crypto` 크립토 모델 상태만
-- `/pnl` 통합 손익
-- `/pnl_meme` 밈 손익만
-- `/pnl_crypto` 크립토 손익만
-
-### 포지션/자산
-- `/positions` 전체 포지션
-- `/positions_meme` 밈 포지션만
-- `/positions_crypto` 크립토 포지션만
-- `/meme_balance` 팬텀 지갑 자산
-- `/bybit_balance` 거래소 자산
-
-### 튜닝/소스/오류
-- `/tune_status` 자동튜닝 상태(6시간 주기)
-- `/sources` 트렌드 소스 상태
-- `/errors` 최근 오류 요약
-- `/wallet_pattern <token_address>` Solscan 패턴 점검
-
-### 제어
-- `/auto_on`, `/auto_off`
-- `/trade_alert_on`, `/trade_alert_off`
-- `/report_on`, `/report_off`, `/report_now`
-- `/chatid`
-
-### 초기화 보호
-- `/reset_unlock`
-- `/reset_demo [seed] RESET DEMO`
-- `/reset_lock`
-
----
-
-## 8. 자동 튜닝 설명
-
-- 주기: `6시간`
-- 대상: `crypto_A`, `crypto_B`, `crypto_C`
-- 튜닝 파라미터:
-  - `threshold`
-  - `tp_mul`
-  - `sl_mul`
-- 평가 지표:
-  - 최근 닫힌 거래 수
-  - 승률(`win_rate`)
-  - 손익(`pnl`)
-  - PF(`profit_factor`)
-
-`/tune_status`로 현재 값/다음 평가 시간/최근 평가 노트를 확인할 수 있습니다.
-
----
-
-## 9. 운영 안전 원칙
-
-1. 초기화는 잠금 기본 유지 (`ALLOW_DEMO_RESET=false`)
-2. 실거래 전 최소 2~4주 데모 검증
-3. 텔레그램 409 충돌 시 단일 인스턴스만 polling
-4. 429(rate-limit) 발생 시 주기 늘리고 cooldown 유지
-5. 포지션/이력은 초기화 명령 없으면 삭제 금지
-
----
-
-## 10. 트러블슈팅
-
-### Telegram 409 Conflict
-- 원인: 동일 봇 토큰을 여러 프로세스가 동시에 `getUpdates`
-- 조치: 중복 프로세스 종료, 단일 서버만 polling
-
-### Google 429 Too Many Requests
-- 원인: 무료 티어 초과
-- 조치: `GOOGLE_TREND_INTERVAL_SECONDS` 상향, cooldown 유지
-
-### X/RSS 400 또는 empty_feed
-- 원인: RSS 접근 제한/도메인 정책
-- 조치: 소스 fallback 유지, 오류는 `/sources`에서 확인
-
-### Phantom 자산이 포지션에 안 보임
-- 지갑 자산 리스트와 봇 진입 포지션은 목적이 다름
-- 봇 포지션은 모델 런(`meme_*`) 기준으로 관리됨
-
----
-
-## 11. API 엔드포인트 (요약)
-
-- `GET /health`
-- `GET /api/dashboard`
-- `POST /api/control/start`
-- `POST /api/control/stop`
-- `POST /api/control/restart`
-- `POST /api/control/mode`
-- `POST /api/control/autotrade`
-- `POST /api/control/force-sync`
-- `POST /api/control/close-meme`
-- `POST /api/control/reset-demo` (잠금 + 확인문구 필요)
-
----
-
-## 12. 커밋/배포 체크리스트
-
-- [ ] `py -3 -m py_compile src/engine.py src/config.py web_app.py`
-- [ ] `node --check static/app.js`
-- [ ] `/health` 정상
-- [ ] `/help`, `/status`, `/tune_status` 응답 확인
-- [ ] 초기화 잠금 상태 확인 (`ALLOW_DEMO_RESET=false`)
-
----
-
-## 13. 라이선스/주의
-
-- 본 프로젝트는 고위험 자산 자동매매 연구/데모 목적입니다.
-- 투자 손실 책임은 사용자에게 있습니다.
-- 실거래 전 반드시 리스크/주문 정책을 별도로 검증하세요.
+## 9) Git 커밋 정책(키 비우기)
+- `.env` 파일은 커밋 금지
+- `.env.example`는 항상 빈 값(placeholder) 유지
+- `runtime_settings.json`(런타임 저장 민감값)은 Git 추적 제외 유지
 

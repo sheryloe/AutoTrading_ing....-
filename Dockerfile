@@ -4,6 +4,10 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONUTF8=1
+ENV PYTHONIOENCODING=utf-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
@@ -19,4 +23,3 @@ u=urllib.request.urlopen('http://127.0.0.1:8099/health',timeout=4); \
 sys.exit(0 if u.status==200 else 1)"
 
 CMD ["python", "web_app.py"]
-

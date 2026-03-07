@@ -6,6 +6,14 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any
 
+STATE_TRADE_HISTORY_LIMIT = 50_000
+STATE_SIGNAL_HISTORY_LIMIT = 2_000
+STATE_ALERT_HISTORY_LIMIT = 5_000
+STATE_TREND_HISTORY_LIMIT = 5_000
+STATE_WALLET_HISTORY_LIMIT = 5_000
+STATE_ASSET_HISTORY_LIMIT = 2_000
+STATE_DAILY_PNL_HISTORY_LIMIT = 5_000
+
 
 @dataclass
 class Position:
@@ -57,6 +65,11 @@ class EngineState:
     last_bybit_sync_ts: int = 0
     telegram_offset: int = 0
     demo_seed_usdt: float = 1000.0
+    live_seed_usd: float = 0.0
+    live_seed_set_ts: int = 0
+    live_perf_anchor_usd: float = 0.0
+    live_perf_anchor_ts: int = 0
+    live_net_flow_usd: float = 0.0
     model_runs: dict[str, Any] = field(default_factory=dict)
     daily_pnl: list[dict[str, Any]] = field(default_factory=list)
 
@@ -140,6 +153,11 @@ def load_state(path: str, start_cash_usd: float) -> EngineState:
         last_bybit_sync_ts=int(raw.get("last_bybit_sync_ts") or 0),
         telegram_offset=int(raw.get("telegram_offset") or 0),
         demo_seed_usdt=float(raw.get("demo_seed_usdt") or 1000.0),
+        live_seed_usd=float(raw.get("live_seed_usd") or 0.0),
+        live_seed_set_ts=int(raw.get("live_seed_set_ts") or 0),
+        live_perf_anchor_usd=float(raw.get("live_perf_anchor_usd") or 0.0),
+        live_perf_anchor_ts=int(raw.get("live_perf_anchor_ts") or 0),
+        live_net_flow_usd=float(raw.get("live_net_flow_usd") or 0.0),
         model_runs=dict(raw.get("model_runs") or {}),
         daily_pnl=list(raw.get("daily_pnl") or []),
     )
@@ -147,17 +165,18 @@ def load_state(path: str, start_cash_usd: float) -> EngineState:
 
 def save_state(path: str, state: EngineState) -> None:
     target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "cash_usd": float(state.cash_usd),
         "positions": {token: asdict(pos) for token, pos in state.positions.items()},
-        "trades": [asdict(trade) for trade in state.trades[-2000:]],
+        "trades": [asdict(trade) for trade in state.trades[-STATE_TRADE_HISTORY_LIMIT:]],
         "last_signal_ts": dict(state.last_signal_ts),
-        "latest_signals": list(state.latest_signals[-200:]),
-        "alerts": list(state.alerts[-500:]),
-        "trend_events": list(state.trend_events[-1200:]),
-        "wallet_assets": list(state.wallet_assets[-1000:]),
-        "bybit_assets": list(state.bybit_assets[-200:]),
-        "bybit_positions": list(state.bybit_positions[-200:]),
+        "latest_signals": list(state.latest_signals[-STATE_SIGNAL_HISTORY_LIMIT:]),
+        "alerts": list(state.alerts[-STATE_ALERT_HISTORY_LIMIT:]),
+        "trend_events": list(state.trend_events[-STATE_TREND_HISTORY_LIMIT:]),
+        "wallet_assets": list(state.wallet_assets[-STATE_WALLET_HISTORY_LIMIT:]),
+        "bybit_assets": list(state.bybit_assets[-STATE_ASSET_HISTORY_LIMIT:]),
+        "bybit_positions": list(state.bybit_positions[-STATE_ASSET_HISTORY_LIMIT:]),
         "bybit_error": str(state.bybit_error or ""),
         "memecoin_error": str(state.memecoin_error or ""),
         "last_cycle_ts": int(state.last_cycle_ts),
@@ -165,7 +184,23 @@ def save_state(path: str, state: EngineState) -> None:
         "last_bybit_sync_ts": int(state.last_bybit_sync_ts),
         "telegram_offset": int(state.telegram_offset),
         "demo_seed_usdt": float(state.demo_seed_usdt),
+        "live_seed_usd": float(state.live_seed_usd),
+        "live_seed_set_ts": int(state.live_seed_set_ts),
+        "live_perf_anchor_usd": float(state.live_perf_anchor_usd),
+        "live_perf_anchor_ts": int(state.live_perf_anchor_ts),
+        "live_net_flow_usd": float(state.live_net_flow_usd),
         "model_runs": dict(state.model_runs or {}),
-        "daily_pnl": list(state.daily_pnl[-1200:]),
+        "daily_pnl": list(state.daily_pnl[-STATE_DAILY_PNL_HISTORY_LIMIT:]),
     }
-    target.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    serialized = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    tmp = target.with_suffix(f"{target.suffix}.tmp")
+    try:
+        tmp.write_text(serialized, encoding="utf-8")
+        tmp.replace(target)
+    except Exception:
+        target.write_text(serialized, encoding="utf-8")
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
