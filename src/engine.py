@@ -6729,6 +6729,8 @@ class TradingEngine:
                     f"{strategy_by_symbol.get(symbol) or ('MODEL-' + model_id)} | "
                     f"conf={score:.4f} thr={entry_threshold:.4f} raw={score_raw:+.4f}/{threshold_raw:+.4f}"
                 )
+            indicator_snapshot = dict(snapshot_by_symbol.get(symbol) or {})
+            atr_pct = float(indicator_snapshot.get("atr_pct") or 0.0)
             notional_usd = order_usd * leverage
             qty = notional_usd / price
             run.setdefault("bybit_positions", {})[symbol] = {
@@ -6765,7 +6767,7 @@ class TradingEngine:
                     "pnl_pct": 0.0,
                     "reason": (
                         f"{reason_text} | alloc={order_pct*100:.1f}% | lev={leverage:.2f}x tp={tp_pct*100:.1f}% sl={sl_pct*100:.1f}% "
-                        f"atr={float(snap.get('atr_pct') or 0.0):.2f}%"
+                        f"atr={atr_pct:.2f}%"
                     ),
                     "model_id": model_id,
                 }
