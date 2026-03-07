@@ -4482,7 +4482,18 @@ class TradingEngine:
     @staticmethod
     def _is_live_trade_row(row: dict[str, Any]) -> bool:
         mode = str((row or {}).get("mode") or "").strip().lower()
-        return mode == "live"
+        if mode == "live":
+            return True
+        if mode == "paper":
+            return False
+        # Backward compatibility: older live rows may miss `mode` but include live tx marker.
+        reason = str((row or {}).get("reason") or "").strip().lower()
+        if "live_tx=" in reason:
+            return True
+        source = str((row or {}).get("source") or "").strip().lower()
+        if source in {"memecoin_live", "crypto_live", "live_memecoin", "live_crypto"}:
+            return True
+        return False
 
     def _evaluate_model_memecoin_exits(self, model_id: str, run: dict[str, Any]) -> None:
         now = int(time.time())
@@ -8106,8 +8117,18 @@ class TradingEngine:
         for model_id in MODEL_IDS:
             meme_run = self._get_market_run(runs, "meme", model_id)
             crypto_run = self._get_market_run(runs, "crypto", model_id)
-            model_meme_trades = list(meme_run.get("trades") or [])[-60:]
-            model_crypto_trades = list(crypto_run.get("trades") or [])[-60:]
+            model_meme_trades = [
+                dict(tr)
+                for tr in list(meme_run.get("trades") or [])
+                if str((tr or {}).get("source") or "").strip().lower() == "memecoin"
+                and not self._is_live_trade_row(tr)
+            ][-60:]
+            model_crypto_trades = [
+                dict(tr)
+                for tr in list(crypto_run.get("trades") or [])
+                if str((tr or {}).get("source") or "").strip().lower() == "crypto_demo"
+                and not self._is_live_trade_row(tr)
+            ][-60:]
             model_meme_positions = self._build_meme_positions_view(meme_run, mode_filter="paper")
             model_crypto_positions = self._build_crypto_positions_view(crypto_run)
             model_meme_daily = [row for row in meme_daily_pnl if str(row.get("model_id") or "") == model_id]
