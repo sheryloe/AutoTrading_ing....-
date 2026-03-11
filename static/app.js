@@ -1311,13 +1311,11 @@ function renderDemoModelBoard(data) {
         <td>${p.symbol || "-"}</td>
         <td>${p.side || "-"}</td>
         <td>${Number(p.leverage || 1).toFixed(2)}x</td>
-        <td>${fmtUsd(p.position_value ?? p.positionValue)} / ${fmtUsd(p.margin_usd ?? p.marginUsd)}</td>
-        <td class="${clsPn(p.unrealised_pnl ?? p.unrealized_pnl)}">${fmtPct(p.roe_pct ?? p.roe)} <span class="muted">${fmtUsd(p.unrealised_pnl ?? p.unrealized_pnl)}</span></td>
-        <td>${(Number(p.tp_pct || 0) * 100).toFixed(1)}% / ${(Number(p.sl_pct || 0) * 100).toFixed(1)}%</td>
-        <td class="wrap">${p.reason || "-"}</td>
+        <td class="${clsPn(p.roe_pct ?? p.roe)}">${fmtPct(p.roe_pct ?? p.roe)}</td>
+        <td class="${clsPn(p.unrealised_pnl ?? p.unrealized_pnl)}">${fmtUsd(p.unrealised_pnl ?? p.unrealized_pnl)}</td>
       </tr>
     `).join("");
-  renderTableBody("demoCryptoPosRows", cryptoHtml, 7);
+  renderTableBody("demoCryptoPosRows", cryptoHtml, 5);
   renderTradeRows("demoMemeTradeRows", memeTrades);
   renderTradeRows("demoCryptoTradeRows", cryptoTrades);
 
@@ -2236,19 +2234,15 @@ function renderLiveSection(data) {
     const roe = Number(p.roe ?? p.roe_pct ?? 0);
     return `
       <tr>
-        <td>${p.side || "-"}</td>
         <td>${p.symbol || "-"}</td>
-        <td>${size.toLocaleString("en-US", { maximumFractionDigits: 4 })}</td>
-        <td>${avg > 0 ? fmtUsd(avg) : "-"}</td>
-        <td>${mark > 0 ? fmtUsd(mark) : "-"}</td>
-        <td>${fmtUsd(posValue)}</td>
-        <td class="${clsPn(posUpnl)}">${fmtUsd(posUpnl)}</td>
-        <td class="${clsPn(roe)}">${fmtPct(roe)}</td>
+        <td>${p.side || "-"}</td>
         <td>${lev > 0 ? `${lev.toFixed(2)}x` : "-"}</td>
+        <td class="${clsPn(roe)}">${fmtPct(roe)}</td>
+        <td class="${clsPn(posUpnl)}">${fmtUsd(posUpnl)}</td>
       </tr>
     `;
   }).join("");
-  renderTableBody("livePosRows", html, 9);
+  renderTableBody("livePosRows", html, 5);
 }
 
 function modelListText(data, market, ids) {
@@ -2771,7 +2765,7 @@ function renderDetailPane(data) {
     document.getElementById("tradeTitle").textContent = `${modelName} | crypto trades`;
     document.getElementById("pnlTitle").textContent = `${modelName} | crypto daily PNL`;
     document.getElementById("detailSignalHead").innerHTML = "<tr><th>시각</th><th>Symbol</th><th>Strategy</th><th>Score</th><th>Threshold</th><th>Lev</th><th>Price</th><th>Status</th><th>Reason</th></tr>";
-    document.getElementById("detailPositionHead").innerHTML = "<tr><th>Symbol</th><th>Side</th><th>Lev</th><th>Exposure/Margin</th><th>UPNL(ROE)</th><th>TP/SL</th><th>Reason</th></tr>";
+    document.getElementById("detailPositionHead").innerHTML = "<tr><th>Symbol</th><th>Side</th><th>Lev</th><th>ROE</th><th>PNL</th></tr>";
     const sRows = signals.slice(0, 80).map((s) => {
       const ts = Number(s.scored_at_ts || data.server_time || 0);
       const score = Number(s.score || 0);
@@ -2797,13 +2791,11 @@ function renderDetailPane(data) {
           <td>${p.symbol || "-"}</td>
           <td>${p.side || "-"}</td>
           <td>${Number(p.leverage || 1).toFixed(2)}x</td>
-          <td>${fmtUsd(p.position_value)} / ${fmtUsd(p.margin_usd)}</td>
-          <td class="${clsPn(p.unrealised_pnl)}">${fmtUsd(p.unrealised_pnl)} (${fmtPct(p.roe_pct)})</td>
-          <td>${(Number(p.tp_pct || 0) * 100).toFixed(1)}% / ${(Number(p.sl_pct || 0) * 100).toFixed(1)}%</td>
-          <td class="wrap">${p.reason || "-"}</td>
+          <td class="${clsPn(p.roe_pct)}">${fmtPct(p.roe_pct)}</td>
+          <td class="${clsPn(p.unrealised_pnl)}">${fmtUsd(p.unrealised_pnl)}</td>
         </tr>
       `).join("");
-    renderTableBody("detailPositionRows", pRows, 7);
+    renderTableBody("detailPositionRows", pRows, 5);
   }
 
   const tRows = trades.slice(-200).reverse().map((t) => `
