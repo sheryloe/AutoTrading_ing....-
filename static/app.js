@@ -2737,16 +2737,28 @@ function renderDetailPane(data) {
         </tr>
       `).join("");
     renderTableBody("detailSignalRows", sRows, 6);
-    const pRows = positions.slice(0, 60).map((p) => `
+    const pRows = positions.slice(0, 60).map((p) => {
+      const qty = Number(p.qty || 0);
+      const avg = Number(p.avg_price_usd || p.entry_price_usd || 0);
+      const current = Number(p.current_price_usd || p.price_usd || 0);
+      const valueRaw = Number(p.value_usd || 0);
+      const value = valueRaw > 0 ? valueRaw : (qty > 0 && current > 0 ? qty * current : 0);
+      const basis = qty > 0 && avg > 0 ? qty * avg : 0;
+      const pnlRaw = Number(p.pnl_usd || 0);
+      const pnl = Math.abs(pnlRaw) > 0 ? pnlRaw : (basis > 0 ? value - basis : 0);
+      const pnlPctRaw = Number(p.pnl_pct || 0);
+      const pnlPct = Math.abs(pnlPctRaw) > 0 ? pnlPctRaw : (basis > 0 ? (pnl / basis) * 100 : 0);
+      return `
         <tr>
           <td>${p.symbol || "-"} ${p.grade ? `(${p.grade})` : ""}</td>
-          <td>${fmtUsd(p.value_usd)}</td>
-          <td class="${clsPn(p.pnl_usd)}">${fmtPct(p.pnl_pct)} <span class="muted">${fmtUsd(p.pnl_usd)}</span></td>
+          <td>${fmtUsd(value)}</td>
+          <td class="${clsPn(pnl)}">${fmtPct(pnlPct)} <span class="muted">${fmtUsd(pnl)}</span></td>
           <td>${p.strategy || "-"}</td>
           <td>${p.exit_rule_text || "-"}</td>
           <td class="wrap">${p.reason || "-"}</td>
         </tr>
-      `).join("");
+      `;
+    }).join("");
     renderTableBody("detailPositionRows", pRows, 6);
   } else {
     document.getElementById("signalTitle").textContent = `${modelName} | crypto signals`;
