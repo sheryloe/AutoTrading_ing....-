@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Trading Ops Console</title>
+    <title>Trading Strategy Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,14 +17,13 @@
     <main class="app-shell">
       <aside class="sidebar">
         <div class="logo-block">
-          <p class="logo-kicker">TRADING DESK</p>
-          <h1>Ops Console</h1>
+          <p class="logo-kicker">TRADING STRATEGY STUDIO</p>
+          <h1>Strategy<br />Studio</h1>
         </div>
         <nav class="workspace-nav">
-          <button class="workspace-btn active" data-workspace="paper">데모</button>
+          <button class="workspace-btn active" data-workspace="models">모델</button>
+          <button class="workspace-btn" data-workspace="paper">데모</button>
           <button class="workspace-btn" data-workspace="live">실전</button>
-          <button class="workspace-btn" data-workspace="meme">밈 트렌드</button>
-          <button class="workspace-btn" data-workspace="crypto">크립토 트렌드</button>
           <button class="workspace-btn" data-workspace="settings">설정</button>
         </nav>
       </aside>
@@ -32,8 +31,8 @@
       <section class="main-area">
         <header class="topbar">
           <div class="topbar-title">
-            <p class="eyebrow">Auto Trading Monitoring</p>
-            <h2>실시간 대시보드</h2>
+            <p class="eyebrow">MODEL / DEMO / LIVE / SETTINGS</p>
+            <h2>One Meme Engine, Four Crypto Models</h2>
           </div>
           <div class="controls">
             <button class="ctl-btn" id="btnNavToggle">패널 토글</button>
@@ -60,213 +59,358 @@
           <article class="card metric"><h3 id="mWinrateLabel">통합 승률</h3><p id="mWinrate">-</p></article>
         </section>
 
-        <section class="workspace-panel" data-workspace-panel="common">
-          <section class="cards" id="marketSplitCards">
-            <article class="card metric"><h3>마지막 사이클</h3><p id="commonLastCycle">-</p></article>
-            <article class="card metric"><h3>지갑 동기화</h3><p id="commonWalletSync">-</p></article>
-            <article class="card metric"><h3>거래소 동기화</h3><p id="commonBybitSync">-</p></article>
-            <article class="card metric"><h3>실전 자산 합계</h3><p id="liveAssetTotal">-</p></article>
+        <section class="workspace-panel" data-workspace-panel="paper">
+          <section class="workspace-head workspace-head-demo">
+            <div>
+              <p class="workspace-kicker">DEMO DESK</p>
+              <h3>검증용 포트폴리오</h3>
+            </div>
+            <p>밈은 단일 엔진, 크립토는 4모델을 같은 데모 시드 체계로 분리 검증합니다.</p>
+          </section>
+          <section class="cards" id="demoOverviewCards">
+            <article class="card metric metric-primary"><h3>데모 마지막 사이클</h3><p id="demoCycleTs">-</p></article>
+            <article class="card metric"><h3>데모 오픈 포지션</h3><p id="demoOpenTotal">-</p></article>
+            <article class="card metric"><h3>밈 1위 모델</h3><p id="demoTopMeme">-</p></article>
+            <article class="card metric"><h3>크립토 1위 모델</h3><p id="demoTopCrypto">-</p></article>
           </section>
 
-          <section class="layout">
-            <article class="card panel wide">
-              <header><h3>Alerts / Errors</h3></header>
+          <div class="tab-row demo-market-tab-row">
+            <div class="tab-group" id="demoMarketTabs">
+              <button class="tab-btn active" data-demo-market="meme">데모 밈</button>
+              <button class="tab-btn" data-demo-market="crypto">데모 크립토</button>
+            </div>
+          </div>
+
+          <section class="layout paper-dashboard-layout">
+            <article class="card panel zone-meme demo-rank-panel" data-demo-panel="meme">
+              <header><h3>데모 밈 엔진</h3></header>
+              <div class="demo-rank-grid" id="demoMemeRankCards"></div>
+            </article>
+
+            <article class="card panel zone-crypto demo-rank-panel" data-demo-panel="crypto">
+              <header><h3>데모 크립토 4모델 랭킹</h3></header>
+              <div class="demo-rank-grid" id="demoCryptoRankCards"></div>
+            </article>
+
+            <article class="card panel zone-meme wide demo-position-panel" data-demo-panel="meme">
+              <header class="model-zone-head">
+                <div>
+                  <h3>데모 밈 엔진 포지션</h3>
+                  <p class="panel-subtitle">THEME_SNIPER 메인 모델 안에서 신규 런치와 소셜 버스트를 함께 보고, NARRATIVE는 서브로만 봅니다.</p>
+                </div>
+              </header>
+              <div class="strategy-chip-row" id="demoMemeStrategyChips"></div>
+              <section class="cards detail-cards demo-focus-cards" id="demoMemeFocusCards"></section>
+              <section class="demo-panel-grid">
+                <article class="panel-inner">
+                  <header><h3>현재 포지션</h3></header>
+                  <div class="table-wrap tall">
+                    <table class="open-table">
+                      <thead>
+                        <tr><th>심볼</th><th>전략</th><th>등급</th><th>평가금액</th><th>수익률</th><th>청산 규칙</th><th class="wrap">사유</th></tr>
+                      </thead>
+                      <tbody id="demoMemePosRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+                <article class="panel-inner">
+                  <header><h3>체결 이력</h3></header>
+                  <div class="table-wrap tall">
+                    <table class="metrics-table">
+                      <thead>
+                        <tr><th>시각</th><th>방향</th><th>심볼</th><th>금액</th><th>수익률</th><th class="wrap">사유</th></tr>
+                      </thead>
+                      <tbody id="demoMemeTradeRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </section>
+              <article class="panel-inner">
+                <header><h3>일별 수익률</h3><p class="panel-subtitle" id="demoMemeDailySummary">데이터 없음</p></header>
+                <div class="table-wrap">
+                  <table class="metrics-table">
+                    <thead>
+                      <tr><th>날짜</th><th>일별 수익률</th><th>누적 수익률</th><th>청산수</th></tr>
+                    </thead>
+                    <tbody id="demoMemeDailyRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </article>
+
+            <article class="card panel zone-crypto wide demo-position-panel" data-demo-panel="crypto">
+              <header class="model-zone-head">
+                <div>
+                  <h3>데모 크립토 4모델</h3>
+                  <p class="panel-subtitle">단타 / 공격형 단타 / 스윙10 / 단일포지션 모델을 분리해서 봅니다.</p>
+                </div>
+                <div class="tab-group" id="demoCryptoTabs">
+                  <button class="tab-btn active" data-demo-market="crypto" data-demo-model="A">A</button>
+                  <button class="tab-btn" data-demo-market="crypto" data-demo-model="B">B</button>
+                  <button class="tab-btn" data-demo-market="crypto" data-demo-model="C">C</button>
+                  <button class="tab-btn" data-demo-market="crypto" data-demo-model="D">D</button>
+                </div>
+              </header>
+              <section class="cards detail-cards demo-focus-cards" id="demoCryptoFocusCards"></section>
+              <section class="demo-panel-grid">
+                <article class="panel-inner">
+                  <header><h3>현재 포지션</h3></header>
+                  <div class="table-wrap tall">
+                    <table class="open-table open-crypto-table">
+                      <thead>
+                        <tr><th>심볼</th><th>방향</th><th>Lev</th><th>Exposure/Margin</th><th>수익률</th><th>리스크</th><th class="wrap">사유</th></tr>
+                      </thead>
+                      <tbody id="demoCryptoPosRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+                <article class="panel-inner">
+                  <header><h3>체결 이력</h3></header>
+                  <div class="table-wrap tall">
+                    <table class="metrics-table">
+                      <thead>
+                        <tr><th>시각</th><th>방향</th><th>심볼</th><th>금액</th><th>수익률</th><th class="wrap">사유</th></tr>
+                      </thead>
+                      <tbody id="demoCryptoTradeRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </section>
+              <article class="panel-inner">
+                <header><h3>일별 수익률</h3><p class="panel-subtitle" id="demoCryptoDailySummary">데이터 없음</p></header>
+                <div class="table-wrap">
+                  <table class="metrics-table">
+                    <thead>
+                      <tr><th>날짜</th><th>일별 수익률</th><th>누적 수익률</th><th>청산수</th></tr>
+                    </thead>
+                    <tbody id="demoCryptoDailyRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </article>
+
+            <article class="card panel wide demo-alert-panel" data-demo-panel="meme">
+              <header><h3>데모 밈 운영 알림 / 오류</h3></header>
               <div id="errorBar" class="error-bar">-</div>
               <div class="table-wrap tall">
                 <table>
                   <thead>
                     <tr><th>시각</th><th>레벨</th><th>제목</th><th class="wrap">내용</th></tr>
                   </thead>
-                  <tbody id="alertRows"></tbody>
+                  <tbody id="alertRowsMeme"></tbody>
                 </table>
               </div>
             </article>
 
-            <article class="card panel zone-meme">
-              <header><h3>밈 모델 요약</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
+            <article class="card panel wide demo-alert-panel" data-demo-panel="crypto">
+              <header><h3>데모 크립토 운영 알림 / 오류</h3></header>
+              <div id="errorBarCrypto" class="error-bar">-</div>
+              <div class="table-wrap tall">
+                <table>
                   <thead>
-                    <tr><th>순위</th><th>모델</th><th>시드</th><th>평가금액</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th><th>오픈</th></tr>
+                    <tr><th>시각</th><th>레벨</th><th>제목</th><th class="wrap">내용</th></tr>
                   </thead>
-                  <tbody id="memeModelRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto">
-              <header><h3>크립토 모델 요약</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
-                  <thead>
-                    <tr><th>순위</th><th>모델</th><th>시드</th><th>평가금액</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th><th>오픈</th></tr>
-                  </thead>
-                  <tbody id="cryptoModelRows"></tbody>
+                  <tbody id="alertRowsCrypto"></tbody>
                 </table>
               </div>
             </article>
           </section>
         </section>
 
-        <section class="workspace-panel active" data-workspace-panel="paper">
-          <section class="layout paper-layout">
+        <section class="workspace-panel active" data-workspace-panel="models">
+          <section class="workspace-head workspace-head-models">
+            <div>
+              <p class="workspace-kicker">MODEL LAB</p>
+              <h3>전략 연구실</h3>
+            </div>
+            <p>밈은 THEME_SNIPER 메인 모델과 NARRATIVE 서브 트리거로 보고, 크립토는 4모델을 독립 비교합니다.</p>
+          </section>
+          <section class="layout model-workspace-layout">
             <article class="card panel zone-meme wide">
-              <header><h3>밈 모델 실시간 순위 요약</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
-                  <thead>
-                    <tr><th>순위</th><th>모델</th><th>시드</th><th>평가금액</th><th>총 PNL</th><th>수익률</th><th>승률</th><th>오픈</th></tr>
-                  </thead>
-                  <tbody id="demoMemeRows"></tbody>
-                </table>
-              </div>
-            </article>
+              <header class="model-zone-head">
+                <div>
+                  <h3>밈 엔진</h3>
+                  <p class="panel-subtitle">THEME_SNIPER 메인 모델의 신규 런치/소셜 버스트와 NARRATIVE 서브를 한 화면에서 봅니다.</p>
+                </div>
+              </header>
+              <div class="strategy-chip-row" id="modelMemeStrategyChips"></div>
 
-            <article class="card panel zone-crypto wide live-control-panel">
-              <header><h3>크립토 모델 실시간 순위 요약</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
-                  <thead>
-                    <tr><th>순위</th><th>모델</th><th>시드</th><th>평가금액</th><th>총 PNL</th><th>수익률</th><th>승률</th><th>오픈</th></tr>
-                  </thead>
-                  <tbody id="demoCryptoRows"></tbody>
-                </table>
-              </div>
-            </article>
+              <section class="model-zone-grid meme-zone-grid">
+                <article class="card panel-inner model-signal-main">
+                  <header><h3 id="memeModelTitle">-</h3></header>
+                  <div class="method-box model-method-box">
+                    <p id="memeModelText">-</p>
+                    <p id="memeModelStrengthText" class="param-guide"></p>
+                    <p id="memeModelTuneText" class="param-guide"></p>
+                    <p id="memeModelParamText" class="param-guide"></p>
+                  </div>
+                  <section class="cards detail-cards">
+                    <article class="card metric"><h3>상위 점수</h3><p id="memeScoreTop">-</p></article>
+                    <article class="card metric"><h3>진입 후보 수</h3><p id="memeScoreCandidates">-</p></article>
+                    <article class="card metric"><h3>최소 등급</h3><p id="memeScoreGradeGate">-</p></article>
+                    <article class="card metric"><h3>신규 피드 수</h3><p id="memeFeedCount">-</p></article>
+                  </section>
+                  <section class="strategy-signal-grid">
+                    <article class="signal-mini-card">
+                      <header>
+                        <h3>THEME</h3>
+                        <p class="panel-subtitle">신규 밈 전체 메인 흐름</p>
+                        <span class="signal-mini-count" id="memeThemeSignalCount">0</span>
+                      </header>
+                      <div class="table-wrap tall">
+                        <table class="metrics-table">
+                          <thead>
+                            <tr><th>심볼</th><th>등급</th><th>점수</th><th>확률</th><th>가격</th><th>Liq</th><th>5mVol</th><th class="wrap">감점요인</th><th class="wrap">홀딩 가이드</th></tr>
+                          </thead>
+                          <tbody id="memeThemeSignalRows"></tbody>
+                        </table>
+                      </div>
+                    </article>
+                    <article class="signal-mini-card">
+                      <header>
+                        <h3>SNIPER</h3>
+                        <p class="panel-subtitle">THEME_SNIPER 메인 모델의 소셜 버스트 트리거</p>
+                        <span class="signal-mini-count" id="memeSniperSignalCount">0</span>
+                      </header>
+                      <div class="table-wrap tall">
+                        <table class="metrics-table">
+                          <thead>
+                            <tr><th>심볼</th><th>등급</th><th>점수</th><th>확률</th><th>가격</th><th>Liq</th><th>5mVol</th><th class="wrap">감점요인</th><th class="wrap">홀딩 가이드</th></tr>
+                          </thead>
+                          <tbody id="memeSniperSignalRows"></tbody>
+                        </table>
+                      </div>
+                    </article>
+                    <article class="signal-mini-card">
+                      <header>
+                        <h3>NARRATIVE</h3>
+                        <p class="panel-subtitle">기존 코인 재점화/부활 서브 트리거</p>
+                        <span class="signal-mini-count" id="memeNarrativeSignalCount">0</span>
+                      </header>
+                      <div class="table-wrap tall">
+                        <table class="metrics-table">
+                          <thead>
+                            <tr><th>심볼</th><th>등급</th><th>점수</th><th>확률</th><th>가격</th><th>Liq</th><th>5mVol</th><th class="wrap">감점요인</th><th class="wrap">홀딩 가이드</th></tr>
+                          </thead>
+                          <tbody id="memeNarrativeSignalRows"></tbody>
+                        </table>
+                      </div>
+                    </article>
+                  </section>
+                </article>
 
-            <article class="card panel zone-meme wide">
-              <header><h3>MEME Open Positions</h3></header>
-              <div class="table-wrap">
-                <table class="open-table">
-                  <thead>
-                    <tr><th>Model</th><th>Symbol</th><th>Strategy</th><th>Value</th><th>PNL</th><th>Grade</th></tr>
-                  </thead>
-                  <tbody id="allMemePosRows"></tbody>
-                </table>
-              </div>
+                <article class="card panel-inner model-signal-side">
+                  <header><h3>토큰 주소 점수 조회</h3></header>
+                  <div class="detail-select-row score-lookup-row">
+                    <label for="memeScoreTokenInput">토큰주소</label>
+                    <input
+                      id="memeScoreTokenInput"
+                      type="text"
+                      spellcheck="false"
+                      placeholder="예: EG6zP6zWJjcNz563nAjcmNQYhkwbqVbDFpRsWx11pump"
+                    />
+                    <button class="ctl-btn" id="btnMemeScoreLookup">조회</button>
+                    <span class="param-guide" id="memeScoreLookupMsg">-</span>
+                  </div>
+                  <div class="table-wrap tall">
+                    <table class="metrics-table">
+                      <thead>
+                        <tr>
+                          <th>시각</th>
+                          <th>모델</th>
+                          <th>심볼</th>
+                          <th>등급</th>
+                          <th>점수</th>
+                          <th>확률</th>
+                          <th>가격</th>
+                          <th>Liq</th>
+                          <th>5mVol</th>
+                          <th class="wrap">감점요인</th>
+                          <th class="wrap">홀딩 가이드</th>
+                        </tr>
+                      </thead>
+                      <tbody id="memeScoreLookupRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+
+                <article class="card panel-inner">
+                  <header><h3>신규 밈코인 피드</h3></header>
+                  <div class="table-wrap tall">
+                    <table>
+                      <thead><tr><th>심볼</th><th>Mcap</th><th>Age(min)</th><th>5m Vol</th><th>Liq</th><th>Hits</th><th>Pump</th></tr></thead>
+                      <tbody id="newMemeRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+
+                <article class="card panel-inner">
+                  <header><h3>밈 등급 기준 (S~G)</h3></header>
+                  <div class="table-wrap">
+                    <table>
+                      <thead><tr><th>등급</th><th>점수 구간</th><th class="wrap">설명</th></tr></thead>
+                      <tbody id="memeGradeRows"></tbody>
+                    </table>
+                  </div>
+                </article>
+              </section>
             </article>
 
             <article class="card panel zone-crypto wide">
-              <header><h3>CRYPTO Open Positions</h3></header>
-              <div class="table-wrap">
-                <table class="open-table open-crypto-table">
-                  <thead>
-                    <tr><th>Model</th><th>Symbol</th><th>Lev</th><th>Exposure/Margin</th><th>UPNL(ROE)</th><th class="wrap">Reason</th></tr>
-                  </thead>
-                  <tbody id="allCryptoPosRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel wide">
-              <header><h3>모델 상세 분석</h3></header>
-
-              <div class="tab-row">
-                <div class="detail-select-row">
-                  <label for="marketSelect">시장</label>
-                  <select id="marketSelect">
-                    <option value="meme">밈코인</option>
-                    <option value="crypto">크립토</option>
-                  </select>
-                  <label for="modelSelect">모델</label>
-                  <select id="modelSelect">
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                  </select>
+              <header class="model-zone-head">
+                <div>
+                  <h3>크립토 4모델 랩</h3>
+                  <p class="panel-subtitle">A=단타, B=공격형 단타, C=스윙10, D=단일포지션 모델을 비교합니다.</p>
                 </div>
-                <div class="tab-group" id="marketTabs">
-                  <button class="tab-btn active" data-market="meme">밈코인</button>
-                  <button class="tab-btn" data-market="crypto">크립토</button>
+                <div class="tab-group" id="modelCryptoTabs">
+                  <button class="tab-btn active" data-model="A">A</button>
+                  <button class="tab-btn" data-model="B">B</button>
+                  <button class="tab-btn" data-model="C">C</button>
+                  <button class="tab-btn" data-model="D">D</button>
                 </div>
-                <div class="tab-group" id="modelTabs">
-                  <button class="tab-btn active" data-model="A">안정 추세</button>
-                  <button class="tab-btn" data-model="B">흐름 추종</button>
-                  <button class="tab-btn" data-model="C">공격 모멘텀</button>
-                </div>
-              </div>
+              </header>
 
-              <div class="method-box">
-                <h4 id="methodTitle">-</h4>
-                <p id="methodText">-</p>
-                <p id="methodStrengthText" class="param-guide"></p>
-                <p id="methodTuneText" class="param-guide"></p>
-                <p id="methodParamText" class="param-guide"></p>
-              </div>
-
-              <section class="cards detail-cards">
-                <article class="card metric"><h3>평가금액</h3><p id="dEquity">-</p></article>
-                <article class="card metric"><h3>총 PNL</h3><p id="dTotalPnl">-</p></article>
-                <article class="card metric"><h3>실현 PNL</h3><p id="dRealized">-</p></article>
-                <article class="card metric"><h3>미실현 PNL</h3><p id="dUnrealized">-</p></article>
-                <article class="card metric"><h3>승률</h3><p id="dWinrate">-</p></article>
-                <article class="card metric"><h3>오픈 포지션</h3><p id="dOpen">-</p></article>
+              <section class="model-zone-grid crypto-zone-grid">
+                <article class="card panel-inner wide">
+                  <header><h3 id="cryptoModelTitle">-</h3></header>
+                  <div class="method-box model-method-box">
+                    <p id="cryptoModelText">-</p>
+                    <p id="cryptoModelStrengthText" class="param-guide"></p>
+                    <p id="cryptoModelTuneText" class="param-guide"></p>
+                    <p id="cryptoModelParamText" class="param-guide"></p>
+                  </div>
+                  <section class="cards detail-cards">
+                    <article class="card metric"><h3>상위 점수</h3><p id="cryptoScoreTop">-</p></article>
+                    <article class="card metric"><h3>진입 후보 수</h3><p id="cryptoScoreCandidates">-</p></article>
+                    <article class="card metric"><h3>진입 임계값</h3><p id="cryptoScoreThreshold">-</p></article>
+                    <article class="card metric"><h3>추적 심볼 수</h3><p id="cryptoSignalCount">-</p></article>
+                  </section>
+                  <div class="table-wrap tall">
+                    <table class="metrics-table">
+                      <thead>
+                        <tr><th>시각</th><th>심볼</th><th>전략</th><th>점수</th><th>임계값</th><th>Lev</th><th>가격</th><th>상태</th></tr>
+                      </thead>
+                      <tbody id="cryptoModelSignalRows"></tbody>
+                    </table>
+                  </div>
+                </article>
               </section>
-
-              <div class="split-grid">
-                <article class="card panel-inner">
-                  <header><h3 id="signalTitle">추론 시그널</h3></header>
-                  <div class="table-wrap">
-                    <table>
-                      <thead id="detailSignalHead"></thead>
-                      <tbody id="detailSignalRows"></tbody>
-                    </table>
-                  </div>
-                </article>
-
-                <article class="card panel-inner">
-                  <header><h3 id="positionTitle">포지션</h3></header>
-                  <div class="table-wrap">
-                    <table>
-                      <thead id="detailPositionHead"></thead>
-                      <tbody id="detailPositionRows"></tbody>
-                    </table>
-                  </div>
-                </article>
-              </div>
-
-              <article class="card panel-inner wide">
-                <header><h3 id="tradeTitle">거래 이력</h3></header>
-                <div class="table-wrap">
-                  <table class="metrics-table">
-                    <thead>
-                      <tr><th>시각</th><th>타입</th><th>심볼</th><th>방향</th><th>금액</th><th>PNL</th><th class="wrap">사유</th></tr>
-                    </thead>
-                    <tbody id="detailTradeRows"></tbody>
-                  </table>
-                </div>
-              </article>
-
-              <article class="card panel-inner wide">
-                <header><h3 id="pnlTitle">일계 PNL</h3></header>
-                <svg class="mini-chart" id="detailPnlChart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-                <div class="table-wrap">
-                  <table class="metrics-table">
-                    <thead>
-                      <tr><th>날짜</th><th>모델</th><th>평가금액</th><th>총 PNL</th><th>실현 PNL</th><th>승률</th></tr>
-                    </thead>
-                    <tbody id="detailDailyRows"></tbody>
-                  </table>
-                </div>
-              </article>
             </article>
           </section>
         </section>
 
         <section class="workspace-panel" data-workspace-panel="live">
+          <section class="workspace-head workspace-head-live">
+            <div>
+              <p class="workspace-kicker">LIVE DESK</p>
+              <h3>실계좌 실행</h3>
+            </div>
+            <p>실전 실행 여부, 성과 기준선, 실전 포지션과 실현손익을 같은 회계 기준으로 관리합니다.</p>
+          </section>
           <section class="cards" id="liveCards">
-            <article class="card metric" data-live-panel="common"><h3>실전 자산 합계</h3><p id="liveAssetTotal2">-</p></article>
+            <article class="card metric" data-live-panel="common"><h3>현재 실전 평가금액</h3><p id="liveAssetTotal2">-</p></article>
             <article class="card metric" data-live-panel="common"><h3>성과 기준자산</h3><p id="livePerfAnchor">-</p></article>
-            <article class="card metric" data-live-panel="common"><h3>순입출금 보정</h3><p id="liveNetFlow">-</p></article>
-            <article class="card metric" data-live-panel="common"><h3>보정 평가금액</h3><p id="liveAdjEquity">-</p></article>
             <article class="card metric" data-live-panel="common"><h3>보정 손익(수익률)</h3><p id="livePerfPnl">-</p></article>
-            <article class="card metric" data-live-panel="meme"><h3>팬텀 지갑 합계</h3><p id="liveWalletTotal">-</p></article>
-            <article class="card metric" data-live-panel="meme"><h3>실전 MEME 평가금액</h3><p id="liveMemeValue">-</p></article>
-            <article class="card metric" data-live-panel="meme"><h3>실전 MEME 지갑자산 수</h3><p id="liveMemePosCount">-</p></article>
-            <article class="card metric" data-live-panel="meme"><h3>실전 MEME 관리포지션 수</h3><p id="liveManagedMemePosCount">-</p></article>
-            <article class="card metric" data-live-panel="crypto"><h3>실전 CRYPTO 포지션 수</h3><p id="liveCryptoPosCount">-</p></article>
-            <article class="card metric" data-live-panel="common"><h3>실전 미실현 손익</h3><p id="liveUpnl">-</p></article>
-            <article class="card metric" data-live-panel="common"><h3>실전 포지션 합계</h3><p id="livePosCount">-</p></article>
           </section>
 
           <div class="tab-row live-market-tab-row">
@@ -281,7 +425,7 @@
               <header><h3>실전 실행 / 모델 적용</h3></header>
               <p class="param-guide">밈/크립토를 독립 ON/OFF 하고, 시장별 모델을 각각 적용합니다.</p>
               <div class="model-select-grid live-control-grid">
-                <section class="model-select-box">
+                <section class="model-select-box" data-live-control-scope="common">
                   <h4>실전 시장 ON/OFF</h4>
                   <label><input type="checkbox" id="liveToggleMeme" /> 밈 실전 실행</label>
                   <label><input type="checkbox" id="liveToggleCrypto" /> 크립토 실전 실행</label>
@@ -290,7 +434,7 @@
                     <span id="liveMarketSaveMsg">-</span>
                   </div>
                 </section>
-                <section class="model-select-box">
+                <section class="model-select-box" data-live-control-scope="common">
                   <h4>실전 성과 기준선</h4>
                   <div class="live-perf-note">
                     기준시각: <span id="livePerfAnchorInfo">-</span>
@@ -307,8 +451,8 @@
                     <span id="livePerfSaveMsg">-</span>
                   </div>
                 </section>
-                <section class="model-select-box">
-                  <h4>밈 모델</h4>
+                <section class="model-select-box" data-live-control-scope="meme">
+                  <h4>밈 엔진 브리지</h4>
                   <label><input type="checkbox" data-live-market="meme" value="A" /> <span id="liveLabelMemeA">A</span></label>
                   <label><input type="checkbox" data-live-market="meme" value="B" /> <span id="liveLabelMemeB">B</span></label>
                   <label><input type="checkbox" data-live-market="meme" value="C" /> <span id="liveLabelMemeC">C</span></label>
@@ -317,11 +461,12 @@
                     <span id="liveModelSaveMsgMeme">-</span>
                   </div>
                 </section>
-                <section class="model-select-box">
-                  <h4>크립토 모델</h4>
+                <section class="model-select-box" data-live-control-scope="crypto">
+                  <h4>크립토 4모델</h4>
                   <label><input type="checkbox" data-live-market="crypto" value="A" /> <span id="liveLabelCryptoA">A</span></label>
                   <label><input type="checkbox" data-live-market="crypto" value="B" /> <span id="liveLabelCryptoB">B</span></label>
                   <label><input type="checkbox" data-live-market="crypto" value="C" /> <span id="liveLabelCryptoC">C</span></label>
+                  <label><input type="checkbox" data-live-market="crypto" value="D" /> <span id="liveLabelCryptoD">D</span></label>
                   <div class="secret-actions">
                     <button class="ctl-btn" id="btnApplyLiveModelsCrypto">크립토 모델 적용</button>
                     <span id="liveModelSaveMsgCrypto">-</span>
@@ -357,11 +502,11 @@
             </article>
 
             <article class="card panel wide zone-meme live-meme-pos-panel" data-live-panel="meme">
-              <header><h3>실전 MEME 관리 포지션 (TP/SL 적용)</h3></header>
+              <header><h3>실전 MEME 관리 포지션</h3></header>
               <div class="table-wrap tall">
                 <table class="open-table">
                   <thead>
-                    <tr><th>모델</th><th>심볼</th><th>전략</th><th>진입가</th><th>현재가</th><th>평가금액</th><th>PNL</th><th>TP/SL</th><th class="wrap">사유</th></tr>
+                    <tr><th>모델</th><th>심볼</th><th>전략</th><th>진입가</th><th>현재가</th><th>평가금액</th><th>수익률</th><th>청산 규칙</th><th class="wrap">사유</th></tr>
                   </thead>
                   <tbody id="liveManagedMemeRows"></tbody>
                 </table>
@@ -405,7 +550,7 @@
             </article>
 
             <article class="card panel wide zone-meme live-meme-pos-panel" data-live-panel="meme">
-              <header><h3>실전 MEME 일별 누적 PNL</h3></header>
+              <header><h3>실전 MEME 실현손익(청산 기준)</h3></header>
               <svg class="mini-chart" id="liveMemePnlChart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
               <div class="error-bar" id="liveMemePnlStats">-</div>
               <div class="table-wrap">
@@ -429,13 +574,13 @@
             </article>
 
             <article class="card panel wide zone-meme live-meme-pos-panel" data-live-panel="meme">
-              <header><h3>실전 MEME 운영 로그 (오류/경고)</h3></header>
+              <header><h3>실전 MEME Watch 리스트 (30분 추적)</h3></header>
               <div class="table-wrap tall">
                 <table class="open-table">
                   <thead>
-                    <tr><th>시각</th><th>레벨</th><th>소스</th><th>제목</th><th class="wrap">상세</th></tr>
+                    <tr><th>갱신시각</th><th>심볼</th><th>모델</th><th>등급</th><th>점수</th><th>시총</th><th>5m 거래량</th><th>Liq</th><th>남은추적</th><th class="wrap">감점요인</th><th class="wrap">홀딩 가이드</th></tr>
                   </thead>
-                  <tbody id="liveMemeRuntimeRows"></tbody>
+                  <tbody id="liveMemeWatchRows"></tbody>
                 </table>
               </div>
             </article>
@@ -466,277 +611,14 @@
           </section>
         </section>
 
-        <section class="workspace-panel" data-workspace-panel="meme">
-          <section class="layout">
-            <article class="card panel wide zone-meme">
-              <header><h3>밈 트렌드 30분 언급량</h3></header>
-              <svg class="mini-chart" id="trendChart14d" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-              <div class="error-bar" id="trendChartStats">-</div>
-            </article>
-
-            <article class="card panel zone-meme">
-              <header><h3>밈 언급 점유율 (최근 24시간)</h3></header>
-              <div class="donut-wrap">
-                <div class="trend-donut" id="memeTrendDonut"></div>
-                <div class="donut-meta">
-                  <p class="donut-stats" id="memeTrendDonutStats">-</p>
-                  <div class="donut-legend" id="memeTrendDonutLegend"></div>
-                </div>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme wide">
-              <header><h3>밈 트렌드 시간/일/주 통계</h3></header>
-              <div class="trend-summary-grid">
-                <section class="trend-summary-card">
-                  <h4>시간별</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="memeTrendHourlyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section class="trend-summary-card">
-                  <h4>일별</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="memeTrendDailyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section class="trend-summary-card">
-                  <h4>주간</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="memeTrendWeeklyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme wide">
-              <header><h3>트렌드 해석 가이드</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
-                  <thead><tr><th>체크 항목</th><th>현재 상태</th><th class="wrap">해석 / 액션</th></tr></thead>
-                  <tbody id="memeTrendInsightRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme wide">
-              <header><h3>밈 트렌드 로그 이력</h3></header>
-              <div class="table-wrap tall">
-                <table class="metrics-table">
-                  <thead><tr><th>시각</th><th>핵심 시그널</th><th>선두 코인</th><th>언급 변화율</th><th class="wrap">요약</th></tr></thead>
-                  <tbody id="memeTrendLogRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme">
-              <header><h3>밈 트렌드 TOP</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>심볼</th><th>히트</th><th>Mcap</th></tr></thead>
-                  <tbody id="trendTop"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme">
-              <header><h3>트렌드 소스 상태</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>소스</th><th>상태</th><th>건수</th><th>다음 재시도</th><th class="wrap">오류</th></tr></thead>
-                  <tbody id="trendSourceRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme">
-              <header><h3>밈 등급 기준 (S~G)</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>등급</th><th>점수 구간</th><th class="wrap">설명</th></tr></thead>
-                  <tbody id="memeGradeRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-meme">
-              <header><h3>신규 밈코인 피드</h3></header>
-              <div class="table-wrap tall">
-                <table>
-                  <thead><tr><th>심볼</th><th>Mcap</th><th>Age(min)</th><th>5m Vol</th><th>Liq</th><th>Hits</th><th>Pump</th></tr></thead>
-                  <tbody id="newMemeRows"></tbody>
-                </table>
-              </div>
-            </article>
-          </section>
-        </section>
-
-        <section class="workspace-panel" data-workspace-panel="crypto">
-          <section class="trend-hero card panel zone-crypto">
-            <header class="trend-hero-head">
-              <h3>크립토 트렌드 인텔리전스</h3>
-              <div class="tab-group" id="cryptoModelTabs">
-                <button class="tab-btn active" data-crypto-model="A">A</button>
-                <button class="tab-btn" data-crypto-model="B">B</button>
-                <button class="tab-btn" data-crypto-model="C">C</button>
-              </div>
-            </header>
-            <section class="cards trend-kpis">
-              <article class="card metric"><h3>트렌드 DB 누적</h3><p id="trendDbRows">-</p></article>
-              <article class="card metric"><h3>트렌드 DB 범위</h3><p id="trendDbRange">-</p></article>
-              <article class="card metric"><h3>최근 동기화</h3><p id="cryptoTrendSync">-</p></article>
-            </section>
-          </section>
-
-          <section class="layout crypto-trend-layout">
-            <article class="card panel zone-crypto wide">
-              <header><h3>트렌드 해석 가이드</h3></header>
-              <div class="table-wrap">
-                <table class="metrics-table">
-                  <thead><tr><th>체크 항목</th><th>현재 상태</th><th class="wrap">해석 / 액션</th></tr></thead>
-                  <tbody id="cryptoTrendInsightRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>크립토 트렌드 로그 이력</h3></header>
-              <div class="table-wrap tall">
-                <table class="metrics-table">
-                  <thead><tr><th>시각</th><th>핵심 시그널</th><th>선두 코인</th><th>언급 변화율</th><th class="wrap">요약</th></tr></thead>
-                  <tbody id="cryptoTrendLogRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto crypto-panel-main">
-              <header><h3>모델 일일 PNL 추세</h3></header>
-              <svg class="mini-chart" id="cryptoTrendChart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-              <div class="error-bar" id="cryptoTrendStats">-</div>
-            </article>
-
-            <article class="card panel zone-crypto crypto-panel-side">
-              <header><h3>매크로 트렌드 풀</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>#</th><th>심볼</th></tr></thead>
-                  <tbody id="macroPoolRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto crypto-panel-main">
-              <header><h3>DB 기준 크립토 언급량 (30분)</h3></header>
-              <svg class="mini-chart" id="cryptoMentionsChart" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
-              <div class="error-bar" id="cryptoMentionsStats">-</div>
-            </article>
-
-            <article class="card panel zone-crypto crypto-panel-side">
-              <header><h3>크립토 언급 점유율 (최근 24시간)</h3></header>
-              <div class="donut-wrap">
-                <div class="trend-donut" id="cryptoTrendDonut"></div>
-                <div class="donut-meta">
-                  <p class="donut-stats" id="cryptoTrendDonutStats">-</p>
-                  <div class="donut-legend" id="cryptoTrendDonutLegend"></div>
-                </div>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto crypto-panel-side">
-              <header><h3>트렌드 소스 상태</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>소스</th><th>상태</th><th>건수</th><th>재시도</th><th class="wrap">오류</th></tr></thead>
-                  <tbody id="trendSourceRowsCrypto"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>크립토 시그널 TOP</h3></header>
-              <div class="table-wrap tall">
-                <table>
-                  <thead><tr><th>시각</th><th>모델</th><th>심볼</th><th>전략</th><th>스코어</th><th>목표기준</th><th>레버리지</th><th>가격</th><th>사유</th></tr></thead>
-                  <tbody id="cryptoTrendRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>DB 트렌드 상위 심볼</h3></header>
-              <div class="table-wrap tall">
-                <table>
-                  <thead><tr><th>심볼</th><th>누적히트</th><th>점수</th><th>시총</th><th>최근감지</th></tr></thead>
-                  <tbody id="cryptoTrendHistoryRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>크립토 트렌드 시간/일/주 통계</h3></header>
-              <div class="trend-summary-grid">
-                <section class="trend-summary-card">
-                  <h4>시간별</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="cryptoTrendHourlyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section class="trend-summary-card">
-                  <h4>일별</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="cryptoTrendDailyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section class="trend-summary-card">
-                  <h4>주간</h4>
-                  <div class="table-wrap">
-                    <table>
-                      <thead><tr><th>구간</th><th>합계</th><th>TOP</th><th class="wrap">점유율</th></tr></thead>
-                      <tbody id="cryptoTrendWeeklyRows"></tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>모델 튜닝 이력 (조건부, PNL 악화 시만)</h3></header>
-              <div class="table-wrap tall">
-                <table>
-                  <thead><tr><th>시각</th><th>모델</th><th>변형ID</th><th>결과</th><th>지표</th><th class="wrap">파라미터 변경</th></tr></thead>
-                  <tbody id="modelTuneHistoryRows"></tbody>
-                </table>
-              </div>
-            </article>
-
-            <article class="card panel zone-crypto wide">
-              <header><h3>변형 모델 비교 (최근 6개월 누적)</h3></header>
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>#</th><th>모델</th><th>변형ID</th><th>평균 PNL</th><th>최근 PNL</th><th>평가횟수</th><th class="wrap">최근 결과</th></tr></thead>
-                  <tbody id="modelTuneVariantRows"></tbody>
-                </table>
-              </div>
-            </article>
-          </section>
-        </section>
-
         <section class="workspace-panel" data-workspace-panel="settings">
+          <section class="workspace-head workspace-head-settings">
+            <div>
+              <p class="workspace-kicker">SETTINGS VAULT</p>
+              <h3>연결 / 런타임 설정</h3>
+            </div>
+            <p>키 입력, 실전 연결, 현재 런타임 설정값을 한 곳에서 관리합니다.</p>
+          </section>
           <section class="layout">
             <article class="card panel">
               <header><h3>API / 지갑 설정</h3></header>
@@ -785,6 +667,36 @@
                   <span>SOLSCAN_API_KEY</span>
                   <input id="inp_SOLSCAN_API_KEY" type="password" autocomplete="off" />
                   <small id="mask_SOLSCAN_API_KEY">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>HELIUS_API_KEY</span>
+                  <input id="inp_HELIUS_API_KEY" type="password" autocomplete="off" />
+                  <small id="mask_HELIUS_API_KEY">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>HELIUS_RPC_URL</span>
+                  <input id="inp_HELIUS_RPC_URL" type="text" autocomplete="off" />
+                  <small id="mask_HELIUS_RPC_URL">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>HELIUS_WS_URL</span>
+                  <input id="inp_HELIUS_WS_URL" type="text" autocomplete="off" />
+                  <small id="mask_HELIUS_WS_URL">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>HELIUS_SENDER_URL</span>
+                  <input id="inp_HELIUS_SENDER_URL" type="text" autocomplete="off" />
+                  <small id="mask_HELIUS_SENDER_URL">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>BIRDEYE_API_KEY</span>
+                  <input id="inp_BIRDEYE_API_KEY" type="password" autocomplete="off" />
+                  <small id="mask_BIRDEYE_API_KEY">(not set)</small>
+                </label>
+                <label class="secret-row">
+                  <span>OPENAI_API_KEY</span>
+                  <input id="inp_OPENAI_API_KEY" type="password" autocomplete="off" />
+                  <small id="mask_OPENAI_API_KEY">(not set)</small>
                 </label>
                 <label class="secret-row">
                   <span>BINANCE_API_KEY</span>

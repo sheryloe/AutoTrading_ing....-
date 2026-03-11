@@ -15,9 +15,9 @@ services:
     ports:
       - "${APP_PORT:-8099}:${APP_PORT:-8099}"
     volumes:
-      - ./state.json:/app/state.json
-      - ./model_online.json:/app/model_online.json
-      - ./runtime_settings.json:/app/runtime_settings.json
+      - ./${STATE_FILE:-state.json}:/app/${STATE_FILE:-state.json}
+      - ./${MODEL_FILE:-model_online.json}:/app/${MODEL_FILE:-model_online.json}
+      - ./${RUNTIME_SETTINGS_FILE:-runtime_settings.local.json}:/app/${RUNTIME_SETTINGS_FILE:-runtime_settings.local.json}
       - ./reports:/app/reports
     command: ["python", "web_app.py"]
 

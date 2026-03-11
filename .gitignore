@@ -14,6 +14,12 @@ venv/
 state.json
 model_online.json
 runtime_settings.json
+runtime_settings.local.json
+state.reconcile_backup_*.json
+
+# Local build artifacts
+build/
+*.spec
 
 # Logs
 *.log

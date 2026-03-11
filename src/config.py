@@ -92,6 +92,20 @@ class Settings:
     meme_order_pct: float
     meme_max_positions: int
     meme_min_entry_grade: str
+    meme_strategy_engine: str
+    meme_strategy_ids: str
+    live_meme_strategy_ids: str
+    meme_theme_entry_sol: float
+    meme_theme_cluster_min_tokens: int
+    meme_launch_entry_sol: float
+    meme_narrative_entry_sol: float
+    meme_partial_take_profit_pct: float
+    meme_partial_take_profit_sell_ratio: float
+    meme_stale_exit_hours: int
+    meme_sniper_social_window_seconds: int
+    meme_sniper_poll_seconds: int
+    meme_sniper_max_slippage_bps: int
+    meme_sniper_max_price_impact_pct: float
     demo_order_pct_min: float
     demo_order_pct_max: float
     meme_swing_enabled: bool
@@ -102,7 +116,26 @@ class Settings:
     wallet_update_seconds: int
     watch_trader_accounts: str
     watch_wallets: str
+    social_4chan_enabled: bool
+    social_4chan_boards: str
+    social_4chan_max_threads_per_board: int
     solana_rpc_url: str
+    helius_api_key: str
+    helius_rpc_url: str
+    helius_ws_url: str
+    helius_sender_url: str
+    birdeye_api_key: str
+    openai_api_key: str
+    openai_model: str
+    openai_review_enabled: bool
+    openai_monthly_budget_usd: float
+    openai_daily_budget_usd: float
+    openai_candidate_review_interval_seconds: int
+    openai_candidate_top_n: int
+    openai_candidate_min_score: float
+    openai_narrative_max_calls_per_day: int
+    openai_input_token_estimate: int
+    openai_output_token_estimate: int
     phantom_wallet_address: str
     solana_private_key: str
     solana_reserve_sol: float
@@ -162,6 +195,7 @@ class Settings:
     solscan_cu_per_request: int
     solscan_budget_window_seconds: int
     solscan_permission_backoff_seconds: int
+    openai_budget_state_file: str
     model_file: str
     state_file: str
     runtime_settings_file: str
@@ -232,7 +266,24 @@ class Settings:
             min_signal_score=max(0.0, _to_float(data.get("MIN_SIGNAL_SCORE"), 0.56)),
             meme_order_pct=min(1.0, max(0.01, _to_float(data.get("MEME_ORDER_PCT"), 0.18))),
             meme_max_positions=max(1, _to_int(data.get("MEME_MAX_POSITIONS"), 5)),
-            meme_min_entry_grade=_to_grade(data.get("MEME_MIN_ENTRY_GRADE"), "C"),
+            meme_min_entry_grade=_to_grade(data.get("MEME_MIN_ENTRY_GRADE"), "E"),
+            meme_strategy_engine=_to_str(data.get("MEME_STRATEGY_ENGINE"), "unified_strategy_bridge").lower(),
+            meme_strategy_ids=_to_str(data.get("MEME_STRATEGY_IDS"), "THEME,SNIPER,NARRATIVE"),
+            live_meme_strategy_ids=_to_str(
+                data.get("LIVE_MEME_STRATEGY_IDS"),
+                _to_str(data.get("MEME_STRATEGY_IDS"), "THEME,SNIPER,NARRATIVE"),
+            ),
+            meme_theme_entry_sol=max(0.001, _to_float(data.get("MEME_THEME_ENTRY_SOL"), 0.10)),
+            meme_theme_cluster_min_tokens=max(2, min(10, _to_int(data.get("MEME_THEME_CLUSTER_MIN_TOKENS"), 2))),
+            meme_launch_entry_sol=max(0.001, _to_float(data.get("MEME_LAUNCH_ENTRY_SOL"), 0.20)),
+            meme_narrative_entry_sol=max(0.001, _to_float(data.get("MEME_NARRATIVE_ENTRY_SOL"), 0.20)),
+            meme_partial_take_profit_pct=min(10.0, max(0.01, _to_float(data.get("MEME_PARTIAL_TAKE_PROFIT_PCT"), 1.00))),
+            meme_partial_take_profit_sell_ratio=min(1.0, max(0.01, _to_float(data.get("MEME_PARTIAL_TAKE_PROFIT_SELL_RATIO"), 0.50))),
+            meme_stale_exit_hours=max(1, min(24 * 30, _to_int(data.get("MEME_STALE_EXIT_HOURS"), 48))),
+            meme_sniper_social_window_seconds=max(5, min(3600, _to_int(data.get("MEME_SNIPER_SOCIAL_WINDOW_SECONDS"), 120))),
+            meme_sniper_poll_seconds=max(1, min(60, _to_int(data.get("MEME_SNIPER_POLL_SECONDS"), 3))),
+            meme_sniper_max_slippage_bps=max(10, min(5000, _to_int(data.get("MEME_SNIPER_MAX_SLIPPAGE_BPS"), 400))),
+            meme_sniper_max_price_impact_pct=min(1.0, max(0.0, _to_float(data.get("MEME_SNIPER_MAX_PRICE_IMPACT_PCT"), 0.15))),
             demo_order_pct_min=min(0.95, max(0.01, _to_float(data.get("DEMO_ORDER_PCT_MIN"), 0.15))),
             demo_order_pct_max=min(0.95, max(0.01, _to_float(data.get("DEMO_ORDER_PCT_MAX"), 0.30))),
             meme_swing_enabled=_to_bool(data.get("MEME_SWING_ENABLED"), True),
@@ -246,7 +297,26 @@ class Settings:
                 "lookonchain,HsakaTrades,blknoiz06,RookieXBT,pentosh1,CryptoKaleo,tier10k,zachxbt,murad,cobie,Ansem,0xMert_,TheFlowHorse,AltcoinSherpa,DegenSpartan,DefiIgnas,KookCapitalLLC,LedgerStatus,CryptoCred,CryptoHayes,zhusu,jfizzy,AP_Abacus,rektdiomedes,TheMoonCarl,scottmelker,cz_binance,Arthur_0x,TheCryptoDog,CanteringClark,MandoCT,KoroushAK,DonAlt,CryptoMichNL,IncomeSharks,CredibleCrypto,CryptoTony__,CryptoCapo_,MikybullCrypto,MMCrypto,CRYPTOBIRB,AviFelman,Qwatio,ByzGeneral,SalsaTekila,rektfencer,CryptoRover,AltcoinPsycho,MoonOverlord,CryptoGodJohn,TheCryptoLark,coinbureau,MessariCrypto,WuBlockchain,watcherguru,WhaleChart,CryptoSlate,CoinDesk,TheBlock__,db_news247,deitaone,CryptoBriefing,Cointelegraph,CoinMarketCap,coingecko,binance,Bybit_Official,okx,krakenfx,gate_io,kucoincom,MEXC_Official,solana,solanafloor,SolanaLegend,pumpdotfun,bonk_inu,dogwifcoin,RealFlokiInu,popcatsol,bome_meme,Slerfsol,jup_ag,raydiumprotocol,tensor_hq,MagicEden,birdeye_so,Dexscreener,geckoterminal,CryptoRank_io,tokenterminal,DefiLlama,aeyakovenko,GCRClassic,ilCapoOfCrypto,milesdeutscher,nansen_ai,ArkhamIntel,santimentfeed,glassnode,intotheblock",
             ),
             watch_wallets=_to_str(data.get("WATCH_WALLETS"), ""),
+            social_4chan_enabled=_to_bool(data.get("SOCIAL_4CHAN_ENABLED"), True),
+            social_4chan_boards=_to_str(data.get("SOCIAL_4CHAN_BOARDS"), "biz,pol"),
+            social_4chan_max_threads_per_board=max(1, min(50, _to_int(data.get("SOCIAL_4CHAN_MAX_THREADS_PER_BOARD"), 12))),
             solana_rpc_url=_to_str(data.get("SOLANA_RPC_URL"), "https://api.mainnet-beta.solana.com"),
+            helius_api_key=_to_str(data.get("HELIUS_API_KEY"), ""),
+            helius_rpc_url=_to_str(data.get("HELIUS_RPC_URL"), ""),
+            helius_ws_url=_to_str(data.get("HELIUS_WS_URL"), ""),
+            helius_sender_url=_to_str(data.get("HELIUS_SENDER_URL"), ""),
+            birdeye_api_key=_to_str(data.get("BIRDEYE_API_KEY"), ""),
+            openai_api_key=_to_str(data.get("OPENAI_API_KEY"), ""),
+            openai_model=_to_str(data.get("OPENAI_MODEL"), "gpt-5-mini"),
+            openai_review_enabled=_to_bool(data.get("OPENAI_REVIEW_ENABLED"), False),
+            openai_monthly_budget_usd=max(1.0, _to_float(data.get("OPENAI_MONTHLY_BUDGET_USD"), 30.0)),
+            openai_daily_budget_usd=max(0.1, _to_float(data.get("OPENAI_DAILY_BUDGET_USD"), 0.85)),
+            openai_candidate_review_interval_seconds=max(300, _to_int(data.get("OPENAI_CANDIDATE_REVIEW_INTERVAL_SECONDS"), 600)),
+            openai_candidate_top_n=max(3, min(20, _to_int(data.get("OPENAI_CANDIDATE_TOP_N"), 8))),
+            openai_candidate_min_score=max(0.0, min(1.0, _to_float(data.get("OPENAI_CANDIDATE_MIN_SCORE"), 0.62))),
+            openai_narrative_max_calls_per_day=max(1, min(100, _to_int(data.get("OPENAI_NARRATIVE_MAX_CALLS_PER_DAY"), 12))),
+            openai_input_token_estimate=max(256, min(20000, _to_int(data.get("OPENAI_INPUT_TOKEN_ESTIMATE"), 2600))),
+            openai_output_token_estimate=max(64, min(4000, _to_int(data.get("OPENAI_OUTPUT_TOKEN_ESTIMATE"), 220))),
             phantom_wallet_address=_to_str(data.get("PHANTOM_WALLET_ADDRESS"), ""),
             solana_private_key=_to_str(data.get("SOLANA_PRIVATE_KEY"), ""),
             solana_reserve_sol=max(0.0, _to_float(data.get("SOLANA_RESERVE_SOL"), 0.01)),
@@ -258,10 +328,10 @@ class Settings:
             bybit_api_secret=_to_str(data.get("BYBIT_API_SECRET"), ""),
             bybit_base_url=_to_str(data.get("BYBIT_BASE_URL"), "https://api.bybit.com"),
             bybit_recv_window=max(1000, _to_int(data.get("BYBIT_RECV_WINDOW"), 5000)),
-            bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.33))),
+            bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.30))),
             bybit_leverage_min=min(20.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 3.0))),
             bybit_leverage_max=min(20.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 20.0))),
-            bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 5)),
+            bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 3)),
             bybit_min_order_usd=max(5.0, _to_float(data.get("BYBIT_MIN_ORDER_USD"), 10.0)),
             crypto_min_entry_score=min(1.0, max(0.0, _to_float(data.get("CRYPTO_MIN_ENTRY_SCORE"), 0.30))),
             meme_autotrade_models=_to_str(data.get("MEME_AUTOTRADE_MODELS"), "A,B,C"),
@@ -302,7 +372,7 @@ class Settings:
             demo_enable_macro=_to_bool(data.get("DEMO_ENABLE_MACRO"), True),
             macro_universe_source=_to_str(data.get("MACRO_UNIVERSE_SOURCE"), "coingecko").lower(),
             macro_top_n=max(50, min(2000, _to_int(data.get("MACRO_TOP_N"), 500))),
-            macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 10))),
+            macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 50))),
             macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 300))),
             macro_trend_pool_size=max(5, min(200, _to_int(data.get("MACRO_TREND_POOL_SIZE"), 30))),
             macro_trend_reselect_seconds=max(900, min(86400, _to_int(data.get("MACRO_TREND_RESELECT_SECONDS"), 14400))),
@@ -323,6 +393,7 @@ class Settings:
             solscan_cu_per_request=max(1, _to_int(data.get("SOLSCAN_CU_PER_REQUEST"), 100)),
             solscan_budget_window_seconds=max(60, _to_int(data.get("SOLSCAN_BUDGET_WINDOW_SECONDS"), 300)),
             solscan_permission_backoff_seconds=max(300, _to_int(data.get("SOLSCAN_PERMISSION_BACKOFF_SECONDS"), 21600)),
+            openai_budget_state_file=_to_str(data.get("OPENAI_BUDGET_STATE_FILE"), "reports/openai_budget_state.json"),
             model_file=_to_str(data.get("MODEL_FILE"), "model_online.json"),
             state_file=_to_str(data.get("STATE_FILE"), "state.json"),
             runtime_settings_file=_to_str(data.get("RUNTIME_SETTINGS_FILE"), "runtime_settings.json"),
@@ -351,7 +422,7 @@ def load_settings(env_path: str = ".env") -> Settings:
     runtime_path = Path(settings.runtime_settings_file)
     if runtime_path.exists():
         try:
-            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8-sig"))
         except Exception:
             runtime = {}
         if isinstance(runtime, dict) and runtime:
@@ -366,7 +437,7 @@ def save_runtime_overrides(settings: Settings, updates: dict[str, Any]) -> None:
     payload: dict[str, Any] = {}
     if runtime_path.exists():
         try:
-            current = json.loads(runtime_path.read_text(encoding="utf-8"))
+            current = json.loads(runtime_path.read_text(encoding="utf-8-sig"))
             if isinstance(current, dict):
                 payload.update(current)
         except Exception:
@@ -397,4 +468,16 @@ def settings_to_public_dict(settings: Settings) -> dict[str, Any]:
         data["solana_private_key"] = "***"
     if data.get("solscan_api_key"):
         data["solscan_api_key"] = "***"
+    if data.get("helius_api_key"):
+        data["helius_api_key"] = "***"
+    if data.get("helius_rpc_url"):
+        data["helius_rpc_url"] = "***"
+    if data.get("helius_ws_url"):
+        data["helius_ws_url"] = "***"
+    if data.get("helius_sender_url"):
+        data["helius_sender_url"] = "***"
+    if data.get("birdeye_api_key"):
+        data["birdeye_api_key"] = "***"
+    if data.get("openai_api_key"):
+        data["openai_api_key"] = "***"
     return data

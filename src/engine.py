@@ -3,6 +3,7 @@
 import math
 import json
 import os
+import re
 import shutil
 import hashlib
 import tempfile
@@ -11,6 +12,7 @@ import time
 from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,8 @@ from src.config import Settings, load_settings, save_runtime_overrides, settings
 from src.data_sources import DexScreenerClient, MacroMarketClient, PumpFunClient, SolscanProClient, TrendCollector
 from src.models import TokenSnapshot, TrendEvent
 from src.online_model import OnlineModel, load_online_model, save_online_model
-from src.providers import BybitV5Client, JupiterSolanaTrader, SolanaWalletTracker, TelegramBotClient
+from src.meme_discovery import MemeDiscoveryConfig, MemeDiscoveryService
+from src.providers import BybitV5Client, JupiterSolanaTrader, OpenAICandidateAdvisor, PumpPortalLocalTrader, SolanaWalletTracker, TelegramBotClient
 from src.runtime_feedback import RuntimeFeedbackStore
 from src.state import (
     STATE_DAILY_PNL_HISTORY_LIMIT,
@@ -45,6 +48,7 @@ MODEL_SPECS: dict[str, dict[str, str]] = {
     "A": {"name": "안정 추세 예측모델", "description": "신뢰형: 고신뢰 지표 중심 스윙"},
     "B": {"name": "흐름 추종 예측모델", "description": "트렌드형: 최근 이슈/소셜 추론 중심"},
     "C": {"name": "공격 모멘텀 예측모델", "description": "공격형: 빠른 진입/고위험 추론"},
+    "D": {"name": "단일 포지션 컨빅션모델", "description": "단일 포지션 집중형 중기 단타/스윙"},
 }
 MEME_MODEL_SPECS: dict[str, dict[str, str]] = {
     "A": {"name": "도그리 밈 선별모델", "description": "고품질 밈코인 선별 진입"},
@@ -52,11 +56,59 @@ MEME_MODEL_SPECS: dict[str, dict[str, str]] = {
     "C": {"name": "밈 단타 모멘텀모델", "description": "단타(빠른 회전) 중심 전략"},
 }
 CRYPTO_MODEL_SPECS: dict[str, dict[str, str]] = {
-    "A": {"name": "크립토 안정 추세모델", "description": "신뢰형: 고신뢰 지표 중심 스윙"},
-    "B": {"name": "크립토 흐름 추종모델", "description": "트렌드형: 최근 이슈/소셜 추론 중심"},
-    "C": {"name": "동그리 크립토 모멘텀모델", "description": "공격형 모멘텀 전략"},
+    "A": {"name": "크립토 단타모델", "description": "5m/15m/1h 기반 단타 전략"},
+    "B": {"name": "크립토 공격형 단타모델", "description": "고배율 공격형 인트라데이 전략"},
+    "C": {"name": "크립토 스윙10 모델", "description": "하루 최대 10회 진입의 스윙 전략"},
+    "D": {"name": "크립토 단일포지션 모델", "description": "단일 포지션 100% 시드 집중 전략"},
 }
-MODEL_IDS = ("A", "B", "C")
+MEME_ENGINE_SPEC: dict[str, str] = {
+    "id": "MEME_ONE",
+    "name": "Unified Meme Engine",
+    "description": "THEME_SNIPER 메인 모델에서 신규 런치와 소셜 버스트를 함께 점수화하고 NARRATIVE는 재점화형 서브 시그널로만 쓰는 단일 밈 엔진",
+}
+MEME_STRATEGY_IDS = ("THEME", "SNIPER", "NARRATIVE")
+MEME_STRATEGY_ALIASES: dict[str, str] = {
+    "LAUNCH": "SNIPER",
+}
+MEME_STRATEGY_SPECS: dict[str, dict[str, Any]] = {
+    "THEME": {
+        "name": "Theme Basket",
+        "description": "신규 밈 전체를 보는 메인 전략. 3k~5k launch-first 후보를 0.1 SOL로 빠르게 분산 진입",
+        "bridge_model_id": "A",
+        "execution_mode": "theme_basket",
+        "entry_sol": "meme_theme_entry_sol",
+    },
+    "SNIPER": {
+        "name": "Sniper",
+        "description": "X/Reddit/4chan/뉴스 버스트가 붙은 1k~50k 밈을 0.2 SOL로 빠르게 공략하는 메인 전략",
+        "bridge_model_id": "C",
+        "execution_mode": "sniper_utility",
+        "entry_sol": "meme_launch_entry_sol",
+    },
+    "NARRATIVE": {
+        "name": "Narrative",
+        "description": "죽은 코인 재점화/장기 내러티브 부활을 잡는 서브 전략",
+        "bridge_model_id": "B",
+        "execution_mode": "narrative_engine",
+        "entry_sol": "meme_narrative_entry_sol",
+    },
+}
+BRIDGE_MEME_MODEL_TO_STRATEGY_ID: dict[str, str] = {
+    str(spec.get("bridge_model_id") or "").upper(): strategy_id
+    for strategy_id, spec in MEME_STRATEGY_SPECS.items()
+    if str(spec.get("bridge_model_id") or "").strip()
+}
+CRYPTO_STRATEGY_IDS = ("SCALP", "AGGRESSIVE", "SWING10", "CONVICTION1")
+CRYPTO_STRATEGY_SPECS: dict[str, dict[str, str]] = {
+    "SCALP": {"name": "Crypto Scalp", "description": "5m/15m/1h 기반 단타 전략"},
+    "AGGRESSIVE": {"name": "Crypto Aggressive", "description": "고배율 공격형 단타 전략"},
+    "SWING10": {"name": "Crypto Swing10", "description": "하루 10회 제한 스윙 전략"},
+    "CONVICTION1": {"name": "Crypto Conviction1", "description": "단일 포지션 100% 시드 전략"},
+}
+MEME_MODEL_IDS = ("A", "B", "C")
+CRYPTO_MODEL_IDS = ("A", "B", "C", "D")
+ALL_MODEL_IDS = ("A", "B", "C", "D")
+MODEL_IDS = MEME_MODEL_IDS
 SECRET_UPDATE_KEYS: tuple[str, ...] = (
     "BYBIT_API_KEY",
     "BYBIT_API_SECRET",
@@ -67,6 +119,12 @@ SECRET_UPDATE_KEYS: tuple[str, ...] = (
     "TELEGRAM_CHAT_ID",
     "GOOGLE_API_KEY",
     "SOLSCAN_API_KEY",
+    "HELIUS_API_KEY",
+    "HELIUS_RPC_URL",
+    "HELIUS_WS_URL",
+    "HELIUS_SENDER_URL",
+    "BIRDEYE_API_KEY",
+    "OPENAI_API_KEY",
     "BINANCE_API_KEY",
     "BINANCE_API_SECRET",
     "COINGECKO_API_KEY",
@@ -85,18 +143,25 @@ LOSS_GUARD_DRAWDOWN_RATIO = 0.50
 LOSS_GUARD_RESTART_COOLDOWN_SECONDS = 6 * 60 * 60
 LIVE_MEME_CLOSE_ALERT_STREAK = 3
 LIVE_MEME_CLOSE_ALERT_COOLDOWN_SECONDS = 300
+LIVE_ACCOUNTING_SCHEMA_VERSION = 5
+LIVE_PENDING_SIGNATURE_TTL_SECONDS = 600
+LIVE_EXTERNAL_FLOW_SCAN_LIMIT = 120
+LIVE_EXTERNAL_FLOW_PROCESSED_LIMIT = 4000
+MEME_C_FIXED_SL_PCT = 0.25
+MEME_C_SL_CONFIRM_SECONDS = 90
+MEME_C_SL_RECOVERY_RESET_FACTOR = 0.70
+MEME_C_REENTRY_WAIT_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
-    # A: strict quality-first profile
-    "A": {"threshold": 0.086, "tp_mul": 0.98, "sl_mul": 0.78},
-    # B: pullback-flow profile (selective entries, controlled risk).
-    "B": {"threshold": 0.080, "tp_mul": 1.08, "sl_mul": 0.84},
-    # C: aggressive momentum profile (faster entries, wider target).
-    "C": {"threshold": 0.066, "tp_mul": 1.32, "sl_mul": 0.88},
+    "A": {"threshold": 0.084, "tp_mul": 0.96, "sl_mul": 0.78},
+    "B": {"threshold": 0.072, "tp_mul": 1.18, "sl_mul": 0.86},
+    "C": {"threshold": 0.078, "tp_mul": 1.12, "sl_mul": 0.84},
+    "D": {"threshold": 0.090, "tp_mul": 1.24, "sl_mul": 0.82},
 }
 CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
-    "A": {"rank_max": 120, "trend_stack_min": 0.16, "overheat_max": 0.50, "smallcap_trend_only": False},
-    "B": {"rank_max": 220, "trend_stack_min": 0.06, "overheat_max": 0.58, "smallcap_trend_only": False},
-    "C": {"rank_max": 300, "trend_stack_min": 0.16, "overheat_max": 0.68, "smallcap_trend_only": True},
+    "A": {"rank_max": 300, "trend_stack_min": 0.08, "overheat_max": 0.48, "smallcap_trend_only": False},
+    "B": {"rank_max": 300, "trend_stack_min": 0.04, "overheat_max": 0.62, "smallcap_trend_only": False},
+    "C": {"rank_max": 300, "trend_stack_min": 0.14, "overheat_max": 0.44, "smallcap_trend_only": False},
+    "D": {"rank_max": 300, "trend_stack_min": 0.22, "overheat_max": 0.38, "smallcap_trend_only": False},
 }
 AUTOTUNE_NOTE_KO: dict[str, str] = {
     "hold": "유지",
@@ -204,7 +269,47 @@ NON_MEME_NAME_WORDS = (
     "liquid staking",
 )
 
+MEME_SIMILARITY_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "token",
+    "coin",
+    "official",
+    "of",
+    "on",
+    "in",
+}
+MEME_SIMILARITY_LOOKBACK_MINUTES = 180.0
+MEME_SIMILARITY_SPLIT_SUFFIXES = ("house", "coin", "token", "meme", "dog", "cat", "ai")
+
 MEME_SMALLCAP_MAX_USD = 1_000_000.0
+MEME_TRACKED_MAX_CAP_USD = 5_000_000.0
+MEME_TRACKED_ENTRY_MAX_CAP_USD = 3_000_000.0
+MEME_THEME_LAUNCH_IDEAL_MIN_CAP_USD = 3_000.0
+MEME_THEME_LAUNCH_IDEAL_MAX_CAP_USD = 5_000.0
+MEME_THEME_LAUNCH_SOFT_MIN_CAP_USD = 1_800.0
+MEME_THEME_LAUNCH_SOFT_MAX_CAP_USD = 8_000.0
+MEME_THEME_LAUNCH_HARD_MAX_CAP_USD = 12_000.0
+MEME_THEME_LAUNCH_MAX_AGE_MINUTES = 20.0
+MEME_THEME_LAUNCH_ENTRY_MAX_AGE_MINUTES = 8.0
+MEME_THEME_LAUNCH_MIN_LIQUIDITY_USD = 800.0
+MEME_THEME_LAUNCH_MIN_VOLUME_5M_USD = 250.0
+MEME_THEME_RAW_FEED_SLOTS = 48
+MEME_SNIPER_MIN_CAP_USD = 1_000.0
+MEME_SNIPER_MAX_CAP_USD = 50_000.0
+MEME_SNIPER_MIN_LIQUIDITY_USD = 450.0
+MEME_SNIPER_MIN_VOLUME_5M_USD = 250.0
+MEME_SNIPER_MIN_SOCIAL_BURST = 0.55
+MEME_SNIPER_MIN_SIGNAL_FIT = 0.58
+MEME_PUMPPORTAL_PRIORITY_FEE_SOL = 0.001
+MEME_PUMPPORTAL_SLIPPAGE_PCT = 15.0
+# Newly discovered meme tokens stay on watch for at least 30 minutes.
+MEME_WATCHLIST_TTL_SECONDS = 60 * 30
+MEME_WATCHLIST_MAX_TOKENS = 800
+MEME_WATCH_SNAPSHOT_CACHE_SECONDS = 60 * 30
+MEME_WATCH_SCORE_REFRESH_SECONDS = 180
 MEME_MAX_AGE_MINUTES = 60.0 * 24.0 * 365.0
 MEME_TREND_THEME_MAX_AGE_MINUTES = 60.0 * 24.0 * 30.0
 MEME_EXCLUDE_TOP_RANK_MAX = 500
@@ -266,8 +371,52 @@ class TradingEngine:
             google_trend_max_symbols=self.settings.google_trend_max_symbols,
             runtime_feedback_store=self.runtime_feedback,
         )
+        helius_rpc_url = str(self.settings.helius_rpc_url or "").strip()
+        helius_ws_url = str(self.settings.helius_ws_url or "").strip()
+        helius_sender_url = str(self.settings.helius_sender_url or "").strip()
+        if self.settings.helius_api_key:
+            if not helius_rpc_url:
+                helius_rpc_url = f"https://mainnet.helius-rpc.com/?api-key={self.settings.helius_api_key}"
+            if not helius_ws_url:
+                helius_ws_url = f"wss://mainnet.helius-rpc.com/?api-key={self.settings.helius_api_key}"
+            if not helius_sender_url:
+                helius_sender_url = "https://sender.helius-rpc.com/fast"
+        self.meme_discovery = MemeDiscoveryService(
+            MemeDiscoveryConfig(
+                helius_api_key=self.settings.helius_api_key,
+                helius_rpc_url=helius_rpc_url,
+                helius_ws_url=helius_ws_url,
+                helius_sender_url=helius_sender_url,
+                birdeye_api_key=self.settings.birdeye_api_key,
+                social_4chan_enabled=bool(self.settings.social_4chan_enabled),
+                social_4chan_boards=self.settings.social_4chan_boards,
+                social_4chan_max_threads_per_board=int(self.settings.social_4chan_max_threads_per_board),
+                meme_sniper_poll_seconds=int(self.settings.meme_sniper_poll_seconds),
+                meme_sniper_social_window_seconds=int(self.settings.meme_sniper_social_window_seconds),
+                meme_theme_cluster_min_tokens=int(self.settings.meme_theme_cluster_min_tokens),
+            )
+        )
+        self.openai_advisor = OpenAICandidateAdvisor(
+            api_key=self.settings.openai_api_key,
+            model=self.settings.openai_model,
+            enabled=bool(self.settings.openai_review_enabled),
+            monthly_budget_usd=float(self.settings.openai_monthly_budget_usd),
+            daily_budget_usd=float(self.settings.openai_daily_budget_usd),
+            candidate_review_interval_seconds=int(self.settings.openai_candidate_review_interval_seconds),
+            candidate_top_n=int(self.settings.openai_candidate_top_n),
+            candidate_min_score=float(self.settings.openai_candidate_min_score),
+            narrative_max_calls_per_day=int(self.settings.openai_narrative_max_calls_per_day),
+            input_token_estimate=int(self.settings.openai_input_token_estimate),
+            output_token_estimate=int(self.settings.openai_output_token_estimate),
+            state_path=self.settings.openai_budget_state_file,
+        )
         self.wallet = SolanaWalletTracker(self.settings.solana_rpc_url)
         self.solana_trader = JupiterSolanaTrader(
+            rpc_url=self.settings.solana_rpc_url,
+            private_key=self.settings.solana_private_key,
+            wallet_address=self.settings.phantom_wallet_address,
+        )
+        self.pumpportal_trader = PumpPortalLocalTrader(
             rpc_url=self.settings.solana_rpc_url,
             private_key=self.settings.solana_private_key,
             wallet_address=self.settings.phantom_wallet_address,
@@ -277,6 +426,20 @@ class TradingEngine:
             self.settings.bybit_api_secret,
             self.settings.bybit_base_url,
             self.settings.bybit_recv_window,
+        )
+        self.openai_advisor = OpenAICandidateAdvisor(
+            api_key=self.settings.openai_api_key,
+            model=self.settings.openai_model,
+            enabled=bool(self.settings.openai_review_enabled),
+            monthly_budget_usd=float(self.settings.openai_monthly_budget_usd),
+            daily_budget_usd=float(self.settings.openai_daily_budget_usd),
+            candidate_review_interval_seconds=int(self.settings.openai_candidate_review_interval_seconds),
+            candidate_top_n=int(self.settings.openai_candidate_top_n),
+            candidate_min_score=float(self.settings.openai_candidate_min_score),
+            narrative_max_calls_per_day=int(self.settings.openai_narrative_max_calls_per_day),
+            input_token_estimate=int(self.settings.openai_input_token_estimate),
+            output_token_estimate=int(self.settings.openai_output_token_estimate),
+            state_path=self.settings.openai_budget_state_file,
         )
         self.alert_manager = AlertManager(self.settings.telegram_bot_token, self.settings.telegram_chat_id)
         self.telegram = TelegramBotClient(self.settings.telegram_bot_token)
@@ -300,9 +463,16 @@ class TradingEngine:
         self._new_meme_feed: list[dict[str, Any]] = []
         self._meme_symbol_market_caps: dict[str, float] = {}
         self._meme_symbol_age_minutes: dict[str, float] = {}
+        self._meme_score_log_guard: dict[str, dict[str, Any]] = {}
+        self._meme_watch_tokens: dict[str, int] = {}
+        self._meme_watch_snapshot_cache: dict[str, dict[str, Any]] = {}
+        self._meme_watch_score_last_ts: dict[str, int] = {}
+        self._meme_watch_latest: dict[str, dict[str, Any]] = {}
         self._last_wallet_sync = 0
         self._last_bybit_sync = 0
+        self._pending_live_trade_signatures: dict[str, int] = {}
         self._last_telegram_poll = 0
+        self._telegram_thread_start_ts = 0
         self._last_telegram_report = 0
         self._runtime_error_notice: dict[str, dict[str, Any]] = {}
         self._last_state_backup_ts = 0
@@ -343,6 +513,11 @@ class TradingEngine:
             self.runtime_feedback = RuntimeFeedbackStore(self.settings.runtime_feedback_db_file)
         self.wallet = SolanaWalletTracker(self.settings.solana_rpc_url)
         self.solana_trader = JupiterSolanaTrader(
+            rpc_url=self.settings.solana_rpc_url,
+            private_key=self.settings.solana_private_key,
+            wallet_address=self.settings.phantom_wallet_address,
+        )
+        self.pumpportal_trader = PumpPortalLocalTrader(
             rpc_url=self.settings.solana_rpc_url,
             private_key=self.settings.solana_private_key,
             wallet_address=self.settings.phantom_wallet_address,
@@ -413,6 +588,14 @@ class TradingEngine:
             self._telegram_poll_lock_path = self._telegram_lock_path_for_token(self.settings.telegram_bot_token)
             self._telegram_webhook_init_done = False
 
+    def _invalidate_dashboard_cache(self) -> None:
+        with self._lock:
+            self._dashboard_cache = {}
+            self._dashboard_cache_ts = 0.0
+            self._dashboard_cache_cycle_ts = 0
+            self._dashboard_cache_wallet_ts = 0
+            self._dashboard_cache_bybit_ts = 0
+
     def _enforce_paper_lock(self) -> None:
         if not getattr(self.settings, "lock_paper_mode", False):
             return
@@ -444,7 +627,7 @@ class TradingEngine:
     def _has_live_open_positions(self, runs: dict[str, Any] | None = None) -> bool:
         table = dict(runs or {})
         if bool(self.settings.live_enable_meme):
-            for model_id in MODEL_IDS:
+            for model_id in MEME_MODEL_IDS:
                 run = self._get_market_run(table, "meme", model_id)
                 for pos in list((run.get("meme_positions") or {}).values()):
                     if str((pos or {}).get("mode") or "").strip().lower() == "live":
@@ -460,20 +643,20 @@ class TradingEngine:
         if str(self.settings.trade_mode or "").lower() != "live":
             return
         with self._lock:
-            runs = dict(self.state.model_runs or {})
             live_equity = self._live_equity_usd_from_assets(self.state.wallet_assets, self.state.bybit_assets)
             current_seed = float(self.state.live_seed_usd or 0.0)
-            has_open = self._has_live_open_positions(runs)
-            should_sync = bool(force or current_seed <= 0.0 or not has_open)
+            should_sync = bool(force or current_seed <= 0.0)
             if not should_sync:
                 return
             if current_seed > 0.0:
                 gap = abs(live_equity - current_seed)
                 if gap <= max(0.5, current_seed * 0.0025):
                     return
-            self.state.live_seed_usd = float(live_equity)
+            anchor = float(getattr(self.state, "live_perf_anchor_usd", 0.0) or 0.0)
+            seed_value = float(anchor if anchor > 0.0 else live_equity)
+            self.state.live_seed_usd = float(seed_value)
             self.state.live_seed_set_ts = int(now_ts)
-            if float(getattr(self.state, "live_perf_anchor_usd", 0.0) or 0.0) <= 0.0:
+            if anchor <= 0.0:
                 self.state.live_perf_anchor_usd = float(live_equity)
                 self.state.live_perf_anchor_ts = int(now_ts)
                 self.state.live_net_flow_usd = float(getattr(self.state, "live_net_flow_usd", 0.0) or 0.0)
@@ -520,6 +703,7 @@ class TradingEngine:
                 self.state.live_net_flow_usd = 0.0
             perf = self._live_performance_view_locked(live_equity_usd=live_equity, now_ts=now_ts, ensure_anchor=False)
         self._persist(force=True)
+        self._invalidate_dashboard_cache()
         net_flow_value = float(perf.get("live_net_flow_usd") or 0.0)
         net_flow_text = "0.00" if reset_net_flow else f"{net_flow_value:+.2f}"
         self._push_alert(
@@ -542,6 +726,7 @@ class TradingEngine:
             self.state.live_net_flow_usd = float(current + delta)
             perf = self._live_performance_view_locked(live_equity_usd=live_equity, now_ts=now_ts, ensure_anchor=False)
         self._persist(force=True)
+        self._invalidate_dashboard_cache()
         flow = float(perf.get("live_net_flow_usd") or 0.0)
         label = "입금" if delta > 0 else "출금"
         detail_note = f" | 메모={note.strip()}" if str(note or "").strip() else ""
@@ -552,6 +737,625 @@ class TradingEngine:
             send_telegram=False,
         )
         return perf
+
+    @staticmethod
+    def _extract_live_tx_signature(reason: str) -> str:
+        text = str(reason or "").strip()
+        if not text:
+            return ""
+        m = re.search(r"(?:^|\|)live_tx=([1-9A-HJ-NP-Za-km-z]+)", text)
+        return str(m.group(1)).strip() if m else ""
+
+    @staticmethod
+    def _trade_reason_family(reason: str) -> str:
+        text = str(reason or "").strip().lower()
+        if not text:
+            return ""
+        head = text.split("|", 1)[0].strip()
+        family = head.split(" ", 1)[0].strip()
+        return family
+
+    @staticmethod
+    def _optional_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    def _live_trade_is_realized(self, row: dict[str, Any]) -> bool:
+        side = str((row or {}).get("side") or "").strip().lower()
+        if side != "sell":
+            return False
+        if bool((row or {}).get("accounting_excluded")):
+            return False
+        reason = str((row or {}).get("reason") or "").strip().lower()
+        if "wallet_miss_cleanup" in reason:
+            return False
+        if "realized" in dict(row or {}):
+            return bool((row or {}).get("realized"))
+        return True
+
+    def _live_trade_realized_pnl_usd(self, row: dict[str, Any]) -> float | None:
+        if not self._live_trade_is_realized(row):
+            return None
+        explicit = self._optional_float((row or {}).get("realized_pnl_usd"))
+        if explicit is not None:
+            return float(explicit)
+        fallback = self._optional_float((row or {}).get("pnl_usd"))
+        return float(fallback) if fallback is not None else None
+
+    def _live_trade_realized_pnl_pct(self, row: dict[str, Any]) -> float | None:
+        if not self._live_trade_is_realized(row):
+            return None
+        explicit = self._optional_float((row or {}).get("realized_pnl_pct"))
+        if explicit is not None:
+            return float(explicit)
+        fallback = self._optional_float((row or {}).get("pnl_pct"))
+        return float(fallback) if fallback is not None else None
+
+    def _prune_pending_live_trade_signatures(self, now_ts: int | None = None) -> None:
+        now = int(now_ts or int(time.time()))
+        keep: dict[str, int] = {}
+        for sig, ts in dict(self._pending_live_trade_signatures or {}).items():
+            if not sig:
+                continue
+            if (now - int(ts or 0)) <= int(LIVE_PENDING_SIGNATURE_TTL_SECONDS):
+                keep[str(sig)] = int(ts or now)
+        self._pending_live_trade_signatures = keep
+
+    def _mark_pending_live_trade_signature(self, signature: str, now_ts: int | None = None) -> None:
+        sig = str(signature or "").strip()
+        if not sig:
+            return
+        now = int(now_ts or int(time.time()))
+        self._prune_pending_live_trade_signatures(now)
+        self._pending_live_trade_signatures[sig] = int(now)
+
+    def _known_live_trade_signatures(self) -> set[str]:
+        self._prune_pending_live_trade_signatures()
+        out: set[str] = {str(sig) for sig in dict(self._pending_live_trade_signatures or {}).keys() if str(sig)}
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        for model_id in self._all_model_ids():
+            for market in ("meme", "crypto"):
+                run = self._get_market_run(runs, market, model_id)
+                for tr in list(run.get("trades") or []):
+                    if not self._is_live_trade_row(tr):
+                        continue
+                    sig = self._extract_live_tx_signature(str((tr or {}).get("reason") or ""))
+                    if sig:
+                        out.add(sig)
+        return out
+
+    def _capture_live_wallet_snapshot(self, token_address: str = "") -> dict[str, Any]:
+        if not self.settings.phantom_wallet_address or not self.wallet.enabled:
+            return {}
+        try:
+            return self.wallet.get_wallet_snapshot(self.settings.phantom_wallet_address, token_address)
+        except Exception:
+            return {}
+
+    def _live_sol_price_usd(self) -> float:
+        with self._lock:
+            wallet_assets = list(self.state.wallet_assets or [])
+        for row in wallet_assets:
+            if str((row or {}).get("symbol") or "").upper().strip() == "SOL":
+                px = max(0.0, float((row or {}).get("price_usd") or 0.0))
+                if px > 0.0:
+                    return float(px)
+        try:
+            px = max(0.0, float(self.wallet._get_sol_price_usd() or 0.0))
+            if px > 0.0:
+                return float(px)
+        except Exception:
+            pass
+        try:
+            budget = self._solana_trade_budget()
+            return max(0.0, float(budget.get("sol_price_usd") or 0.0))
+        except Exception:
+            return 0.0
+
+    def _live_swap_accounting_from_signature(
+        self,
+        token_address: str,
+        swap_signature: str,
+        now_ts: int,
+        side: str,
+        fallback_sol_price_usd: float,
+    ) -> dict[str, Any]:
+        sig = str(swap_signature or "").strip()
+        token = str(token_address or "").strip()
+        if not sig or not token or not self.wallet.enabled or not self.settings.phantom_wallet_address:
+            return {}
+        try:
+            tx_summary = self.wallet.get_wallet_transaction_deltas(
+                sig,
+                self.settings.phantom_wallet_address,
+                tracked_mints={token},
+            )
+        except Exception:
+            tx_summary = {}
+        if not tx_summary:
+            return {}
+        sol_price_usd = max(0.0, float(fallback_sol_price_usd or 0.0), self._live_sol_price_usd())
+        token_row = dict((tx_summary.get("token_deltas") or {}).get(token) or {})
+        before_sol_lamports = int(tx_summary.get("wallet_pre_sol_lamports") or 0)
+        after_sol_lamports = int(tx_summary.get("wallet_post_sol_lamports") or 0)
+        before_token_raw = int(token_row.get("pre_raw") or 0)
+        after_token_raw = int(token_row.get("post_raw") or 0)
+        decimals = int(token_row.get("decimals") or 0)
+        fee_lamports = int(tx_summary.get("fee_lamports") or 0)
+        sol_delta_lamports = int(tx_summary.get("net_sol_change_lamports") or (after_sol_lamports - before_sol_lamports))
+        token_delta_raw = int(token_row.get("delta_raw") or (after_token_raw - before_token_raw))
+        qty_delta = float(token_row.get("delta_qty") or 0.0)
+        if abs(qty_delta) <= 1e-12 and token_delta_raw != 0:
+            qty_delta = float(token_delta_raw) / float(10**max(0, decimals))
+        fee_usd = (float(fee_lamports) / 1_000_000_000.0) * sol_price_usd if fee_lamports > 0 else 0.0
+        result = {
+            "signature": sig,
+            "ts": int(now_ts),
+            "side": str(side or "").lower().strip(),
+            "before_sol_lamports": int(before_sol_lamports),
+            "after_sol_lamports": int(after_sol_lamports),
+            "before_token_raw": int(before_token_raw),
+            "after_token_raw": int(after_token_raw),
+            "token_decimals": int(decimals),
+            "fee_lamports": int(fee_lamports),
+            "fee_usd": float(fee_usd),
+            "net_sol_delta_lamports": int(sol_delta_lamports),
+            "net_sol_delta_usd": float((float(sol_delta_lamports) / 1_000_000_000.0) * sol_price_usd),
+            "token_delta_raw": int(token_delta_raw),
+            "token_delta_qty": float(qty_delta),
+            "sol_price_usd": float(sol_price_usd),
+            "tx_summary": dict(tx_summary or {}),
+        }
+        if str(side or "").lower().strip() == "buy":
+            spent_lamports = max(0, -int(sol_delta_lamports))
+            received_qty = max(0.0, float(qty_delta))
+            spent_usd = (float(spent_lamports) / 1_000_000_000.0) * sol_price_usd
+            avg_price_usd = spent_usd / max(received_qty, 1e-12) if received_qty > 0.0 else 0.0
+            result.update(
+                {
+                    "spent_lamports": int(spent_lamports),
+                    "spent_usd": float(spent_usd),
+                    "received_qty": float(received_qty),
+                    "avg_price_usd": float(avg_price_usd),
+                }
+            )
+        else:
+            received_lamports = max(0, int(sol_delta_lamports))
+            sold_qty = max(0.0, -float(qty_delta))
+            proceeds_usd = (float(received_lamports) / 1_000_000_000.0) * sol_price_usd
+            avg_exit_price_usd = proceeds_usd / max(sold_qty, 1e-12) if sold_qty > 0.0 else 0.0
+            result.update(
+                {
+                    "received_lamports": int(received_lamports),
+                    "proceeds_usd": float(proceeds_usd),
+                    "sold_qty": float(sold_qty),
+                    "avg_exit_price_usd": float(avg_exit_price_usd),
+                }
+            )
+        return result
+
+    def _apply_live_swap_accounting(
+        self,
+        token_address: str,
+        swap_signature: str,
+        before_snapshot: dict[str, Any],
+        now_ts: int,
+        side: str,
+        fallback_sol_price_usd: float,
+    ) -> dict[str, Any]:
+        after_snapshot = self._capture_live_wallet_snapshot(token_address)
+        tx_summary: dict[str, Any] = {}
+        sig = str(swap_signature or "").strip()
+        if sig and self.wallet.enabled and self.settings.phantom_wallet_address:
+            try:
+                tx_summary = self.wallet.get_wallet_transaction_deltas(
+                    sig,
+                    self.settings.phantom_wallet_address,
+                    tracked_mints={str(token_address or "").strip()},
+                )
+            except Exception:
+                tx_summary = {}
+        sol_price_usd = max(0.0, float(fallback_sol_price_usd or 0.0), self._live_sol_price_usd())
+        before_sol_lamports = int(before_snapshot.get("sol_lamports") or 0)
+        after_sol_lamports = int(after_snapshot.get("sol_lamports") or 0)
+        before_token_raw = int(before_snapshot.get("token_raw_amount") or 0)
+        after_token_raw = int(after_snapshot.get("token_raw_amount") or 0)
+        decimals = int(after_snapshot.get("token_decimals") or before_snapshot.get("token_decimals") or 0)
+        if tx_summary:
+            before_sol_lamports = int(tx_summary.get("wallet_pre_sol_lamports") or before_sol_lamports)
+            after_sol_lamports = int(tx_summary.get("wallet_post_sol_lamports") or after_sol_lamports)
+            fee_lamports = int(tx_summary.get("fee_lamports") or 0)
+            token_row = dict((tx_summary.get("token_deltas") or {}).get(str(token_address or "").strip()) or {})
+            before_token_raw = int(token_row.get("pre_raw") or before_token_raw)
+            after_token_raw = int(token_row.get("post_raw") or after_token_raw)
+            decimals = int(token_row.get("decimals") or decimals)
+            sol_delta_lamports = int(tx_summary.get("net_sol_change_lamports") or (after_sol_lamports - before_sol_lamports))
+        else:
+            fee_lamports = 0
+            sol_delta_lamports = int(after_sol_lamports - before_sol_lamports)
+        token_delta_raw = int(after_token_raw - before_token_raw)
+        qty_delta = float(token_delta_raw) / float(10**max(0, decimals)) if token_delta_raw != 0 else 0.0
+        fee_usd = (float(fee_lamports) / 1_000_000_000.0) * sol_price_usd if fee_lamports > 0 else 0.0
+        result = {
+            "signature": sig,
+            "ts": int(now_ts),
+            "side": str(side or "").lower().strip(),
+            "before_sol_lamports": int(before_sol_lamports),
+            "after_sol_lamports": int(after_sol_lamports),
+            "before_token_raw": int(before_token_raw),
+            "after_token_raw": int(after_token_raw),
+            "token_decimals": int(decimals),
+            "fee_lamports": int(fee_lamports),
+            "fee_usd": float(fee_usd),
+            "net_sol_delta_lamports": int(sol_delta_lamports),
+            "net_sol_delta_usd": float((float(sol_delta_lamports) / 1_000_000_000.0) * sol_price_usd),
+            "token_delta_raw": int(token_delta_raw),
+            "token_delta_qty": float(qty_delta),
+            "sol_price_usd": float(sol_price_usd),
+            "tx_summary": dict(tx_summary or {}),
+        }
+        if str(side or "").lower().strip() == "buy":
+            spent_lamports = max(0, -int(sol_delta_lamports))
+            received_qty = max(0.0, float(qty_delta))
+            spent_usd = (float(spent_lamports) / 1_000_000_000.0) * sol_price_usd
+            avg_price_usd = spent_usd / max(received_qty, 1e-12) if received_qty > 0.0 else 0.0
+            result.update(
+                {
+                    "spent_lamports": int(spent_lamports),
+                    "spent_usd": float(spent_usd),
+                    "received_qty": float(received_qty),
+                    "avg_price_usd": float(avg_price_usd),
+                }
+            )
+        else:
+            received_lamports = max(0, int(sol_delta_lamports))
+            sold_qty = max(0.0, -float(qty_delta))
+            proceeds_usd = (float(received_lamports) / 1_000_000_000.0) * sol_price_usd
+            avg_exit_price_usd = proceeds_usd / max(sold_qty, 1e-12) if sold_qty > 0.0 else 0.0
+            result.update(
+                {
+                    "received_lamports": int(received_lamports),
+                    "proceeds_usd": float(proceeds_usd),
+                    "sold_qty": float(sold_qty),
+                    "avg_exit_price_usd": float(avg_exit_price_usd),
+                }
+            )
+        return result
+
+    def _estimate_wallet_tx_flow_usd(self, tx_summary: dict[str, Any]) -> float:
+        if not tx_summary:
+            return 0.0
+        sol_price_usd = max(0.0, float(self._live_sol_price_usd() or 0.0))
+        total = (float(tx_summary.get("net_sol_change_lamports") or 0.0) / 1_000_000_000.0) * sol_price_usd
+        for mint, row in dict(tx_summary.get("token_deltas") or {}).items():
+            qty = float((row or {}).get("delta_qty") or 0.0)
+            if abs(qty) <= 1e-12:
+                continue
+            price = self._resolve_price(str(mint or "").strip())
+            if price <= 0.0:
+                try:
+                    snap = self.dex.fetch_snapshot_for_token(self.settings.dex_chain, str(mint or "").strip())
+                except Exception:
+                    snap = None
+                if snap and float(getattr(snap, "price_usd", 0.0) or 0.0) > 0.0:
+                    price = float(getattr(snap, "price_usd", 0.0) or 0.0)
+                    self._last_prices[str(mint or "").strip()] = float(price)
+            if price <= 0.0:
+                continue
+            total += qty * price
+        return float(total)
+
+    def _detect_and_apply_external_live_flows(self, now_ts: int) -> None:
+        if not self.settings.phantom_wallet_address or not self.wallet.enabled:
+            return
+        known_trade_sigs = self._known_live_trade_signatures()
+        with self._lock:
+            runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+            if not isinstance(runs, dict):
+                runs = {}
+                self.state.model_runs = runs
+            flow_state = dict(runs.get("_live_external_flow_state") or {})
+            if int(flow_state.get("schema_version") or 0) < int(LIVE_ACCOUNTING_SCHEMA_VERSION):
+                flow_state = {}
+            processed = {str(k): int(v or 0) for k, v in dict(flow_state.get("processed") or {}).items() if str(k)}
+        try:
+            sig_rows = self.wallet.get_signatures_for_address(
+                self.settings.phantom_wallet_address,
+                limit=LIVE_EXTERNAL_FLOW_SCAN_LIMIT,
+            )
+        except Exception:
+            return
+        if not sig_rows:
+            return
+        changed = False
+        for row in reversed(sig_rows):
+            sig = str((row or {}).get("signature") or "").strip()
+            if not sig or sig in processed:
+                continue
+            processed[sig] = int(now_ts)
+            if sig in known_trade_sigs:
+                changed = True
+                continue
+            try:
+                tx_summary = self.wallet.get_wallet_transaction_deltas(
+                    sig,
+                    self.settings.phantom_wallet_address,
+                    tracked_mints=None,
+                )
+            except Exception:
+                changed = True
+                continue
+            if not tx_summary or tx_summary.get("meta_err") is not None:
+                changed = True
+                continue
+            token_deltas = dict(tx_summary.get("token_deltas") or {})
+            tracked_touch = any(abs(float((item or {}).get("delta_qty") or 0.0)) > 1e-12 for item in token_deltas.values())
+            non_sol_touch = sum(1 for item in token_deltas.values() if abs(float((item or {}).get("delta_qty") or 0.0)) > 1e-12)
+            net_sol_delta_usd = (float(tx_summary.get("net_sol_change_lamports") or 0.0) / 1_000_000_000.0) * self._live_sol_price_usd()
+            swap_like = bool(non_sol_touch >= 1 and abs(net_sol_delta_usd) >= 1.0)
+            if not tracked_touch and swap_like:
+                changed = True
+                continue
+            flow_delta_usd = self._estimate_wallet_tx_flow_usd(tx_summary)
+            if abs(flow_delta_usd) < 0.25:
+                changed = True
+                continue
+            with self._lock:
+                current = float(getattr(self.state, "live_net_flow_usd", 0.0) or 0.0)
+                self.state.live_net_flow_usd = float(current + flow_delta_usd)
+            direction = "입금/유입" if flow_delta_usd > 0 else "출금/유출"
+            try:
+                self.runtime_feedback.append_event(
+                    source="live:wallet_flow",
+                    level="info",
+                    status="external_flow_applied",
+                    action="외부 지갑 활동을 실전 거래손익이 아닌 입출금 보정으로 분리했습니다.",
+                    detail=f"{direction} {flow_delta_usd:+.2f} USD | sig={sig[:10]}...",
+                    meta={
+                        "signature": sig,
+                        "delta_usd": float(flow_delta_usd),
+                        "tracked_touch": bool(tracked_touch),
+                        "swap_like": bool(swap_like),
+                    },
+                    now_ts=int(now_ts),
+                )
+            except Exception:
+                pass
+            changed = True
+        if changed:
+            rows = sorted(processed.items(), key=lambda kv: int(kv[1] or 0), reverse=True)[:LIVE_EXTERNAL_FLOW_PROCESSED_LIMIT]
+            flow_state["processed"] = {str(k): int(v or 0) for k, v in rows}
+            flow_state["schema_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+            flow_state["last_scan_ts"] = int(now_ts)
+            with self._lock:
+                runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+                if not isinstance(runs, dict):
+                    runs = {}
+                runs["_live_external_flow_state"] = dict(flow_state)
+                self.state.model_runs = runs
+
+    def _reconcile_live_meme_trade_history(self, now_ts: int) -> bool:
+        with self._lock:
+            runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+            if not isinstance(runs, dict):
+                runs = {}
+                self.state.model_runs = runs
+            accounting_state = dict(runs.get("_live_accounting_state") or {})
+            saved_version = int(accounting_state.get("schema_version") or 0)
+            if saved_version >= int(LIVE_ACCOUNTING_SCHEMA_VERSION):
+                return False
+        changed = False
+        for model_id in MEME_MODEL_IDS:
+            with self._lock:
+                runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+                run = self._get_market_run(runs, "meme", model_id)
+                trades = list(run.get("trades") or [])
+            if not trades:
+                continue
+            ordered_for_dedupe = sorted(enumerate(trades), key=lambda item: int(((item[1] or {}).get("ts") or 0)))
+            stale_sell_indices: set[int] = set()
+            for pos, (idx, tr) in enumerate(ordered_for_dedupe):
+                row = dict(tr or {})
+                if not self._is_live_trade_row(row):
+                    continue
+                if str(row.get("source") or "").strip().lower() != "memecoin":
+                    continue
+                if str(row.get("side") or "").strip().lower() != "sell":
+                    continue
+                reason = str(row.get("reason") or "")
+                reason_l = reason.lower()
+                if "wallet_miss_cleanup" in reason_l:
+                    continue
+                if self._extract_live_tx_signature(reason):
+                    continue
+                token = str(row.get("token_address") or "").strip()
+                qty = max(0.0, float(row.get("qty") or 0.0))
+                ts = int(row.get("ts") or 0)
+                if not token or qty <= 0.0 or ts <= 0:
+                    continue
+                reason_family = self._trade_reason_family(reason)
+                for idx2, tr2 in ordered_for_dedupe[pos + 1 :]:
+                    row2 = dict(tr2 or {})
+                    if not self._is_live_trade_row(row2):
+                        continue
+                    if str(row2.get("source") or "").strip().lower() != "memecoin":
+                        continue
+                    if str(row2.get("side") or "").strip().lower() != "sell":
+                        continue
+                    reason2 = str(row2.get("reason") or "")
+                    sig2 = self._extract_live_tx_signature(reason2)
+                    if not sig2:
+                        continue
+                    if str(row2.get("token_address") or "").strip() != token:
+                        continue
+                    ts2 = int(row2.get("ts") or 0)
+                    if ts2 < ts:
+                        continue
+                    if (ts2 - ts) > 172800:
+                        break
+                    qty2 = max(0.0, float(row2.get("qty") or 0.0))
+                    if abs(qty2 - qty) > max(1e-6, qty * 0.02):
+                        continue
+                    reason2_family = self._trade_reason_family(reason2)
+                    if reason_family and reason2_family and reason_family != reason2_family:
+                        continue
+                    stale_sell_indices.add(int(idx))
+                    break
+            basis_by_token: dict[str, dict[str, float]] = {}
+            row_changed = False
+            ordered = sorted(enumerate(trades), key=lambda item: int(((item[1] or {}).get("ts") or 0)))
+            for idx, tr in ordered:
+                row = dict(tr or {})
+                if not self._is_live_trade_row(row):
+                    continue
+                if str(row.get("source") or "").strip().lower() != "memecoin":
+                    continue
+                side = str(row.get("side") or "").strip().lower()
+                token = str(row.get("token_address") or "").strip()
+                if not token:
+                    continue
+                signature = self._extract_live_tx_signature(str(row.get("reason") or ""))
+                if side == "buy":
+                    actual = {}
+                    if signature:
+                        actual = self._live_swap_accounting_from_signature(
+                            token_address=token,
+                            swap_signature=signature,
+                            now_ts=int(row.get("ts") or now_ts),
+                            side="buy",
+                            fallback_sol_price_usd=float(row.get("price_usd") or 0.0),
+                        )
+                    qty = max(
+                        0.0,
+                        float(actual.get("received_qty") or row.get("qty") or 0.0),
+                    )
+                    notional = max(
+                        0.0,
+                        float(actual.get("spent_usd") or row.get("notional_usd") or 0.0),
+                    )
+                    avg_price = float(actual.get("avg_price_usd") or (notional / max(qty, 1e-12) if qty > 0.0 else 0.0))
+                    fee_usd = float(actual.get("fee_usd") or row.get("network_fee_usd") or 0.0)
+                    updated = dict(row)
+                    updated["qty"] = float(qty)
+                    updated["price_usd"] = float(avg_price)
+                    updated["notional_usd"] = float(notional)
+                    updated["pnl_usd"] = None
+                    updated["pnl_pct"] = None
+                    updated["realized_pnl_usd"] = None
+                    updated["realized_pnl_pct"] = None
+                    updated["network_fee_usd"] = float(fee_usd)
+                    updated["realized"] = False
+                    updated["accounting_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+                    if actual:
+                        updated["before_sol_lamports"] = int(actual.get("before_sol_lamports") or 0)
+                        updated["after_sol_lamports"] = int(actual.get("after_sol_lamports") or 0)
+                        updated["before_token_raw"] = int(actual.get("before_token_raw") or 0)
+                        updated["after_token_raw"] = int(actual.get("after_token_raw") or 0)
+                    if updated != row:
+                        trades[idx] = updated
+                        row = updated
+                        row_changed = True
+                    basis = basis_by_token.setdefault(token, {"qty": 0.0, "cost_usd": 0.0})
+                    basis["qty"] = float(basis.get("qty") or 0.0) + float(qty)
+                    basis["cost_usd"] = float(basis.get("cost_usd") or 0.0) + float(notional)
+                    continue
+                if side != "sell":
+                    continue
+                basis = basis_by_token.setdefault(token, {"qty": 0.0, "cost_usd": 0.0})
+                cur_qty = max(0.0, float(basis.get("qty") or 0.0))
+                cur_cost = max(0.0, float(basis.get("cost_usd") or 0.0))
+                reason_l = str(row.get("reason") or "").lower()
+                if int(idx) in stale_sell_indices:
+                    updated = dict(row)
+                    updated["pnl_usd"] = 0.0
+                    updated["pnl_pct"] = 0.0
+                    updated["realized_pnl_usd"] = None
+                    updated["realized_pnl_pct"] = None
+                    updated["realized"] = False
+                    updated["accounting_excluded"] = True
+                    updated["accounting_note"] = "stale_estimated_sell_replaced_by_live_tx"
+                    updated["accounting_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+                    if updated != row:
+                        trades[idx] = updated
+                        row_changed = True
+                    continue
+                if "wallet_miss_cleanup" in reason_l:
+                    close_qty = min(cur_qty, max(0.0, float(row.get("qty") or 0.0)))
+                    avg_cost = cur_cost / max(cur_qty, 1e-12) if cur_qty > 0.0 else 0.0
+                    basis["qty"] = max(0.0, cur_qty - close_qty)
+                    basis["cost_usd"] = max(0.0, cur_cost - (avg_cost * close_qty))
+                    updated = dict(row)
+                    updated["pnl_usd"] = 0.0
+                    updated["pnl_pct"] = 0.0
+                    updated["realized_pnl_usd"] = None
+                    updated["realized_pnl_pct"] = None
+                    updated["realized"] = False
+                    updated["accounting_excluded"] = True
+                    updated["accounting_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+                    if updated != row:
+                        trades[idx] = updated
+                        row_changed = True
+                    continue
+                actual = {}
+                if signature:
+                    actual = self._live_swap_accounting_from_signature(
+                        token_address=token,
+                        swap_signature=signature,
+                        now_ts=int(row.get("ts") or now_ts),
+                        side="sell",
+                        fallback_sol_price_usd=float(row.get("price_usd") or 0.0),
+                    )
+                sold_qty = max(0.0, float(actual.get("sold_qty") or row.get("qty") or 0.0))
+                proceeds_usd = max(0.0, float(actual.get("proceeds_usd") or row.get("notional_usd") or 0.0))
+                avg_exit_price = float(actual.get("avg_exit_price_usd") or (proceeds_usd / max(sold_qty, 1e-12) if sold_qty > 0.0 else 0.0))
+                close_qty = min(cur_qty, sold_qty if sold_qty > 0.0 else cur_qty)
+                avg_cost = cur_cost / max(cur_qty, 1e-12) if cur_qty > 0.0 else 0.0
+                cost_basis = avg_cost * close_qty
+                realized_pnl = proceeds_usd - cost_basis if close_qty > 0.0 else 0.0
+                realized_pct = (realized_pnl / max(cost_basis, 1e-12)) if cost_basis > 0.0 else 0.0
+                basis["qty"] = max(0.0, cur_qty - close_qty)
+                basis["cost_usd"] = max(0.0, cur_cost - cost_basis)
+                updated = dict(row)
+                updated["qty"] = float(sold_qty if sold_qty > 0.0 else close_qty)
+                updated["price_usd"] = float(avg_exit_price)
+                updated["notional_usd"] = float(proceeds_usd)
+                updated["pnl_usd"] = float(realized_pnl)
+                updated["pnl_pct"] = float(realized_pct)
+                updated["realized_pnl_usd"] = float(realized_pnl)
+                updated["realized_pnl_pct"] = float(realized_pct)
+                updated["network_fee_usd"] = float(actual.get("fee_usd") or row.get("network_fee_usd") or 0.0)
+                updated["realized"] = True
+                updated["accounting_excluded"] = False
+                updated["accounting_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+                if actual:
+                    updated["before_sol_lamports"] = int(actual.get("before_sol_lamports") or 0)
+                    updated["after_sol_lamports"] = int(actual.get("after_sol_lamports") or 0)
+                    updated["before_token_raw"] = int(actual.get("before_token_raw") or 0)
+                    updated["after_token_raw"] = int(actual.get("after_token_raw") or 0)
+                if updated != row:
+                    trades[idx] = updated
+                    row_changed = True
+            if row_changed:
+                with self._lock:
+                    runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+                    run = self._get_market_run(runs, "meme", model_id)
+                    run["trades"] = trades
+                changed = True
+        with self._lock:
+            runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
+            accounting_state = dict(runs.get("_live_accounting_state") or {})
+            accounting_state["schema_version"] = int(LIVE_ACCOUNTING_SCHEMA_VERSION)
+            accounting_state["last_reconcile_ts"] = int(now_ts)
+            runs["_live_accounting_state"] = accounting_state
+            self.state.model_runs = runs
+        return changed
 
     def _persist(self, force: bool = False) -> None:
         now = int(time.time())
@@ -668,6 +1472,31 @@ class TradingEngine:
         except Exception:
             pass
 
+    def _append_runtime_event_only(
+        self,
+        source: str,
+        *,
+        level: str = "info",
+        status: str = "skip",
+        error: str = "",
+        detail: str = "",
+        title: str = "",
+    ) -> None:
+        now = int(time.time())
+        try:
+            self.runtime_feedback.append_event(
+                source=str(source or "runtime"),
+                level=str(level or "info").lower(),
+                status=str(status or "skip"),
+                error=str(error or "").strip(),
+                action="",
+                detail=str(detail or "").strip(),
+                meta={"title": str(title or "")},
+                now_ts=now,
+            )
+        except Exception:
+            pass
+
     def _backup_state_file(self, reason: str, force: bool = False) -> str:
         now = int(time.time())
         if not force and (now - int(self._last_state_backup_ts)) < STATE_BACKUP_INTERVAL_SECONDS:
@@ -731,6 +1560,209 @@ class TradingEngine:
     def _market_model_name(cls, market: str, model_id: str) -> str:
         return str(cls._market_model_spec(market, model_id).get("name") or model_id)
 
+    @staticmethod
+    def _meme_strategy_spec(strategy_or_model_id: str) -> dict[str, Any]:
+        raw = str(strategy_or_model_id or "").upper().strip()
+        normalized = str(MEME_STRATEGY_ALIASES.get(raw) or raw)
+        strategy_id = normalized if normalized in MEME_STRATEGY_SPECS else str(BRIDGE_MEME_MODEL_TO_STRATEGY_ID.get(raw) or "")
+        if strategy_id in MEME_STRATEGY_SPECS:
+            return dict(MEME_STRATEGY_SPECS.get(strategy_id) or {})
+        return {}
+
+    @classmethod
+    def _meme_strategy_id_for_model(cls, model_id: str) -> str:
+        raw = str(model_id or "").upper().strip()
+        normalized = str(MEME_STRATEGY_ALIASES.get(raw) or raw)
+        if normalized in MEME_STRATEGY_SPECS:
+            return normalized
+        strategy_id = str(BRIDGE_MEME_MODEL_TO_STRATEGY_ID.get(raw) or "")
+        if strategy_id:
+            return strategy_id
+        return "THEME"
+
+    @classmethod
+    def _meme_strategy_name(cls, strategy_or_model_id: str) -> str:
+        spec = cls._meme_strategy_spec(strategy_or_model_id)
+        if spec:
+            return str(spec.get("name") or strategy_or_model_id)
+        return str(strategy_or_model_id or "")
+
+    def _meme_strategy_id_from_signal_context(
+        self,
+        *,
+        snap: TokenSnapshot | None = None,
+        features: dict[str, Any] | None = None,
+        reason: str = "",
+        current_strategy_id: str = "",
+    ) -> str:
+        feats = dict(features or {})
+        source = str(getattr(snap, "source", "") or "").strip().lower()
+        reason_low = str(reason or "").strip().lower()
+        current = str(current_strategy_id or "").strip().upper()
+        if reason_low.startswith("theme|"):
+            return "THEME"
+        if reason_low.startswith("sniper|"):
+            return "SNIPER"
+        if reason_low.startswith("narrative|"):
+            return "NARRATIVE"
+        if "live_wallet_sync_seed" in reason_low:
+            return "THEME"
+        if current in MEME_STRATEGY_IDS and not feats and snap is None:
+            return current
+
+        trader_strength = float(feats.get("trader_strength") or 0.0)
+        news_strength = float(feats.get("news_strength") or 0.0)
+        community_strength = float(feats.get("community_strength") or 0.0)
+        google_strength = float(feats.get("google_strength") or 0.0)
+        trend_strength = float(feats.get("trend_strength") or 0.0)
+        tx_flow = float(feats.get("tx_flow") or 0.0)
+        buy_sell_ratio = float(feats.get("buy_sell_ratio") or 0.0)
+        age_freshness = float(feats.get("age_freshness") or 0.0)
+        age_stability = float(feats.get("age_stability") or 0.0)
+        is_pump_fun = float(feats.get("is_pump_fun") or 0.0) > 0.0
+        new_meme_instant = float(feats.get("new_meme_instant") or 0.0) > 0.0
+        social_burst = float(feats.get("sniper_social_burst") or 0.0)
+        sniper_signal_fit = float(feats.get("sniper_signal_fit") or 0.0)
+        cap_usd = 0.0
+        if snap is not None:
+            cap_usd = float(self._meme_effective_cap_usd(snap))
+        if cap_usd <= 0.0:
+            cap_usd = float(feats.get("market_cap_usd") or 0.0)
+        sniper_cap_ok = bool(MEME_SNIPER_MIN_CAP_USD <= cap_usd <= MEME_SNIPER_MAX_CAP_USD) if cap_usd > 0.0 else False
+
+        social_trigger = bool(
+            trader_strength >= 0.24
+            or community_strength >= 0.24
+            or news_strength >= 0.24
+            or google_strength >= 0.28
+            or (trader_strength + community_strength + news_strength + google_strength) >= 0.60
+            or social_burst >= 0.55
+            or any(tag in reason_low for tag in ("트레이더", "커뮤니티", "뉴스", "구글ai", "reddit", "4chan", "twitter", "x "))
+        )
+        fresh_new_coin = bool(
+            new_meme_instant
+            or (is_pump_fun and age_freshness >= 0.35)
+            or source in {"pumpfun_raw", "pumpfun_dex"}
+            or source.startswith("pumpfun")
+            or "pumpfun" in reason_low
+        )
+        revival_flow = bool(
+            age_stability >= 0.82
+            and social_burst >= 0.62
+            and social_trigger
+            and not fresh_new_coin
+            and (trader_strength >= 0.20 or community_strength >= 0.22 or news_strength >= 0.18)
+        )
+        sniper_trigger = bool(
+            social_trigger
+            and sniper_cap_ok
+            and (
+                social_burst >= 0.58
+                or sniper_signal_fit >= 0.62
+                or (
+                    social_burst >= 0.50
+                    and trend_strength >= 0.35
+                    and (tx_flow >= 0.56 or buy_sell_ratio >= 0.56)
+                )
+            )
+        )
+        if revival_flow:
+            return "NARRATIVE"
+        if sniper_trigger:
+            return "SNIPER"
+        if fresh_new_coin:
+            return "THEME"
+        if social_trigger and sniper_cap_ok:
+            return "SNIPER"
+        if current in MEME_STRATEGY_IDS:
+            return current
+        return "THEME"
+
+    @classmethod
+    def _meme_strategy_registry(cls) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for strategy_id in MEME_STRATEGY_IDS:
+            spec = dict(MEME_STRATEGY_SPECS.get(strategy_id) or {})
+            rows.append(
+                {
+                    "id": strategy_id,
+                    "name": str(spec.get("name") or strategy_id),
+                    "description": str(spec.get("description") or ""),
+                    "bridge_model_id": str(spec.get("bridge_model_id") or ""),
+                    "execution_mode": str(spec.get("execution_mode") or ""),
+                    "entry_sol_setting": str(spec.get("entry_sol") or ""),
+                }
+            )
+        return rows
+
+    def _openai_candidate_preview(self, model_views: dict[str, Any]) -> dict[str, Any]:
+        seen: dict[str, dict[str, Any]] = {}
+        min_score = float(self.settings.openai_candidate_min_score)
+        for model_id in MEME_MODEL_IDS:
+            for row in list((((model_views.get(model_id) or {}).get("meme") or {}).get("signals") or [])):
+                item = dict(row or {})
+                score = float(item.get("score") or 0.0)
+                if score < min_score:
+                    continue
+                token_obj = item.get("token")
+                token_address = str(
+                    item.get("token_address")
+                    or (getattr(token_obj, "token_address", "") if token_obj is not None else "")
+                    or ""
+                )
+                symbol = str(item.get("symbol") or "-").upper()
+                strategy_id = str(item.get("strategy_id") or "THEME").upper()
+                key = f"{strategy_id}:{token_address or symbol}"
+                prev = seen.get(key)
+                if prev is None or score > float(prev.get("score") or 0.0):
+                    feats = dict(item.get("features") or {})
+                    seen[key] = {
+                        "symbol": symbol,
+                        "token_address": token_address,
+                        "strategy_id": strategy_id,
+                        "score": score,
+                        "grade": str(item.get("grade") or "-"),
+                        "probability": float(item.get("probability") or 0.0),
+                        "market_cap_usd": float(item.get("market_cap_usd") or 0.0),
+                        "liquidity_usd": float(item.get("liquidity_usd") or 0.0),
+                        "volume_5m_usd": float(item.get("volume_5m_usd") or 0.0),
+                        "buy_sell_ratio": float(item.get("buy_sell_ratio") or 0.0),
+                        "sniper_social_burst": float(feats.get("sniper_social_burst") or 0.0),
+                        "sniper_signal_fit": float(feats.get("sniper_signal_fit") or 0.0),
+                        "theme_confirmation": float(feats.get("theme_confirmation") or 0.0),
+                        "holder_overlap_risk": float(feats.get("holder_overlap_risk") or 0.0),
+                        "reason": str(item.get("reason") or ""),
+                        "score_low_reason": str(item.get("score_low_reason") or ""),
+                    }
+        ordered = sorted(seen.values(), key=lambda row: (float(row.get("score") or 0.0), float(row.get("probability") or 0.0)), reverse=True)
+        candidate_rows = ordered[: int(self.settings.openai_candidate_top_n)]
+        candidate_payload = self.openai_advisor.build_meme_candidate_payload(candidate_rows, "candidate_review")
+        return {
+            "candidate_ready": bool(candidate_rows),
+            "candidate_count": int(len(candidate_rows)),
+            "candidate_rows": candidate_rows,
+            "candidate_payload": candidate_payload,
+            "budget": self.openai_advisor.dashboard_payload(),
+            "candidate_gate": {
+                "min_score": float(self.settings.openai_candidate_min_score),
+                "top_n": int(self.settings.openai_candidate_top_n),
+                "interval_seconds": int(self.settings.openai_candidate_review_interval_seconds),
+            },
+        }
+
+    @staticmethod
+    def _configured_meme_strategy_ids(raw: Any, fallback_all: bool = True) -> tuple[str, ...]:
+        text = str(raw or "").replace("|", ",").replace(" ", ",")
+        out: list[str] = []
+        for token in text.split(","):
+            strategy_id = str(token or "").strip().upper()
+            strategy_id = str(MEME_STRATEGY_ALIASES.get(strategy_id) or strategy_id)
+            if strategy_id in MEME_STRATEGY_IDS and strategy_id not in out:
+                out.append(strategy_id)
+        if out:
+            return tuple(out)
+        return tuple(MEME_STRATEGY_IDS) if bool(fallback_all) else tuple()
+
     def _display_model_name(self, model_id: str, market: str | None = None) -> str:
         market_id = str(market or "").lower().strip()
         if market_id in {"meme", "crypto"}:
@@ -738,21 +1770,30 @@ class TradingEngine:
         return str(MODEL_SPECS.get(model_id, {}).get("name") or model_id)
 
     @staticmethod
-    def _parse_model_id_csv(raw: Any, fallback_all: bool = True) -> tuple[str, ...]:
+    def _market_model_ids(market: str) -> tuple[str, ...]:
+        return tuple(CRYPTO_MODEL_IDS if str(market).lower() == "crypto" else MEME_MODEL_IDS)
+
+    @staticmethod
+    def _all_model_ids() -> tuple[str, ...]:
+        return tuple(ALL_MODEL_IDS)
+
+    @staticmethod
+    def _parse_model_id_csv(raw: Any, fallback_all: bool = True, allowed_ids: tuple[str, ...] | None = None) -> tuple[str, ...]:
+        valid_ids = tuple(allowed_ids or ALL_MODEL_IDS)
         text = str(raw or "").replace("|", ",").replace(" ", ",")
         out: list[str] = []
         for token in text.split(","):
             model_id = str(token or "").strip().upper()
-            if model_id in MODEL_IDS and model_id not in out:
+            if model_id in valid_ids and model_id not in out:
                 out.append(model_id)
         if out:
             return tuple(out)
-        return tuple(MODEL_IDS) if bool(fallback_all) else tuple()
+        return tuple(valid_ids) if bool(fallback_all) else tuple()
 
     def _autotrade_model_ids(self, market: str) -> tuple[str, ...]:
         market_id = "meme" if str(market).lower() == "meme" else "crypto"
         raw = self.settings.meme_autotrade_models if market_id == "meme" else self.settings.crypto_autotrade_models
-        return self._parse_model_id_csv(raw, fallback_all=True)
+        return self._parse_model_id_csv(raw, fallback_all=True, allowed_ids=self._market_model_ids(market_id))
 
     def _is_autotrade_model_enabled(self, market: str, model_id: str) -> bool:
         return str(model_id).upper() in set(self._autotrade_model_ids(market))
@@ -760,7 +1801,7 @@ class TradingEngine:
     def _live_model_ids(self, market: str) -> tuple[str, ...]:
         market_id = "meme" if str(market).lower() == "meme" else "crypto"
         raw = self.settings.live_meme_models if market_id == "meme" else self.settings.live_crypto_models
-        parsed = self._parse_model_id_csv(raw, fallback_all=False)
+        parsed = self._parse_model_id_csv(raw, fallback_all=False, allowed_ids=self._market_model_ids(market_id))
         if parsed:
             return parsed
         return self._autotrade_model_ids(market_id)
@@ -790,11 +1831,10 @@ class TradingEngine:
 
     @staticmethod
     def _meme_strategy_mode_for_model(model_id: str) -> str:
-        if model_id == "B":
-            return "long_hold"
-        if model_id == "C":
-            return "scalp"
-        return "quality_hybrid"
+        spec = TradingEngine._meme_strategy_spec(model_id)
+        if spec:
+            return str(spec.get("execution_mode") or "theme_basket")
+        return "theme_basket"
 
     def _migrate_market_model_profile(self, run: dict[str, Any], model_id: str, now_ts: int) -> None:
         version = int(run.get("market_profile_ver") or 0)
@@ -836,8 +1876,29 @@ class TradingEngine:
                     row["last_wallet_check_ts"] = int(row.get("last_wallet_check_ts") or now_ts)
                 meme_positions[token] = row
             version = 2
+        if version < 3 and model_id == "C":
+            for token, pos in meme_positions.items():
+                row = dict(pos or {})
+                row["strategy"] = "scalp"
+                row["hold_until_ts"] = 0
+                row["trailing_stop_pct"] = 0.0
+                row["sl_pct"] = float(MEME_C_FIXED_SL_PCT)
+                row["catastrophic_sl_pct"] = 0.0
+                meme_positions[token] = row
+            version = 3
+        if version < 4:
+            for token, pos in meme_positions.items():
+                row = dict(pos or {})
+                strategy = str(row.get("strategy") or "").lower().strip()
+                entry_score = max(0.50, float(row.get("entry_score") or 0.0))
+                if strategy == "swing":
+                    row["tp_pct"] = float(_clamp(float(row.get("tp_pct") or self._meme_score_target_tp_pct(entry_score)), 0.10, 0.20))
+                else:
+                    row["tp_pct"] = float(self._meme_score_target_tp_pct(entry_score))
+                meme_positions[token] = row
+            version = 4
         run["meme_positions"] = meme_positions
-        run["market_profile_ver"] = max(int(version), 2)
+        run["market_profile_ver"] = max(int(version), 4)
 
     @staticmethod
     def _market_run_key(market: str, model_id: str) -> str:
@@ -862,8 +1923,16 @@ class TradingEngine:
         run["market_id"] = market_id
         run["model_name"] = self._market_model_name(market_id, model_id)
         run["model_description"] = self._market_model_spec(market_id, model_id).get("description", "")
+        if market_id == "meme":
+            run["strategy_id"] = self._meme_strategy_id_for_model(model_id)
+            run["strategy_name"] = self._meme_strategy_name(model_id)
+            run["strategy_engine"] = str(self.settings.meme_strategy_engine or "unified_strategy_bridge")
+        else:
+            run["strategy_id"] = ""
+            run["strategy_name"] = ""
+            run["strategy_engine"] = ""
         run.setdefault("trades", [])
-        run.setdefault("market_profile_ver", 2)
+        run.setdefault("market_profile_ver", 4)
         run.setdefault("started_at", int(time.time()))
         run.setdefault("last_entry_alloc", {})
         run.setdefault("variant_seq", 0)
@@ -876,6 +1945,7 @@ class TradingEngine:
             run.setdefault("meme_positions", {})
             run.setdefault("latest_signals", [])
             run.setdefault("last_signal_ts", {})
+            run.setdefault("meme_reentry_after_ts", {})
             run["crypto_reentry_cooldowns"] = {}
             run["bybit_seed_usd"] = 0.0
             run["bybit_cash_usd"] = 0.0
@@ -894,6 +1964,7 @@ class TradingEngine:
             run["meme_positions"] = {}
             run["latest_signals"] = []
             run["last_signal_ts"] = {}
+            run["meme_reentry_after_ts"] = {}
             self._ensure_model_runtime_tune(run, model_id, int(time.time()))
             if not self.settings.demo_enable_macro:
                 run["bybit_seed_usd"] = 0.0
@@ -962,6 +2033,9 @@ class TradingEngine:
         row = self._blank_model_run(model_id, seed)
         row["model_name"] = MODEL_SPECS.get(model_id, {}).get("name", model_id)
         row["model_description"] = MODEL_SPECS.get(model_id, {}).get("description", "")
+        row["strategy_id"] = self._meme_strategy_id_for_model(model_id)
+        row["strategy_name"] = self._meme_strategy_name(model_id)
+        row["strategy_engine"] = str(self.settings.meme_strategy_engine or "unified_strategy_bridge")
         row["meme_seed_usd"] = float(meme_run.get("meme_seed_usd") or seed)
         row["meme_cash_usd"] = float(meme_run.get("meme_cash_usd") or 0.0)
         row["meme_positions"] = dict(meme_run.get("meme_positions") or {})
@@ -1000,6 +2074,10 @@ class TradingEngine:
             return {"threshold": (0.078, 0.110), "tp_mul": (0.86, 1.18), "sl_mul": (0.64, 0.96)}
         if model_id == "B":
             return {"threshold": (0.072, 0.120), "tp_mul": (0.94, 1.24), "sl_mul": (0.72, 0.92)}
+        if model_id == "C":
+            return {"threshold": (0.070, 0.108), "tp_mul": (1.00, 1.30), "sl_mul": (0.74, 0.94)}
+        if model_id == "D":
+            return {"threshold": (0.082, 0.122), "tp_mul": (1.08, 1.40), "sl_mul": (0.72, 0.92)}
         return {"threshold": (0.058, 0.108), "tp_mul": (1.08, 1.52), "sl_mul": (0.80, 1.04)}
 
     def _autotune_interval_seconds(self) -> int:
@@ -1121,7 +2199,7 @@ class TradingEngine:
             seed = max(50.0, float(self.state.demo_seed_usdt or self.settings.demo_seed_usdt))
             runs = self.state.model_runs
             # One-time migration from legacy combined A/B/C run layout to market-split runs.
-            for model_id in MODEL_IDS:
+            for model_id in self._all_model_ids():
                 legacy = runs.get(model_id)
                 if isinstance(legacy, dict):
                     if not isinstance(runs.get(f"legacy_{model_id}"), dict):
@@ -1131,6 +2209,8 @@ class TradingEngine:
                 else:
                     legacy = runs.get(f"legacy_{model_id}")
                 for market in ("meme", "crypto"):
+                    if model_id not in set(self._market_model_ids(market)):
+                        continue
                     key = self._market_run_key(market, model_id)
                     row = runs.get(key)
                     if not isinstance(row, dict):
@@ -1160,8 +2240,9 @@ class TradingEngine:
             backup_path = self._backup_state_file(f"pre_reset_{actor}", force=True)
             self.state.demo_seed_usdt = seed
             next_runs: dict[str, Any] = {}
-            for mid in MODEL_IDS:
+            for mid in MEME_MODEL_IDS:
                 next_runs[self._market_run_key("meme", mid)] = self._blank_market_run("meme", mid, seed)
+            for mid in CRYPTO_MODEL_IDS:
                 next_runs[self._market_run_key("crypto", mid)] = self._blank_market_run("crypto", mid, seed)
             self.state.model_runs = next_runs
             self.state.daily_pnl = []
@@ -1191,10 +2272,10 @@ class TradingEngine:
         self._push_alert(
             "info",
             "데모 초기화",
-            f"밈 3개 + 크립토 3개 예측모델 각각 시드 {int(seed)} {suffix} | backup={backup_path or '-'}",
+            f"밈 엔진 브리지 3개 + 크립토 4개 모델 각각 시드 {int(seed)} {suffix} | backup={backup_path or '-'}",
             send_telegram=True,
         )
-        return {"seed_usdt": seed, "models": list(MODEL_IDS), "backup_path": backup_path}
+        return {"seed_usdt": seed, "meme_models": list(MEME_MODEL_IDS), "crypto_models": list(CRYPTO_MODEL_IDS), "backup_path": backup_path}
 
     def reset_crypto_demo(self, seed_usdt: float | None = None, confirm_text: str = "", actor: str = "manual") -> dict[str, Any]:
         if str(confirm_text or "").strip().upper() != "RESET CRYPTO":
@@ -1208,9 +2289,10 @@ class TradingEngine:
             backup_path = self._backup_state_file(f"pre_crypto_reset_{actor}", force=True)
             runs = dict(self.state.model_runs or {})
             meme_seed = max(50.0, float(self.state.demo_seed_usdt or self.settings.demo_seed_usdt))
-            for mid in MODEL_IDS:
+            for mid in CRYPTO_MODEL_IDS:
                 crypto_key = self._market_run_key("crypto", mid)
                 runs[crypto_key] = self._blank_market_run("crypto", mid, seed)
+            for mid in MEME_MODEL_IDS:
                 meme_key = self._market_run_key("meme", mid)
                 if not isinstance(runs.get(meme_key), dict):
                     runs[meme_key] = self._blank_market_run("meme", mid, meme_seed)
@@ -1234,10 +2316,10 @@ class TradingEngine:
         self._push_alert(
             "info",
             "크립토 데모 초기화",
-            f"크립토 3개 모델 시드 {int(seed)} 초기화 완료 | backup={backup_path or '-'}",
+            f"크립토 4개 모델 시드 {int(seed)} 초기화 완료 | backup={backup_path or '-'}",
             send_telegram=True,
         )
-        return {"seed_usdt": seed, "models": list(MODEL_IDS), "backup_path": backup_path}
+        return {"seed_usdt": seed, "models": list(CRYPTO_MODEL_IDS), "backup_path": backup_path}
 
     def start(self) -> None:
         with self._lock:
@@ -1247,6 +2329,7 @@ class TradingEngine:
             epoch = int(self._run_epoch)
             self._running = True
             self._last_telegram_poll = 0
+            self._telegram_thread_start_ts = int(time.time())
             self._thread = threading.Thread(target=self._loop, args=(epoch,), name="trade-engine", daemon=True)
             self._telegram_thread = threading.Thread(
                 target=self._telegram_loop,
@@ -1256,8 +2339,8 @@ class TradingEngine:
             )
             loop_thread = self._thread
             tg_thread = self._telegram_thread
-        loop_thread.start()
         tg_thread.start()
+        loop_thread.start()
 
     def stop(self) -> None:
         with self._lock:
@@ -1277,6 +2360,7 @@ class TradingEngine:
         with self._lock:
             self._thread = None
             self._telegram_thread = None
+            self._telegram_thread_start_ts = 0
         self._release_telegram_poll_lock(force=True)
         self._persist(force=True)
 
@@ -1324,10 +2408,12 @@ class TradingEngine:
             self._sync_live_seed_if_idle(now, force=True)
             self._sync_live_wallet_managed_positions(now)
             self._persist(force=True)
+        self._invalidate_dashboard_cache()
 
     def set_autotrade(self, enabled: bool) -> None:
         save_runtime_overrides(self.settings, {"ENABLE_AUTOTRADE": bool(enabled)})
         self._reload_settings()
+        self._invalidate_dashboard_cache()
 
     def set_live_markets(self, meme_enabled: Any = None, crypto_enabled: Any = None) -> dict[str, bool]:
         updates: dict[str, Any] = {}
@@ -1355,6 +2441,7 @@ class TradingEngine:
                 f"밈={ 'ON' if out['meme'] else 'OFF' } | 크립토={ 'ON' if out['crypto'] else 'OFF' }",
                 send_telegram=False,
             )
+            self._invalidate_dashboard_cache()
         return out
 
     def set_demo_reset_enabled(self, enabled: bool) -> None:
@@ -1383,14 +2470,16 @@ class TradingEngine:
                 joined = ",".join(str(x or "").strip() for x in raw)
             else:
                 joined = str(raw or "").strip()
-            parsed = self._parse_model_id_csv(joined, fallback_all=False)
+            allowed_ids = self._market_model_ids("meme" if market == "밈" else "crypto")
+            parsed = self._parse_model_id_csv(joined, fallback_all=False, allowed_ids=allowed_ids)
             if not parsed:
                 # If that market is live-off, empty model selection is acceptable.
                 if market == "밈" and not bool(self.settings.live_enable_meme):
                     return tuple()
                 if market == "크립토" and not bool(self.settings.live_enable_crypto):
                     return tuple()
-                raise ValueError(f"{market} 모델 선택이 비어있습니다. A/B/C 중 최소 1개를 선택하세요.")
+                allowed_text = "/".join(allowed_ids)
+                raise ValueError(f"{market} 모델 선택이 비어있습니다. {allowed_text} 중 최소 1개를 선택하세요.")
             return parsed
 
         if meme_models is not None:
@@ -1428,13 +2517,15 @@ class TradingEngine:
                 joined = ",".join(str(x or "").strip() for x in raw)
             else:
                 joined = str(raw or "").strip()
-            parsed = self._parse_model_id_csv(joined, fallback_all=False)
+            allowed_ids = self._market_model_ids("meme" if market == "밈" else "crypto")
+            parsed = self._parse_model_id_csv(joined, fallback_all=False, allowed_ids=allowed_ids)
             if not parsed:
                 if market == "밈" and not bool(self.settings.live_enable_meme):
                     return tuple()
                 if market == "크립토" and not bool(self.settings.live_enable_crypto):
                     return tuple()
-                raise ValueError(f"{market} 실전 모델 선택이 비어있습니다. A/B/C 중 최소 1개를 선택하세요.")
+                allowed_text = "/".join(allowed_ids)
+                raise ValueError(f"{market} 실전 모델 선택이 비어있습니다. {allowed_text} 중 최소 1개를 선택하세요.")
             return parsed
 
         if meme_models is not None:
@@ -1487,6 +2578,12 @@ class TradingEngine:
                 "TELEGRAM_CHAT_ID": settings.telegram_chat_id,
                 "GOOGLE_API_KEY": settings.google_api_key,
                 "SOLSCAN_API_KEY": settings.solscan_api_key,
+                "HELIUS_API_KEY": settings.helius_api_key,
+                "HELIUS_RPC_URL": settings.helius_rpc_url,
+                "HELIUS_WS_URL": settings.helius_ws_url,
+                "HELIUS_SENDER_URL": settings.helius_sender_url,
+                "BIRDEYE_API_KEY": settings.birdeye_api_key,
+                "OPENAI_API_KEY": settings.openai_api_key,
                 "BINANCE_API_KEY": settings.binance_api_key,
                 "BINANCE_API_SECRET": settings.binance_api_secret,
                 "COINGECKO_API_KEY": settings.coingecko_api_key,
@@ -1776,7 +2873,16 @@ class TradingEngine:
         self._sync_wallet(now)
         self._sync_bybit(now)
         self._sync_live_wallet_managed_positions(now)
-        if not (self._telegram_thread and self._telegram_thread.is_alive()):
+        tg_thread = self._telegram_thread
+        telegram_alive = bool(tg_thread and tg_thread.is_alive())
+        telegram_grace = max(10, int(self.settings.telegram_poll_interval_seconds) * 3)
+        telegram_thread_start_ts = int(self._telegram_thread_start_ts or 0)
+        should_fallback_poll = (
+            not telegram_alive
+            and telegram_thread_start_ts > 0
+            and (now - telegram_thread_start_ts) >= telegram_grace
+        )
+        if should_fallback_poll:
             self._poll_telegram(now)
         self._update_focus_wallet_analysis(now)
 
@@ -1784,9 +2890,10 @@ class TradingEngine:
         snapshots = self._fetch_snapshots(trend_bundle)
         self._update_new_meme_feed(snapshots, trend_bundle)
         self._persist_trend_history(now, trend_bundle)
+        self._refresh_meme_watch_scores(now)
         bybit_prices = self._fetch_macro_demo_prices(trend_bundle) if self.settings.demo_enable_macro else {}
 
-        for model_id in MODEL_IDS:
+        for model_id in MEME_MODEL_IDS:
             with self._lock:
                 meme_key = self._market_run_key("meme", model_id)
                 run = self.state.model_runs.get(meme_key)
@@ -1795,11 +2902,15 @@ class TradingEngine:
                     self.state.model_runs[meme_key] = run
                 self._normalize_market_run(run, "meme", model_id, self.state.demo_seed_usdt)
 
-            signals = self._score_signals_variant(snapshots, trend_bundle, model_id)
+            signals, scored_rows = self._score_signals_variant(snapshots, trend_bundle, model_id)
             run["latest_signals"] = [
                 {
                     "symbol": s["token"].symbol,
                     "name": s["token"].name,
+                    "strategy_id": str(s.get("strategy_id") or "THEME"),
+                    "strategy_name": str(
+                        s.get("strategy_name") or self._meme_strategy_name(str(s.get("strategy_id") or "THEME"))
+                    ),
                     "grade": str(s.get("grade") or "G"),
                     "score": round(float(s["score"]), 4),
                     "probability": round(float(s["probability"]), 4),
@@ -1813,6 +2924,7 @@ class TradingEngine:
                 }
                 for s in signals[:80]
             ]
+            self._record_meme_score_history(model_id, scored_rows, now)
             self._evaluate_model_memecoin_exits(model_id, run)
             if self._is_market_autotrade_enabled("meme") and self._is_autotrade_model_enabled("meme", model_id):
                 self._execute_model_memecoin_entries(model_id, run, signals, execution_mode="paper")
@@ -1820,7 +2932,7 @@ class TradingEngine:
                     self._execute_model_memecoin_entries(model_id, run, signals, execution_mode="live")
 
         if self.settings.demo_enable_macro:
-            for model_id in MODEL_IDS:
+            for model_id in CRYPTO_MODEL_IDS:
                 with self._lock:
                     crypto_key = self._market_run_key("crypto", model_id)
                     run = self.state.model_runs.get(crypto_key)
@@ -1846,6 +2958,606 @@ class TradingEngine:
         self._sync_primary_views_from_model_a()
         self._scan_and_notify_runtime_errors()
         self._send_telegram_periodic_report(now)
+
+    def _record_meme_score_history(self, model_id: str, signals: list[dict[str, Any]], now_ts: int) -> None:
+        rows: list[dict[str, Any]] = []
+        watch_ranked: dict[str, list[dict[str, Any]]] = {}
+        watch_snapshots: dict[str, TokenSnapshot] = {}
+        for row in list(signals or [])[:120]:
+            token = row.get("token")
+            if not isinstance(token, TokenSnapshot):
+                continue
+            token_address = str(token.token_address or "").strip()
+            if not token_address:
+                continue
+            score_now = float(row.get("score") or 0.0)
+            grade_now = str(row.get("grade") or "G").upper().strip() or "G"
+            guard_key = f"{str(model_id or 'A').upper()}:{token_address}"
+            prev = dict(self._meme_score_log_guard.get(guard_key) or {})
+            prev_ts = int(prev.get("ts") or 0)
+            prev_score = float(prev.get("score") or 0.0)
+            prev_grade = str(prev.get("grade") or "").upper().strip()
+            if (int(now_ts) - prev_ts) < 900 and abs(score_now - prev_score) < 0.015 and grade_now == prev_grade:
+                continue
+            rows.append(
+                {
+                    "token_address": token_address,
+                    "symbol": str(token.symbol or "").upper().strip(),
+                    "name": str(token.name or "").strip(),
+                    "score": float(score_now),
+                    "grade": grade_now,
+                    "probability": float(row.get("probability") or 0.0),
+                    "price_usd": float(token.price_usd or 0.0),
+                    "liquidity_usd": float(token.liquidity_usd or 0.0),
+                    "volume_5m_usd": float(token.volume_5m_usd or 0.0),
+                    "market_cap_usd": float(self._meme_effective_cap_usd(token)),
+                    "age_minutes": float(token.age_minutes or 0.0),
+                    "reason": str(row.get("reason") or ""),
+                }
+            )
+            if score_now >= 0.30:
+                self._touch_meme_watch_token(token_address, now_ts=int(now_ts))
+                watch_ranked.setdefault(token_address, []).append(dict(row or {}))
+                watch_snapshots[token_address] = token
+            self._meme_score_log_guard[guard_key] = {"ts": int(now_ts), "score": float(score_now), "grade": grade_now}
+            if len(self._meme_score_log_guard) > 20000:
+                sorted_rows = sorted(
+                    list(self._meme_score_log_guard.items()),
+                    key=lambda kv: int((kv[1] or {}).get("ts") or 0),
+                    reverse=True,
+                )[:12000]
+                self._meme_score_log_guard = {str(k): dict(v or {}) for k, v in sorted_rows}
+        if not rows:
+            return
+        try:
+            self.runtime_feedback.append_meme_score_points(
+                str(model_id or "A"),
+                rows,
+                now_ts=int(now_ts),
+                source="meme_cycle",
+            )
+        except Exception:
+            # score logging must not break engine loop
+            return
+        for token_address, ranked_rows in watch_ranked.items():
+            snapshot = watch_snapshots.get(token_address)
+            if not isinstance(snapshot, TokenSnapshot):
+                continue
+            try:
+                ranked = sorted(
+                    [dict(r or {}) for r in list(ranked_rows or [])],
+                    key=lambda r: float(r.get("score") or 0.0),
+                    reverse=True,
+                )
+                self._update_meme_watch_latest(
+                    token_address,
+                    snapshot,
+                    ranked,
+                    now_ts=int(now_ts),
+                    source="meme_cycle",
+                )
+            except Exception:
+                continue
+
+    def _touch_meme_watch_token(self, token_address: str, *, now_ts: int | None = None, ttl_seconds: int | None = None) -> None:
+        token = str(token_address or "").strip()
+        if not token:
+            return
+        now = int(now_ts or int(time.time()))
+        ttl = max(900, int(ttl_seconds or MEME_WATCHLIST_TTL_SECONDS))
+        until_ts = int(now + ttl)
+        with self._lock:
+            rows = dict(self._meme_watch_tokens or {})
+            prev_until = int(rows.get(token) or 0)
+            # Fixed 30-minute watch window: do not extend while already active.
+            rows[token] = int(until_ts if prev_until <= now else prev_until)
+            if len(rows) > MEME_WATCHLIST_MAX_TOKENS:
+                items = sorted(rows.items(), key=lambda kv: int(kv[1] or 0), reverse=True)[:MEME_WATCHLIST_MAX_TOKENS]
+                rows = {str(k): int(v or 0) for k, v in items}
+            self._meme_watch_tokens = rows
+
+    def _meme_watch_tokens_snapshot(self, now_ts: int | None = None) -> dict[str, int]:
+        now = int(now_ts or int(time.time()))
+        with self._lock:
+            rows = dict(self._meme_watch_tokens or {})
+        out = {str(k): int(v or 0) for k, v in rows.items() if int(v or 0) > now}
+        if len(out) != len(rows):
+            with self._lock:
+                self._meme_watch_tokens = dict(out)
+                latest_rows = dict(self._meme_watch_latest or {})
+                for token in list(latest_rows.keys()):
+                    if str(token) not in out:
+                        latest_rows.pop(token, None)
+                self._meme_watch_latest = latest_rows
+        return out
+
+    def _refresh_meme_watch_scores(self, now_ts: int) -> None:
+        watch_map = self._meme_watch_tokens_snapshot(now_ts=now_ts)
+        if not watch_map:
+            return
+        with self._lock:
+            last_map = dict(self._meme_watch_score_last_ts or {})
+        rows = sorted(watch_map.items(), key=lambda kv: int(kv[1] or 0), reverse=True)
+        refreshed = 0
+        for token, _ in rows:
+            if refreshed >= 12:
+                break
+            token_addr = str(token or "").strip()
+            if not token_addr:
+                continue
+            prev_ts = int(last_map.get(token_addr) or 0)
+            if prev_ts > 0 and (int(now_ts) - prev_ts) < int(MEME_WATCH_SCORE_REFRESH_SECONDS):
+                continue
+            try:
+                result = self._score_meme_token_now(token_addr, now_ts=now_ts, source="watch_cycle")
+            except Exception:
+                result = {"found": False}
+            if bool((result or {}).get("found")):
+                last_map[token_addr] = int(now_ts)
+                refreshed += 1
+        for token in list(last_map.keys()):
+            if str(token) not in watch_map:
+                last_map.pop(token, None)
+        if len(last_map) > MEME_WATCHLIST_MAX_TOKENS:
+            items = sorted(last_map.items(), key=lambda kv: int(kv[1] or 0), reverse=True)[:MEME_WATCHLIST_MAX_TOKENS]
+            last_map = {str(k): int(v or 0) for k, v in items}
+        with self._lock:
+            self._meme_watch_score_last_ts = dict(last_map)
+
+    def _update_meme_watch_latest(
+        self,
+        token_address: str,
+        snapshot: TokenSnapshot,
+        ranked_rows: list[dict[str, Any]],
+        *,
+        now_ts: int,
+        source: str = "",
+    ) -> None:
+        token = str(token_address or "").strip()
+        if not token:
+            return
+        ranked = list(ranked_rows or [])
+        best: dict[str, Any] = {}
+        for row in ranked:
+            if str((row or {}).get("model_id") or "").upper().strip() == "C":
+                best = dict(row or {})
+                break
+        if not best and ranked:
+            best = dict(ranked[0] or {})
+        with self._lock:
+            watch_until = int((self._meme_watch_tokens or {}).get(token) or (int(now_ts) + int(MEME_WATCHLIST_TTL_SECONDS)))
+            rows = dict(self._meme_watch_latest or {})
+            rows[token] = {
+                "ts": int(now_ts),
+                "source": str(source or ""),
+                "token_address": token,
+                "symbol": str(snapshot.symbol or "").upper().strip(),
+                "name": str(snapshot.name or ""),
+                "model_id": str(best.get("model_id") or ""),
+                "model_name": self._market_model_name("meme", str(best.get("model_id") or "")),
+                "score": float(best.get("score") or 0.0),
+                "grade": str(best.get("grade") or "G"),
+                "probability": float(best.get("probability") or 0.0),
+                "reason": str(best.get("reason") or ""),
+                "score_low_reason": str(best.get("score_low_reason") or ""),
+                "score_hold_hint": str(best.get("score_hold_hint") or ""),
+                "score_hold_target_grade": str(best.get("score_hold_target_grade") or ""),
+                "score_hold_target_score": float(best.get("score_hold_target_score") or 0.0),
+                "score_hold_gap": float(best.get("score_hold_gap") or 0.0),
+                "price_usd": float(snapshot.price_usd or 0.0),
+                "liquidity_usd": float(snapshot.liquidity_usd or 0.0),
+                "volume_5m_usd": float(snapshot.volume_5m_usd or 0.0),
+                "market_cap_usd": float(self._meme_effective_cap_usd(snapshot)),
+                "age_minutes": float(snapshot.age_minutes or 0.0),
+                "watch_until_ts": int(watch_until),
+                "watch_remaining_seconds": max(0, int(watch_until - int(now_ts))),
+            }
+            if len(rows) > MEME_WATCHLIST_MAX_TOKENS:
+                items = sorted(
+                    rows.items(),
+                    key=lambda kv: int(((kv[1] or {}).get("ts") if isinstance(kv[1], dict) else 0) or 0),
+                    reverse=True,
+                )[:MEME_WATCHLIST_MAX_TOKENS]
+                rows = {str(k): dict(v or {}) for k, v in items}
+            self._meme_watch_latest = rows
+
+    def _build_live_meme_watch_rows(self, now_ts: int, limit: int = 120) -> list[dict[str, Any]]:
+        n = max(10, min(500, int(limit)))
+        watch_map = self._meme_watch_tokens_snapshot(now_ts=now_ts)
+        if not watch_map:
+            recent_rows = list(
+                self.runtime_feedback.meme_score_watch_recent(
+                    lookback_seconds=int(MEME_WATCHLIST_TTL_SECONDS),
+                    limit=n,
+                    model_id="C",
+                )
+            )
+            out_recent: list[dict[str, Any]] = []
+            for row in recent_rows:
+                token_addr = str((row or {}).get("token_address") or "").strip()
+                if not token_addr:
+                    continue
+                ts = int((row or {}).get("ts") or 0)
+                if ts <= 0:
+                    continue
+                until_ts = int(ts + int(MEME_WATCHLIST_TTL_SECONDS))
+                remain = max(0, int(until_ts - int(now_ts)))
+                if remain <= 0:
+                    continue
+                out_row = dict(row or {})
+                out_row["model_name"] = self._market_model_name("meme", str((row or {}).get("model_id") or ""))
+                hold_grade = self._meme_hold_target_grade(str((row or {}).get("model_id") or "C"))
+                hold_score = float(self._meme_grade_min_score(hold_grade))
+                score_now = float((row or {}).get("score") or 0.0)
+                if not str(out_row.get("score_low_reason") or "").strip():
+                    out_row["score_low_reason"] = str((row or {}).get("reason") or "")
+                if not str(out_row.get("score_hold_hint") or "").strip():
+                    out_row["score_hold_hint"] = (
+                        f"홀딩권장 {hold_grade}({hold_score:.2f})까지 +{max(0.0, hold_score - score_now):.2f}"
+                    )
+                out_row["watch_until_ts"] = int(until_ts)
+                out_row["watch_remaining_seconds"] = int(remain)
+                out_recent.append(out_row)
+            if out_recent:
+                return out_recent[:n]
+            return []
+        with self._lock:
+            latest_map = dict(self._meme_watch_latest or {})
+            snap_cache = dict(self._meme_watch_snapshot_cache or {})
+        out: list[dict[str, Any]] = []
+        for token, until_ts in watch_map.items():
+            token_addr = str(token or "").strip()
+            if not token_addr:
+                continue
+            latest = dict(latest_map.get(token_addr) or {})
+            if not latest:
+                cached = dict(snap_cache.get(token_addr) or {})
+                snap = cached.get("snapshot")
+                if isinstance(snap, TokenSnapshot):
+                    latest = {
+                        "ts": int(cached.get("ts") or 0),
+                        "source": "snapshot_cache",
+                        "token_address": token_addr,
+                        "symbol": str(snap.symbol or "").upper().strip(),
+                        "name": str(snap.name or ""),
+                        "model_id": "",
+                        "model_name": "-",
+                        "score": 0.0,
+                        "grade": "-",
+                        "probability": 0.0,
+                        "reason": "",
+                        "price_usd": float(snap.price_usd or 0.0),
+                        "liquidity_usd": float(snap.liquidity_usd or 0.0),
+                        "volume_5m_usd": float(snap.volume_5m_usd or 0.0),
+                        "market_cap_usd": float(self._meme_effective_cap_usd(snap)),
+                        "age_minutes": float(snap.age_minutes or 0.0),
+                    }
+            if not latest:
+                continue
+            row = dict(latest)
+            hold_grade = self._meme_hold_target_grade(str(row.get("model_id") or "C"))
+            hold_score = float(self._meme_grade_min_score(hold_grade))
+            score_now = float(row.get("score") or 0.0)
+            if not str(row.get("score_low_reason") or "").strip():
+                row["score_low_reason"] = str(row.get("reason") or "")
+            if not str(row.get("score_hold_hint") or "").strip():
+                row["score_hold_hint"] = f"홀딩권장 {hold_grade}({hold_score:.2f})까지 +{max(0.0, hold_score - score_now):.2f}"
+            row["watch_until_ts"] = int(until_ts)
+            row["watch_remaining_seconds"] = max(0, int(until_ts - int(now_ts)))
+            out.append(row)
+        out.sort(
+            key=lambda r: (
+                float((r or {}).get("score") or 0.0),
+                float((r or {}).get("volume_5m_usd") or 0.0),
+                float((r or {}).get("liquidity_usd") or 0.0),
+                int((r or {}).get("watch_until_ts") or 0),
+            ),
+            reverse=True,
+        )
+        return out[:n]
+
+    def _trend_bundle_from_cache(self) -> dict[str, Any]:
+        trending: set[str] = set(self._trend_cache_trending or set())
+        trader_events = list(self._trend_cache_events.get("trader_x") or [])
+        wallet_events = list(self._trend_cache_events.get("wallet_tracker") or [])
+        news_events = list(self._trend_cache_events.get("yahoo_news") or [])
+        community_events = list(self._trend_cache_events.get("community_reddit") or [])
+        community_events.extend(list(self._trend_cache_events.get("community_4chan") or []))
+        google_events = list(self._trend_cache_events.get("google_gemini") or [])
+
+        trader_counts: dict[str, int] = {}
+        wallet_counts: dict[str, int] = {}
+        news_counts: dict[str, int] = {}
+        community_counts: dict[str, int] = {}
+        google_counts: dict[str, int] = {}
+        combined_counts: dict[str, int] = {}
+        for ev in trader_events:
+            sym = str(getattr(ev, "symbol", "") or "").upper().strip()
+            if not sym:
+                continue
+            trader_counts[sym] = trader_counts.get(sym, 0) + 1
+            combined_counts[sym] = combined_counts.get(sym, 0) + 1
+        for ev in wallet_events:
+            sym = str(getattr(ev, "symbol", "") or "").upper().strip()
+            if not sym:
+                continue
+            wallet_counts[sym] = wallet_counts.get(sym, 0) + 1
+            combined_counts[sym] = combined_counts.get(sym, 0) + 1
+        for ev in news_events:
+            sym = str(getattr(ev, "symbol", "") or "").upper().strip()
+            if not sym:
+                continue
+            news_counts[sym] = news_counts.get(sym, 0) + 1
+            combined_counts[sym] = combined_counts.get(sym, 0) + 1
+        for ev in community_events:
+            sym = str(getattr(ev, "symbol", "") or "").upper().strip()
+            if not sym:
+                continue
+            community_counts[sym] = community_counts.get(sym, 0) + 1
+            combined_counts[sym] = combined_counts.get(sym, 0) + 1
+        for ev in google_events:
+            sym = str(getattr(ev, "symbol", "") or "").upper().strip()
+            if not sym:
+                continue
+            google_counts[sym] = google_counts.get(sym, 0) + 1
+            combined_counts[sym] = combined_counts.get(sym, 0) + 1
+        for sym, hits in combined_counts.items():
+            if int(hits) >= 2:
+                trending.add(sym)
+        for sym, hits in google_counts.items():
+            non_google_hits = (
+                int(trader_counts.get(sym, 0))
+                + int(wallet_counts.get(sym, 0))
+                + int(news_counts.get(sym, 0))
+                + int(community_counts.get(sym, 0))
+            )
+            if int(hits) >= 2 and non_google_hits >= 1:
+                trending.add(sym)
+        return {
+            "trending": trending,
+            "trader_counts": trader_counts,
+            "wallet_counts": wallet_counts,
+            "news_counts": news_counts,
+            "community_counts": community_counts,
+            "google_counts": google_counts,
+            "combined_counts": combined_counts,
+            "source_status": dict(self._trend_source_status or {}),
+        }
+
+    def _score_meme_token_now(
+        self,
+        token_address: str,
+        now_ts: int | None = None,
+        *,
+        source: str = "lookup",
+    ) -> dict[str, Any]:
+        token = str(token_address or "").strip()
+        if not token:
+            return {"found": False, "error": "token_address_required"}
+        now = int(now_ts or int(time.time()))
+        snapshot: TokenSnapshot | None = None
+        snapshot_error = ""
+        try:
+            snapshot = self.dex.fetch_snapshot_for_token(self.settings.dex_chain, token)
+        except Exception as exc:  # noqa: BLE001
+            snapshot_error = f"dex_lookup_failed:{exc}"
+        if snapshot is None:
+            try:
+                if bool(self.settings.pumpfun_enabled) and str(self.settings.dex_chain).lower() == "solana":
+                    pump_rows = self.pumpfun.fetch_latest_coins(
+                        limit=max(120, int(self.settings.pumpfun_fetch_limit)),
+                        include_nsfw=bool(self.settings.pumpfun_include_nsfw),
+                        cache_seconds=int(self.settings.pumpfun_cache_seconds),
+                    )
+                    for row in pump_rows:
+                        if str((row or {}).get("mint") or "").strip() != token:
+                            continue
+                        snapshot = self._snapshot_from_pump_coin(row)
+                        break
+            except Exception:
+                snapshot = snapshot
+        if snapshot is None:
+            return {"found": False, "error": snapshot_error or "snapshot_not_found"}
+        self._touch_meme_watch_token(token, now_ts=now)
+        with self._lock:
+            cache_rows = dict(self._meme_watch_snapshot_cache or {})
+            cache_rows[token] = {"ts": int(now), "snapshot": snapshot}
+            if len(cache_rows) > MEME_WATCHLIST_MAX_TOKENS:
+                items = sorted(
+                    cache_rows.items(),
+                    key=lambda kv: int(((kv[1] or {}).get("ts") if isinstance(kv[1], dict) else 0) or 0),
+                    reverse=True,
+                )[:MEME_WATCHLIST_MAX_TOKENS]
+                cache_rows = {str(k): dict(v or {}) for k, v in items}
+            self._meme_watch_snapshot_cache = cache_rows
+
+        trend_bundle = self._trend_bundle_from_cache()
+        if not trend_bundle.get("combined_counts") and not trend_bundle.get("trending"):
+            try:
+                trend_bundle = self._fetch_trends()
+            except Exception:
+                trend_bundle = self._trend_bundle_from_cache()
+        trending: set[str] = set(trend_bundle.get("trending") or set())
+        trader_counts = dict(trend_bundle.get("trader_counts") or {})
+        wallet_counts = dict(trend_bundle.get("wallet_counts") or {})
+        news_counts = dict(trend_bundle.get("news_counts") or {})
+        community_counts = dict(trend_bundle.get("community_counts") or {})
+        google_counts = dict(trend_bundle.get("google_counts") or {})
+
+        sym = str(snapshot.symbol or "").upper().strip()
+        trend_hit = 1 if sym in trending else 0
+        trader_hits = max(0, int(trader_counts.get(sym) or 0))
+        wallet_hits = max(0, int(wallet_counts.get(sym) or 0))
+        news_hits = max(0, int(news_counts.get(sym) or 0))
+        community_hits = max(0, int(community_counts.get(sym) or 0))
+        google_hits = max(0, int(google_counts.get(sym) or 0))
+        cached_pattern = self._get_wallet_pattern_cached(token, now_ts=now)
+        if (
+            str(source or "").lower() == "lookup"
+            and self.settings.solscan_enable_pattern
+            and self.solscan.enabled
+            and not bool(cached_pattern.get("available"))
+        ):
+            cached_pattern = self._get_wallet_pattern(token, now_ts=now)
+        peer_info = self._meme_similarity_for_snapshot(snapshot)
+        peer_info.update(
+            self._holder_overlap_features(
+                token,
+                cached_pattern,
+                peer_info,
+                now_ts=now,
+                fetch_missing_peers=bool(str(source or "").lower() == "lookup"),
+                max_peer_fetches=2,
+            )
+        )
+
+        scored_rows: list[dict[str, Any]] = []
+        for model_id in MEME_MODEL_IDS:
+            wallet_pattern = dict(cached_pattern or {})
+            if (
+                model_id in {"A", "B"}
+                and self.settings.solscan_enable_pattern
+                and self.solscan.enabled
+                and not bool(wallet_pattern.get("available"))
+            ):
+                wallet_pattern = self._get_wallet_pattern(token, now_ts=now)
+            scored = self._score_meme_snapshot_variant(
+                snapshot,
+                model_id,
+                trend_hit=trend_hit,
+                trader_hits=trader_hits,
+                wallet_hits=wallet_hits,
+                news_hits=news_hits,
+                community_hits=community_hits,
+                google_hits=google_hits,
+                wallet_pattern=wallet_pattern,
+                peer_info=peer_info,
+            )
+            scored_rows.append(scored)
+
+        for row in scored_rows:
+            try:
+                self.runtime_feedback.append_meme_score_points(
+                    str(row.get("model_id") or "A"),
+                    [
+                        {
+                            "token_address": token,
+                            "symbol": str(snapshot.symbol or "").upper().strip(),
+                            "name": str(snapshot.name or "").strip(),
+                            "score": float(row.get("score") or 0.0),
+                            "grade": str(row.get("grade") or "G"),
+                            "probability": float(row.get("probability") or 0.0),
+                            "price_usd": float(snapshot.price_usd or 0.0),
+                            "liquidity_usd": float(snapshot.liquidity_usd or 0.0),
+                            "volume_5m_usd": float(snapshot.volume_5m_usd or 0.0),
+                            "market_cap_usd": float(self._meme_effective_cap_usd(snapshot)),
+                            "age_minutes": float(snapshot.age_minutes or 0.0),
+                            "reason": str(row.get("reason") or ""),
+                        }
+                    ],
+                    now_ts=now,
+                    source=str(source or "lookup"),
+                )
+            except Exception:
+                continue
+
+        ranked = sorted(
+            [
+                {
+                    "model_id": str(r.get("model_id") or ""),
+                    "model_name": self._market_model_name("meme", str(r.get("model_id") or "")),
+                    "score": float(r.get("score") or 0.0),
+                    "grade": str(r.get("grade") or "G"),
+                    "probability": float(r.get("probability") or 0.0),
+                    "reason": str(r.get("reason") or ""),
+                    "score_low_reason": str(r.get("score_low_reason") or ""),
+                    "score_hold_hint": str(r.get("score_hold_hint") or ""),
+                    "score_hold_target_grade": str(r.get("score_hold_target_grade") or ""),
+                    "score_hold_target_score": float(r.get("score_hold_target_score") or 0.0),
+                    "score_hold_gap": float(r.get("score_hold_gap") or 0.0),
+                    "price_usd": float(snapshot.price_usd or 0.0),
+                    "liquidity_usd": float(snapshot.liquidity_usd or 0.0),
+                    "volume_5m_usd": float(snapshot.volume_5m_usd or 0.0),
+                    "market_cap_usd": float(self._meme_effective_cap_usd(snapshot)),
+                    "age_minutes": float(snapshot.age_minutes or 0.0),
+                }
+                for r in scored_rows
+            ],
+            key=lambda r: float(r.get("score") or 0.0),
+            reverse=True,
+        )
+        self._update_meme_watch_latest(token, snapshot, ranked, now_ts=now, source=str(source or ""))
+        return {
+            "found": True,
+            "token_address": token,
+            "ts": now,
+            "symbol": str(snapshot.symbol or ""),
+            "name": str(snapshot.name or ""),
+            "rows": ranked,
+        }
+
+    def get_meme_score_history(
+        self,
+        token_address: str,
+        limit: int = 240,
+        ensure_fresh: bool = True,
+        force_refresh: bool = False,
+    ) -> dict[str, Any]:
+        token = str(token_address or "").strip()
+        if not token:
+            raise ValueError("token_address is required")
+        n = max(10, min(2000, int(limit)))
+        rows = list(self.runtime_feedback.meme_score_recent(token, limit=n))
+        lookup: dict[str, Any] = {}
+        latest_ts = int(rows[0].get("ts") or 0) if rows else 0
+        stale_seconds = max(300, int(self.settings.scan_interval_seconds) * 3)
+        needs_refresh = bool(
+            bool(force_refresh) or not rows or (latest_ts > 0 and (int(time.time()) - latest_ts) > stale_seconds)
+        )
+        if ensure_fresh and needs_refresh:
+            lookup = self._score_meme_token_now(token, source="lookup")
+            rows = list(self.runtime_feedback.meme_score_recent(token, limit=n))
+        lookup_rows = list((lookup or {}).get("rows") or [])
+        if lookup_rows:
+            latest_lookup_by_model = {
+                str((row or {}).get("model_id") or "").upper().strip(): dict(row or {})
+                for row in lookup_rows
+                if str((row or {}).get("model_id") or "").strip()
+            }
+            enriched_rows: list[dict[str, Any]] = []
+            seen_models: set[str] = set()
+            for row in rows:
+                item = dict(row or {})
+                mid = str(item.get("model_id") or "").upper().strip()
+                latest_lookup = dict(latest_lookup_by_model.get(mid) or {})
+                if latest_lookup and mid not in seen_models:
+                    item["score_low_reason"] = str(latest_lookup.get("score_low_reason") or "")
+                    item["score_hold_hint"] = str(latest_lookup.get("score_hold_hint") or "")
+                    item["score_hold_target_grade"] = str(latest_lookup.get("score_hold_target_grade") or "")
+                    item["score_hold_target_score"] = float(latest_lookup.get("score_hold_target_score") or 0.0)
+                    item["score_hold_gap"] = float(latest_lookup.get("score_hold_gap") or 0.0)
+                    seen_models.add(mid)
+                enriched_rows.append(item)
+            rows = enriched_rows
+        latest_by_model: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            mid = str(row.get("model_id") or "").upper().strip()
+            if not mid or mid in latest_by_model:
+                continue
+            latest_by_model[mid] = dict(row)
+        ranked_latest = sorted(
+            list(latest_by_model.values()),
+            key=lambda r: str(r.get("model_id") or ""),
+        )
+        best_row = max(rows, key=lambda r: float(r.get("score") or 0.0)) if rows else {}
+        return {
+            "token_address": token,
+            "count": int(len(rows)),
+            "latest_by_model": ranked_latest,
+            "best": dict(best_row or {}),
+            "rows": rows,
+            "lookup": lookup,
+        }
 
     def _persist_trend_history(self, now_ts: int, trend_bundle: dict[str, Any]) -> None:
         combined = dict(trend_bundle.get("combined_counts") or {})
@@ -1952,6 +3664,231 @@ class TradingEngine:
         if not scores:
             return default_name
         return sorted(scores.items(), key=lambda it: it[1], reverse=True)[0][0]
+
+    @staticmethod
+    def _trend_brief_symbol(value: Any) -> str:
+        return str(value or "").upper().strip()
+
+    @classmethod
+    def _meme_trend_brief_entries(cls, meta: dict[str, Any]) -> list[dict[str, Any]]:
+        excluded = set(MEME_TREND_EXCLUDED_SYMBOLS)
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        top_symbol = cls._trend_brief_symbol(meta.get("top_symbol"))
+        top_hits = max(1, int(meta.get("top_hits") or 1))
+        if top_symbol and top_symbol not in excluded:
+            out.append({"symbol": top_symbol, "hits": top_hits})
+            seen.add(top_symbol)
+        for raw in list(meta.get("top_symbols") or []):
+            sym = cls._trend_brief_symbol(raw)
+            if not sym or sym in excluded or sym in seen:
+                continue
+            out.append({"symbol": sym, "hits": 1})
+            seen.add(sym)
+        return out
+
+    @classmethod
+    def _meme_trend_brief_recent(
+        cls,
+        rows: list[dict[str, Any]],
+        now_ts: int,
+        lookback_seconds: int,
+    ) -> list[dict[str, Any]]:
+        cutoff = int(now_ts - max(600, int(lookback_seconds or 0)))
+        out: list[dict[str, Any]] = []
+        for row in list(rows or []):
+            ts = int((row or {}).get("ts") or 0)
+            if ts < cutoff:
+                continue
+            if not cls._meme_trend_brief_entries(dict((row or {}).get("meta") or {})):
+                continue
+            out.append(dict(row or {}))
+        return out
+
+    @staticmethod
+    def _meme_trend_brief_bucket_label(ts: int, bucket_seconds: int) -> str:
+        dt = datetime.fromtimestamp(int(ts), tz=timezone.utc).astimezone()
+        if int(bucket_seconds) >= 86400 * 7:
+            return dt.strftime("%Y-%m")
+        if int(bucket_seconds) >= 86400:
+            return dt.strftime("%m-%d")
+        return dt.strftime("%m-%d %H:00")
+
+    @classmethod
+    def _meme_trend_brief_distribution(
+        cls,
+        rows: list[dict[str, Any]],
+        now_ts: int,
+        *,
+        lookback_seconds: int = 60 * 60 * 24,
+        top_n: int = 8,
+    ) -> list[dict[str, Any]]:
+        recent = cls._meme_trend_brief_recent(rows, now_ts, lookback_seconds)
+        agg: dict[str, int] = {}
+        for row in list(recent or []):
+            meta = dict((row or {}).get("meta") or {})
+            for item in cls._meme_trend_brief_entries(meta):
+                sym = str(item.get("symbol") or "")
+                agg[sym] = int(agg.get(sym, 0)) + max(1, int(item.get("hits") or 0))
+        ordered = sorted(
+            ({"symbol": sym, "hits": hits} for sym, hits in agg.items() if hits > 0),
+            key=lambda row: int(row.get("hits") or 0),
+            reverse=True,
+        )
+        if not ordered:
+            return []
+        total_hits = int(sum(int(row.get("hits") or 0) for row in ordered))
+        keep_n = max(3, min(20, int(top_n or 8)))
+        kept = ordered[:keep_n]
+        etc_hits = int(sum(int(row.get("hits") or 0) for row in ordered[keep_n:]))
+        out = [
+            {
+                "symbol": str(row.get("symbol") or "-"),
+                "hits": int(row.get("hits") or 0),
+                "share_pct": round((float(int(row.get("hits") or 0)) / float(max(1, total_hits))) * 100.0, 4),
+                "total_hits": int(total_hits),
+            }
+            for row in kept
+        ]
+        if etc_hits > 0:
+            out.append(
+                {
+                    "symbol": "ETC",
+                    "hits": int(etc_hits),
+                    "share_pct": round((float(etc_hits) / float(max(1, total_hits))) * 100.0, 4),
+                    "total_hits": int(total_hits),
+                }
+            )
+        return out
+
+    @classmethod
+    def _meme_trend_brief_bucket_series(
+        cls,
+        rows: list[dict[str, Any]],
+        now_ts: int,
+        *,
+        lookback_seconds: int = 60 * 60 * 24,
+        bucket_seconds: int = 1800,
+    ) -> list[dict[str, Any]]:
+        bucket = max(300, int(bucket_seconds or 1800))
+        recent = cls._meme_trend_brief_recent(rows, now_ts, lookback_seconds)
+        start_ts = int(now_ts - max(bucket, int(lookback_seconds or 0)))
+        bucket_start = int(start_ts // bucket * bucket)
+        bucket_end = int(now_ts // bucket * bucket)
+        slots: dict[int, dict[str, Any]] = {}
+        for ts in range(bucket_start, bucket_end + bucket, bucket):
+            slots[int(ts)] = {"hits": 0, "symbol_hits": {}}
+        for row in list(recent or []):
+            ts = int((row or {}).get("ts") or 0)
+            bts = int(ts // bucket * bucket)
+            slot = dict(slots.get(bts) or {})
+            if not slot:
+                continue
+            table = dict(slot.get("symbol_hits") or {})
+            for item in cls._meme_trend_brief_entries(dict((row or {}).get("meta") or {})):
+                sym = str(item.get("symbol") or "")
+                hit = max(1, int(item.get("hits") or 0))
+                slot["hits"] = int(slot.get("hits") or 0) + hit
+                table[sym] = int(table.get(sym, 0)) + hit
+            slot["symbol_hits"] = table
+            slots[bts] = slot
+        out: list[dict[str, Any]] = []
+        for bts in sorted(slots.keys()):
+            slot = dict(slots.get(bts) or {})
+            table = dict(slot.get("symbol_hits") or {})
+            top_symbol = ""
+            top_hits = 0
+            if table:
+                top_symbol, top_hits = max(table.items(), key=lambda it: int(it[1]))
+            out.append(
+                {
+                    "ts": int(bts),
+                    "label": cls._meme_trend_brief_bucket_label(int(bts), bucket),
+                    "hits": int(slot.get("hits") or 0),
+                    "top_symbol": str(top_symbol or ""),
+                    "top_hits": int(top_hits or 0),
+                }
+            )
+        return out
+
+    @classmethod
+    def _meme_trend_brief_period_summary(
+        cls,
+        rows: list[dict[str, Any]],
+        now_ts: int,
+        *,
+        bucket_seconds: int,
+        lookback_seconds: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        series = cls._meme_trend_brief_bucket_series(
+            rows,
+            now_ts,
+            lookback_seconds=lookback_seconds,
+            bucket_seconds=bucket_seconds,
+        )
+        picked = [row for row in list(series or []) if int(row.get("hits") or 0) > 0][-max(1, int(limit or 1)) :]
+        out: list[dict[str, Any]] = []
+        for row in picked:
+            top_symbol = str(row.get("top_symbol") or "-")
+            top_hits = int(row.get("top_hits") or 0)
+            out.append(
+                {
+                    "ts": int(row.get("ts") or 0),
+                    "label": str(row.get("label") or "-"),
+                    "total_hits": int(row.get("hits") or 0),
+                    "top_symbol": top_symbol,
+                    "top_hits": int(top_hits),
+                    "breakdown_text": f"{top_symbol} {top_hits}" if top_symbol and top_symbol != "-" else "-",
+                }
+            )
+        return out
+
+    @classmethod
+    def _meme_trend_brief_rank(
+        cls,
+        rows: list[dict[str, Any]],
+        now_ts: int,
+        *,
+        lookback_seconds: int = 60 * 60 * 24,
+        limit: int = 120,
+        feed_rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        recent = cls._meme_trend_brief_recent(rows, now_ts, lookback_seconds)
+        cap_map: dict[str, float] = {}
+        for row in list(feed_rows or []):
+            sym = cls._trend_brief_symbol((row or {}).get("symbol"))
+            if not sym:
+                continue
+            cap_map[sym] = max(float(cap_map.get(sym) or 0.0), float((row or {}).get("market_cap_usd") or 0.0))
+        agg: dict[str, dict[str, Any]] = {}
+        for row in list(recent or []):
+            ts = int((row or {}).get("ts") or 0)
+            for item in cls._meme_trend_brief_entries(dict((row or {}).get("meta") or {})):
+                sym = str(item.get("symbol") or "")
+                hit = max(1, int(item.get("hits") or 0))
+                slot = agg.get(sym)
+                if slot is None:
+                    slot = {
+                        "symbol": sym,
+                        "hits": 0,
+                        "source_count": 0,
+                        "score": 0.0,
+                        "market_cap_usd": float(cap_map.get(sym) or 0.0),
+                        "last_seen_ts": ts,
+                    }
+                    agg[sym] = slot
+                slot["hits"] = int(slot.get("hits") or 0) + hit
+                slot["score"] = float(slot.get("hits") or 0)
+                slot["last_seen_ts"] = max(int(slot.get("last_seen_ts") or 0), ts)
+                if float(cap_map.get(sym) or 0.0) > 0.0:
+                    slot["market_cap_usd"] = float(cap_map.get(sym) or 0.0)
+        ranked = sorted(
+            list(agg.values()),
+            key=lambda row: (int(row.get("hits") or 0), int(row.get("last_seen_ts") or 0)),
+            reverse=True,
+        )
+        return ranked[: max(5, min(300, int(limit or 120)))]
 
     def _build_trend_brief(self, market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         market_id = "meme" if str(market or "").lower().strip() == "meme" else "crypto"
@@ -2067,19 +4004,31 @@ class TradingEngine:
         symbols = [s for s in symbols if s]
         prev_hits_table = dict(self._trend_prev_hits.get(market_id) or {})
         prev_hits = max(0, int(prev_hits_table.get(top_symbol) or 0))
+        top_delta_hits = int(top_hits - prev_hits)
         if prev_hits > 0:
             growth_ratio = (float(top_hits) - float(prev_hits)) / float(max(1, prev_hits))
         else:
             growth_ratio = 1.0 if top_hits > 0 else 0.0
         growth_ratio = max(-1.0, min(5.0, float(growth_ratio)))
-        momentum = "급상승" if growth_ratio >= 0.5 else ("상승" if growth_ratio >= 0.1 else ("둔화" if growth_ratio < -0.2 else "보합"))
         total_hits = int(sum(max(0, int((r or {}).get("hits") or 0)) for r in sorted_rows[:20]))
         prev_total_hits = int(sum(max(0, int(prev_hits_table.get(str((r or {}).get("symbol") or "").upper().strip()) or 0)) for r in sorted_rows[:20]))
+        total_delta_hits = int(total_hits - prev_total_hits)
         if prev_total_hits > 0:
             total_growth_ratio = (float(total_hits) - float(prev_total_hits)) / float(max(1, prev_total_hits))
         else:
             total_growth_ratio = 1.0 if total_hits > 0 else 0.0
         total_growth_ratio = max(-1.0, min(5.0, float(total_growth_ratio)))
+        row_span = max(1, min(20, len(sorted_rows)))
+        baseline_hits = float(max(8, int(total_hits / float(row_span))))
+        delta_norm = float(total_delta_hits) / float(max(1.0, baseline_hits))
+        if total_delta_hits >= 20 or (total_hits >= 120 and delta_norm >= 1.2):
+            momentum = "급상승"
+        elif total_delta_hits >= 6 or (total_hits >= 60 and delta_norm >= 0.6):
+            momentum = "상승"
+        elif total_delta_hits <= -20 or delta_norm <= -1.2:
+            momentum = "둔화"
+        else:
+            momentum = "보합"
         source_avg = (
             float(sum(max(0, int((r or {}).get("source_count") or 0)) for r in sorted_rows[:10])) / float(max(1, min(10, len(sorted_rows))))
         )
@@ -2135,28 +4084,31 @@ class TradingEngine:
             smallcap_hits = int(
                 sum(1 for r in list(sorted_rows or [])[:30] if 0.0 < float((r or {}).get("market_cap_usd") or 0.0) <= MEME_SMALLCAP_MAX_USD)
             )
+            hits_intensity = _clamp(math.log1p(float(total_hits)) / math.log1p(500.0), 0.0, 1.0)
+            delta_intensity = _clamp((float(total_delta_hits) + 20.0) / 70.0, 0.0, 1.0)
             impact_score = _clamp(
-                (0.34 * _clamp(float(total_growth_ratio + 1.0) / 2.0, 0.0, 1.0))
-                + (0.26 * _clamp(float(len(burst_symbols)) / 5.0, 0.0, 1.0))
-                + (0.20 * _clamp(float(source_spread_ratio), 0.0, 1.0))
-                + (0.20 * _clamp(float(newcomers_3h) / 6.0, 0.0, 1.0)),
+                (0.30 * hits_intensity)
+                + (0.24 * delta_intensity)
+                + (0.24 * _clamp(float(len(burst_symbols)) / 5.0, 0.0, 1.0))
+                + (0.12 * _clamp(float(source_spread_ratio), 0.0, 1.0))
+                + (0.10 * _clamp(float(newcomers_3h) / 6.0, 0.0, 1.0)),
                 0.0,
                 1.0,
             )
             burst_text = ", ".join(burst_symbols[:3]) if burst_symbols else "-"
             signal = (
-                f"신규/버스트 {burst_text} | 3h 신규 {newcomers_3h}개 | "
+                f"신규/버스트 {burst_text} | 상위20 {total_hits}건(Δ{total_delta_hits:+d}) | 3h 신규 {newcomers_3h}개 | "
                 f"X비중 {x_share_pct:.1f}% | 소스확산 {source_spread_ratio:.2f}"
             )
-            if impact_score >= 0.70 and total_growth_ratio >= 0.20:
+            if impact_score >= 0.70 and total_delta_hits >= 8:
                 action_hint = "추세 강함: D등급 이상 재평가 우선, 과열 추격은 제한하세요."
-            elif total_growth_ratio < -0.15:
+            elif total_delta_hits <= -10:
                 action_hint = "관심 둔화: 신규 진입 축소, 보유 포지션 리스크 먼저 점검하세요."
             else:
                 action_hint = "중립: 버스트 심볼과 신규 유입 심볼의 체결/유동성 검증 후 선별 진입하세요."
             summary = (
-                f"선두 {top_symbol}({top_hits} hits, 직전 대비 {growth_ratio * 100:+.1f}%), "
-                f"상위20 합계 {total_hits} ({total_growth_ratio * 100:+.1f}%), "
+                f"선두 {top_symbol}({top_hits}건, 직전 {prev_hits}건, 증감 {top_delta_hits:+d}건), "
+                f"상위20 합계 {total_hits}건 (직전 {prev_total_hits}건, 증감 {total_delta_hits:+d}건), "
                 f"3시간 신규 {newcomers_3h}개, 소형시총 후보 {smallcap_hits}개, "
                 f"주요 소스 {top_source}, 상위심볼 {top_symbols_text}."
             )
@@ -2174,22 +4126,22 @@ class TradingEngine:
             rank_lo = int(min(rank_rows)) if rank_rows else 0
             rank_hi = int(max(rank_rows)) if rank_rows else 0
             rank_band = f"{rank_lo}~{rank_hi}" if rank_lo > 0 and rank_hi > 0 else "-"
-            mid_alt = int(sum(1 for v in rank_rows if 11 <= int(v) <= 300))
+            mid_alt = int(sum(1 for v in rank_rows if 50 <= int(v) <= 300))
             burst_text = ", ".join(burst_symbols[:3]) if burst_symbols else "-"
             signal = (
-                f"이슈 알트 {burst_text} | 랭크대 {rank_band} | "
+                f"이슈 알트 {burst_text} | 상위20 {total_hits}건(Δ{total_delta_hits:+d}) | 랭크대 {rank_band} | "
                 f"X비중 {x_share_pct:.1f}% | 소스확산 {source_spread_ratio:.2f}"
             )
-            if total_growth_ratio >= 0.18 and source_spread_ratio >= 0.35:
+            if total_delta_hits >= 10 and source_spread_ratio >= 0.35:
                 action_hint = "이슈 확산 구간: 점수 상위 알트 중심으로 진입 후보를 재정렬하세요."
-            elif total_growth_ratio < -0.12:
+            elif total_delta_hits <= -10:
                 action_hint = "관심 축소 구간: 무리한 신규 진입보다 기존 포지션 관리 우선입니다."
             else:
                 action_hint = "혼조 구간: 과열 추격을 줄이고 모델 임계값 이상 후보만 선별하세요."
             summary = (
-                f"선두 {top_symbol}({top_hits} hits, 직전 대비 {growth_ratio * 100:+.1f}%), "
-                f"상위20 합계 {total_hits} ({total_growth_ratio * 100:+.1f}%), "
-                f"랭크대 {rank_band}, 11~300위 후보 {mid_alt}개, 주요 소스 {top_source}, "
+                f"선두 {top_symbol}({top_hits}건, 직전 {prev_hits}건, 증감 {top_delta_hits:+d}건), "
+                f"상위20 합계 {total_hits}건 (직전 {prev_total_hits}건, 증감 {total_delta_hits:+d}건), "
+                f"랭크대 {rank_band}, 50~300위 후보 {mid_alt}개, 주요 소스 {top_source}, "
                 f"상위심볼 {top_symbols_text}."
             )
             headline = f"[{market_name}] {theme} | {momentum} | 선두 {top_symbol} | 이슈 {burst_text}"
@@ -2202,6 +4154,8 @@ class TradingEngine:
             "theme": theme,
             "top_symbol": top_symbol,
             "top_hits": int(top_hits),
+            "prev_top_hits": int(prev_hits),
+            "top_hits_delta": int(top_delta_hits),
             "growth_ratio": float(growth_ratio),
             "total_growth_ratio": float(total_growth_ratio),
             "momentum": momentum,
@@ -2212,6 +4166,8 @@ class TradingEngine:
             "top_symbols": symbols[:8],
             "burst_symbols": list(burst_symbols),
             "total_hits_top20": int(total_hits),
+            "prev_total_hits_top20": int(prev_total_hits),
+            "total_hits_delta_top20": int(total_delta_hits),
             "avg_source_count_top10": float(round(source_avg, 4)),
             "source_totals": dict(source_totals),
             "source_spread_ratio": float(round(source_spread_ratio, 4)),
@@ -2257,8 +4213,7 @@ class TradingEngine:
     def _build_telegram_periodic_report_demo(self) -> str:
         with self._lock:
             runs = dict(self.state.model_runs or {})
-            wallet_assets = list(self.state.wallet_assets or [])
-            bybit_assets = list(self.state.bybit_assets or [])
+            demo_seed = float(self.state.demo_seed_usdt or self.settings.demo_seed_usdt)
         now_ts = int(time.time())
         ts_text = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
         mode_text = str(self.settings.trade_mode or "paper").upper()
@@ -2267,32 +4222,34 @@ class TradingEngine:
         def _sgn(v: float) -> str:
             return f"{float(v):+.2f}"
 
+        meme_engine = self._aggregate_meme_engine_state(runs, mode_filter="paper", now_ts=now_ts)
         lines: list[str] = [
             f"[10분 리포트][DEMO] {ts_text}",
             f"상태: {'RUNNING' if self.running else 'STOPPED'} | 모드: {mode_text} | 자동매매: {auto_text}",
+            f"데모 시드: {demo_seed:.0f} USDT",
             "",
-            f"데모 모델(밈): {','.join(self._autotrade_model_ids('meme'))}",
-            f"데모 모델(크립토): {','.join(self._autotrade_model_ids('crypto'))}",
-            "",
-            "[DEMO 밈 모델 순위]",
+            "[DEMO 밈 엔진]",
+            f"- 구조: THEME_SNIPER 메인 / NARRATIVE 서브",
+            f"- 오픈 {int(meme_engine.get('open_positions') or 0)} | 실현PNL {_sgn(float(meme_engine.get('realized_pnl_usd') or 0.0))} | "
+            f"평가손익 {_sgn(float(meme_engine.get('unrealized_pnl_usd') or 0.0))} | 총손익 {_sgn(float(meme_engine.get('total_pnl_usd') or 0.0))}",
+            f"- 청산 {int(meme_engine.get('closed_trades') or 0)} | 승률 {float(meme_engine.get('win_rate') or 0.0):.1f}%",
         ]
-        ranked_meme: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-        for model_id in MODEL_IDS:
-            meme_run = self._get_market_run(runs, "meme", model_id)
-            mm = self._model_metrics_market(model_id, meme_run, "meme")
-            meme_name = self._market_model_name("meme", model_id)
-            ranked_meme.append((meme_name, mm, meme_run))
-        ranked_meme.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
-        for rank, (meme_name, mm, meme_run) in enumerate(ranked_meme, start=1):
+        top_signal = dict(meme_engine.get("top_signal") or {})
+        if top_signal:
             lines.append(
-                f"#{rank} {meme_name}: PNL {_sgn(float(mm.get('total_pnl_usd') or 0.0))} | "
-                f"OPEN {int(mm.get('open_positions') or 0)} | 최근진입 "
-                f"{self._fmt_last_entry_alloc(dict((meme_run.get('last_entry_alloc') or {}).get('meme') or {}), now_ts)}"
+                f"- 상위 신호: {str(top_signal.get('symbol') or '-')} | "
+                f"{str(top_signal.get('strategy_id') or '-')} | "
+                f"{str(top_signal.get('grade') or '-')} {float(top_signal.get('score') or 0.0):.4f}"
             )
+        recent_alloc = dict(meme_engine.get("recent_allocations") or {})
+        if recent_alloc:
+            alloc_text = " | ".join(f"{k} {v}" for k, v in recent_alloc.items())
+            lines.append(f"- 최근 진입: {alloc_text}")
+
         lines.append("")
-        lines.append("[DEMO 크립토 모델 순위]")
+        lines.append("[DEMO 크립토 4모델 순위]")
         ranked_crypto: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
-        for model_id in MODEL_IDS:
+        for model_id in CRYPTO_MODEL_IDS:
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             cm = self._model_metrics_market(model_id, crypto_run, "crypto")
             crypto_name = self._market_model_name("crypto", model_id)
@@ -2304,25 +4261,14 @@ class TradingEngine:
                 f"OPEN {int(cm.get('open_positions') or 0)} | 최근진입 "
                 f"{self._fmt_last_entry_alloc(dict((crypto_run.get('last_entry_alloc') or {}).get('crypto') or {}), now_ts)}"
             )
-        wallet_total = sum(float(r.get("value_usd") or 0.0) for r in wallet_assets)
-        bybit_total = sum(float(r.get("usd_value") or 0.0) for r in bybit_assets)
-        sol_budget = self._solana_trade_budget()
-        lines.append("")
-        lines.append(f"팬텀 잔고(USD>=1): ${wallet_total:.2f}")
-        lines.append(
-            "SOL 최소유지/가용(제외 후): "
-            f"{float(sol_budget.get('reserve_sol') or 0.0):.4f} / "
-            f"{float(sol_budget.get('tradeable_sol') or 0.0):.6f} SOL "
-            f"(~${float(sol_budget.get('tradeable_usd') or 0.0):.2f})"
-        )
-        lines.append(f"거래소 잔고: ${bybit_total:.2f}")
+
         lines.append("")
         lines.append(f"[자동튜닝 {self._autotune_interval_label()}]")
-        for model_id in MODEL_IDS:
+        for model_id in CRYPTO_MODEL_IDS:
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             tune = self._read_model_runtime_tune_from_run(crypto_run or {}, model_id, now_ts)
             remain = max(0, int(tune.get("next_eval_ts") or 0) - now_ts)
-            core_name = self._display_model_name(model_id)
+            core_name = self._market_model_name("crypto", model_id)
             lines.append(
                 f"- {core_name}: next {remain // 60}m | thr {float(tune['threshold']):.4f} | "
                 f"tp {float(tune['tp_mul']):.2f} | sl {float(tune['sl_mul']):.2f}"
@@ -2335,6 +4281,115 @@ class TradingEngine:
                     f"결과 {note_text} | variant {str(tune.get('active_variant_id') or '-')}"
                 )
         return "\n".join(lines)
+
+    def _aggregate_meme_engine_state(
+        self,
+        runs: dict[str, Any],
+        mode_filter: str = "paper",
+        now_ts: int | None = None,
+    ) -> dict[str, Any]:
+        now = int(now_ts or int(time.time()))
+        positions: list[dict[str, Any]] = []
+        trades: list[dict[str, Any]] = []
+        recent_allocations: dict[str, str] = {}
+        signal_map: dict[str, dict[str, Any]] = {}
+
+        for model_id in MEME_MODEL_IDS:
+            strategy_id = self._meme_strategy_id_for_model(model_id)
+            strategy_name = self._meme_strategy_name(strategy_id)
+            run = self._get_market_run(runs, "meme", model_id)
+            alloc_row = dict((run.get("last_entry_alloc") or {}).get("meme") or {})
+            if alloc_row:
+                recent_allocations[strategy_id] = self._fmt_last_entry_alloc(alloc_row, now)
+
+            for row in self._build_meme_positions_view(run, mode_filter=mode_filter):
+                item = dict(row or {})
+                item_strategy_id = str(item.get("engine_strategy_id") or strategy_id or "THEME").upper().strip() or "THEME"
+                item["strategy_id"] = str(item_strategy_id)
+                item["strategy_name"] = str(self._meme_strategy_name(item_strategy_id))
+                positions.append(item)
+
+            for raw in list(run.get("trades") or []):
+                if str((raw or {}).get("source") or "").strip().lower() != "memecoin":
+                    continue
+                is_live = self._is_live_trade_row(raw)
+                if mode_filter == "live":
+                    if not is_live:
+                        continue
+                    if str((raw or {}).get("side") or "").strip().lower() == "sell" and not self._live_trade_is_realized(raw):
+                        continue
+                    pnl_usd = self._live_trade_realized_pnl_usd(raw) if str((raw or {}).get("side") or "").strip().lower() == "sell" else None
+                else:
+                    if is_live:
+                        continue
+                    pnl_usd = float((raw or {}).get("pnl_usd") or 0.0) if str((raw or {}).get("side") or "").strip().lower() == "sell" else None
+                item = dict(raw or {})
+                item_strategy_id = str(
+                    item.get("strategy_id")
+                    or item.get("engine_strategy_id")
+                    or strategy_id
+                    or "THEME"
+                ).upper().strip() or "THEME"
+                item["strategy_id"] = str(item_strategy_id)
+                item["strategy_name"] = str(self._meme_strategy_name(item_strategy_id))
+                item["pnl_usd"] = pnl_usd
+                trades.append(item)
+
+            for raw in list(run.get("latest_signals") or []):
+                item = self._enrich_meme_score_row(dict(raw or {}), model_id)
+                item_strategy_id = self._meme_strategy_id_from_signal_context(
+                    features=dict(item.get("features") or {}),
+                    reason=str(item.get("reason") or ""),
+                    current_strategy_id=str(item.get("strategy_id") or strategy_id or "THEME"),
+                )
+                item["strategy_id"] = str(item_strategy_id)
+                item["strategy_name"] = str(self._meme_strategy_name(item_strategy_id))
+                key = str(item.get("token_address") or item.get("symbol") or "").upper().strip()
+                if not key:
+                    continue
+                prev = signal_map.get(key)
+                if prev is None or float(item.get("score") or 0.0) > float(prev.get("score") or 0.0):
+                    signal_map[key] = item
+
+        positions.sort(key=lambda row: float(row.get("value_usd") or 0.0), reverse=True)
+        trades.sort(key=lambda row: int((row or {}).get("ts") or 0), reverse=True)
+        signals = sorted(signal_map.values(), key=lambda row: float(row.get("score") or 0.0), reverse=True)
+        sells = [row for row in trades if str((row or {}).get("side") or "").strip().lower() == "sell" and row.get("pnl_usd") is not None]
+        realized = float(sum(float((row or {}).get("pnl_usd") or 0.0) for row in sells))
+        unrealized = float(sum(float((row or {}).get("pnl_usd") or 0.0) for row in positions))
+        closed = int(len(sells))
+        wins = int(sum(1 for row in sells if float((row or {}).get("pnl_usd") or 0.0) > 0.0))
+        win_rate = (float(wins) / float(closed) * 100.0) if closed > 0 else 0.0
+        metric_rows = [
+            self._model_metrics_market(model_id, self._get_market_run(runs, "meme", model_id), "meme", mode_filter=mode_filter)
+            for model_id in MEME_MODEL_IDS
+        ]
+        seed_usd = float(sum(float((row or {}).get("seed_usd") or 0.0) for row in metric_rows))
+        equity_usd = float(sum(float((row or {}).get("equity_usd") or 0.0) for row in metric_rows))
+        aggregate_total_pnl_usd = float(sum(float((row or {}).get("total_pnl_usd") or 0.0) for row in metric_rows))
+        aggregate_closed = float(sum(float((row or {}).get("closed_trades") or 0.0) for row in metric_rows))
+        aggregate_win_weight = float(
+            sum(float((row or {}).get("win_rate") or 0.0) * float((row or {}).get("closed_trades") or 0.0) for row in metric_rows)
+        )
+        aggregate_roi_pct = (aggregate_total_pnl_usd / seed_usd * 100.0) if seed_usd > 0.0 else 0.0
+        return {
+            "positions": positions,
+            "trades": trades,
+            "signals": signals,
+            "open_positions": int(len(positions)),
+            "closed_trades": int(closed),
+            "win_rate": float(win_rate),
+            "realized_pnl_usd": float(realized),
+            "unrealized_pnl_usd": float(unrealized),
+            "total_pnl_usd": float(realized + unrealized),
+            "seed_usd": float(seed_usd),
+            "equity_usd": float(equity_usd),
+            "aggregate_total_pnl_usd": float(aggregate_total_pnl_usd),
+            "aggregate_roi_pct": float(aggregate_roi_pct),
+            "aggregate_win_rate": float((aggregate_win_weight / aggregate_closed) if aggregate_closed > 0.0 else 0.0),
+            "top_signal": dict(signals[0]) if signals else {},
+            "recent_allocations": dict(recent_allocations),
+        }
 
     def _build_telegram_periodic_report_live(self) -> str:
         with self._lock:
@@ -2371,6 +4426,9 @@ class TradingEngine:
                 return False
             return str((row or {}).get("source") or "").strip().lower() == "memecoin"
 
+        def _realized_trade_pnl(row: dict[str, Any]) -> float | None:
+            return self._live_trade_realized_pnl_usd(row)
+
         def _fmt_ts(unix_ts: int) -> str:
             t = int(unix_ts or 0)
             if t <= 0:
@@ -2386,14 +4444,14 @@ class TradingEngine:
         wallet_total = sum(float(r.get("value_usd") or 0.0) for r in wallet_assets)
         bybit_total = sum(float(r.get("usd_value") or 0.0) for r in bybit_assets)
         live_equity = self._live_equity_usd_from_assets(wallet_assets, bybit_assets)
-        live_seed = float(live_seed_saved) if float(live_seed_saved) > 0.0 else float(live_equity)
-        live_pnl = float(live_equity - live_seed)
-        live_roi = (live_pnl / max(1e-9, live_seed)) * 100.0 if live_seed > 0.0 else 0.0
         live_perf_anchor = float(live_perf_anchor_saved) if float(live_perf_anchor_saved) > 0.0 else float(live_equity)
+        live_seed = float(live_seed_saved) if float(live_seed_saved) > 0.0 else float(live_perf_anchor)
         live_net_flow = float(live_net_flow_saved)
         live_adj_equity = float(live_equity - live_net_flow)
         live_perf_pnl = float(live_adj_equity - live_perf_anchor)
         live_perf_roi = (live_perf_pnl / max(1e-9, live_perf_anchor)) * 100.0 if live_perf_anchor > 0.0 else 0.0
+        live_pnl = float(live_perf_pnl)
+        live_roi = float(live_perf_roi)
         session_cut_ts = int(live_seed_set_ts) if int(live_seed_set_ts) > 0 else 0
         basis_map = dict((runs.get("_live_meme_basis") or {}))
         live_meme_wallet_rows: list[dict[str, Any]] = []
@@ -2424,32 +4482,33 @@ class TradingEngine:
             )
         live_meme_wallet_rows.sort(key=lambda r: float(r.get("value_usd") or 0.0), reverse=True)
 
+        live_meme_engine = self._aggregate_meme_engine_state(runs, mode_filter="live", now_ts=now_ts)
         recent_live_trades: list[dict[str, Any]] = []
-        for model_id in MODEL_IDS:
-            run = self._get_market_run(runs, "meme", model_id)
-            for tr in list(run.get("trades") or []):
-                if not _is_live_meme_trade(tr):
-                    continue
-                ts = int((tr or {}).get("ts") or 0)
-                if session_cut_ts > 0 and ts < session_cut_ts:
-                    continue
-                recent_live_trades.append(
-                    {
-                        "ts": int(ts),
-                        "model_name": self._market_model_name("meme", model_id),
-                        "model_id": str(model_id),
-                        "side": str((tr or {}).get("side") or "").lower(),
-                        "symbol": str((tr or {}).get("symbol") or ""),
-                        "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
-                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0),
-                    }
-                )
+        for tr in list(live_meme_engine.get("trades") or []):
+            ts = int((tr or {}).get("ts") or 0)
+            if session_cut_ts > 0 and ts < session_cut_ts:
+                continue
+            realized_pnl_usd = _realized_trade_pnl(tr)
+            recent_live_trades.append(
+                {
+                    "ts": int(ts),
+                    "strategy_id": str((tr or {}).get("strategy_id") or "-"),
+                    "strategy_name": str((tr or {}).get("strategy_name") or "-"),
+                    "side": str((tr or {}).get("side") or "").lower(),
+                    "symbol": str((tr or {}).get("symbol") or ""),
+                    "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
+                    "pnl_usd": float(realized_pnl_usd) if realized_pnl_usd is not None else None,
+                }
+            )
         recent_live_trades.sort(key=lambda r: int(r.get("ts") or 0), reverse=True)
 
-        meme_live_models = list(self._live_model_ids("meme"))
         crypto_live_models = list(self._live_model_ids("crypto"))
-        meme_live_text = ",".join(meme_live_models) if (live_meme_on and meme_live_models) else ("ON(모델미설정)" if live_meme_on else "OFF(시장비활성)")
-        crypto_live_text = ",".join(crypto_live_models) if (live_crypto_on and crypto_live_models) else ("ON(모델미설정)" if live_crypto_on else "OFF(시장비활성)")
+        meme_live_text = "단일 엔진" if live_meme_on else "OFF(시장비활성)"
+        crypto_live_text = (
+            ", ".join(f"{mid}:{self._market_model_name('crypto', mid)}" for mid in crypto_live_models)
+            if (live_crypto_on and crypto_live_models)
+            else ("ON(모델미설정)" if live_crypto_on else "OFF(시장비활성)")
+        )
 
         lines: list[str] = [
             f"[10분 리포트][LIVE] {ts_text}",
@@ -2473,39 +4532,29 @@ class TradingEngine:
             lines.append("주의: 실전실행이 OFF입니다. LIVE 모드 전환 후 체결됩니다.")
 
         lines.append("")
-        lines.append("[LIVE 밈 활성 모델]")
+        lines.append("[LIVE 밈 엔진]")
         if not live_meme_on:
             lines.append("- OFF")
         else:
-            meme_ids = list(self._live_model_ids("meme"))
-            if not meme_ids:
-                lines.append("- 설정된 실전 모델 없음")
-            for model_id in meme_ids:
-                run = self._get_market_run(runs, "meme", model_id)
-                open_live = len(
-                    [
-                        p
-                        for p in list((run.get("meme_positions") or {}).values())
-                        if str((p or {}).get("mode") or "").strip().lower() == "live"
-                    ]
-                )
-                model_rows = [
-                    tr
-                    for tr in recent_live_trades
-                    if str(tr.get("model_id") or "") == str(model_id)
-                ]
-                sells = [tr for tr in model_rows if str(tr.get("side") or "").lower() == "sell"]
-                realized = float(sum(float(tr.get("pnl_usd") or 0.0) for tr in sells))
-                closed = int(len(sells))
-                wins = int(sum(1 for tr in sells if float(tr.get("pnl_usd") or 0.0) > 0.0))
-                win_rate = (float(wins) / float(closed) * 100.0) if closed > 0 else 0.0
-                last_ts = max([int(tr.get("ts") or 0) for tr in model_rows], default=0)
+            last_ts = max([int(tr.get("ts") or 0) for tr in recent_live_trades], default=0)
+            lines.append("- 구조: THEME_SNIPER 메인 / NARRATIVE 서브")
+            lines.append(
+                f"- 세션 실현PNL {_sgn(float(live_meme_engine.get('realized_pnl_usd') or 0.0))} | "
+                f"평가손익 {_sgn(float(live_meme_engine.get('unrealized_pnl_usd') or 0.0))} | "
+                f"총손익 {_sgn(float(live_meme_engine.get('total_pnl_usd') or 0.0))}"
+            )
+            lines.append(
+                f"- OPEN {int(live_meme_engine.get('open_positions') or 0)} | "
+                f"CLOSED {int(live_meme_engine.get('closed_trades') or 0)} | "
+                f"WIN {float(live_meme_engine.get('win_rate') or 0.0):.1f}% | "
+                f"최근체결 {_fmt_ts(last_ts)}"
+            )
+            top_signal = dict(live_meme_engine.get("top_signal") or {})
+            if top_signal:
                 lines.append(
-                    f"- {self._market_model_name('meme', model_id)}: "
-                    f"세션 실현PNL {_sgn(realized)} | "
-                    f"OPEN {open_live} | "
-                    f"CLOSED {closed} | WIN {win_rate:.1f}% | "
-                    f"최근체결 {_fmt_ts(last_ts)}"
+                    f"- 상위 신호: {str(top_signal.get('symbol') or '-')} | "
+                    f"{str(top_signal.get('strategy_id') or '-')} | "
+                    f"{str(top_signal.get('grade') or '-')} {float(top_signal.get('score') or 0.0):.4f}"
                 )
 
         lines.append("")
@@ -2529,9 +4578,9 @@ class TradingEngine:
         else:
             for tr in recent_live_trades[:6]:
                 side = "매수" if str(tr.get("side") or "").lower() == "buy" else "매도"
-                pnl_text = _sgn(float(tr.get("pnl_usd") or 0.0))
+                pnl_text = _sgn(float(tr.get("pnl_usd") or 0.0)) if tr.get("pnl_usd") is not None else "-"
                 lines.append(
-                    f"- {_fmt_ts(int(tr.get('ts') or 0))} | {tr.get('model_name')} | "
+                    f"- {_fmt_ts(int(tr.get('ts') or 0))} | {tr.get('strategy_id')} | "
                     f"{side} {tr.get('symbol')} ${float(tr.get('notional_usd') or 0.0):.2f} | PNL {pnl_text}"
                 )
 
@@ -2613,7 +4662,7 @@ class TradingEngine:
         alert_lines: list[str] = []
         with self._lock:
             runs = self.state.model_runs or {}
-            for model_id in MODEL_IDS:
+            for model_id in CRYPTO_MODEL_IDS:
                 run = runs.get(self._market_run_key("crypto", model_id))
                 if not isinstance(run, dict):
                     continue
@@ -2774,7 +4823,7 @@ class TradingEngine:
             runs = dict(self.state.model_runs or {})
         out: list[dict[str, Any]] = []
         for market in ("meme", "crypto"):
-            for model_id in MODEL_IDS:
+            for model_id in self._market_model_ids(market):
                 run = self._get_market_run(runs, market, model_id)
                 mm = self._model_metrics_market(model_id, run, market)
                 seed = float(mm.get("seed_usd") or 0.0)
@@ -2802,7 +4851,7 @@ class TradingEngine:
         for row in list(triggers or []):
             market = "meme" if str(row.get("market") or "").lower().strip() == "meme" else "crypto"
             model_id = str(row.get("model_id") or "").upper().strip()
-            if model_id not in set(MODEL_IDS):
+            if model_id not in set(self._market_model_ids(market)):
                 continue
             seed = float(row.get("seed_usd") or 0.0)
             equity = float(row.get("equity_usd") or 0.0)
@@ -2898,7 +4947,7 @@ class TradingEngine:
             "DEMO_ORDER_PCT_MAX": round(_clamp(min(current_order_max, 0.20), 0.08, 0.60), 4),
             "BYBIT_MAX_POSITIONS": int(max(1, min(current_bybit_pos, 2))),
             "MEME_MAX_POSITIONS": int(max(1, min(current_meme_pos, 3))),
-            "MACRO_RANK_MAX": int(max(60, min(current_rank_max, 200))),
+            "MACRO_RANK_MAX": int(max(300, min(current_rank_max, 300))),
         }
         if float(updates["DEMO_ORDER_PCT_MAX"]) < float(updates["DEMO_ORDER_PCT_MIN"]):
             updates["DEMO_ORDER_PCT_MAX"] = float(updates["DEMO_ORDER_PCT_MIN"])
@@ -2908,7 +4957,7 @@ class TradingEngine:
         with self._lock:
             runs = self.state.model_runs or {}
             for market in ("meme", "crypto"):
-                for model_id in MODEL_IDS:
+                for model_id in self._market_model_ids(market):
                     key = self._market_run_key(market, model_id)
                     run = runs.get(key)
                     if not isinstance(run, dict):
@@ -3164,6 +5213,9 @@ class TradingEngine:
                     include_nsfw=bool(self.settings.pumpfun_include_nsfw),
                     cache_seconds=int(self.settings.pumpfun_cache_seconds),
                 )
+                raw_slots = max(12, min(int(MEME_THEME_RAW_FEED_SLOTS), max(target * 2, 24)))
+                for row in pump_rows[:raw_slots]:
+                    add_or_replace_snapshot(self._snapshot_from_pump_coin(row))
                 mints: list[str] = []
                 seen_mints: set[str] = set()
                 for row in pump_rows:
@@ -3175,17 +5227,12 @@ class TradingEngine:
                 if mints:
                     hydrated = self.dex.fetch_snapshots_for_addresses(
                         self.settings.dex_chain,
-                        mints[: max(target * 2, 80)],
-                        max_tokens=target,
+                        mints[: max(raw_slots, 80)],
+                        max_tokens=max(target * 2, raw_slots),
                         source="pumpfun_dex",
                     )
                     for snap in hydrated:
                         add_or_replace_snapshot(snap)
-                if len(rows) < target:
-                    for row in pump_rows:
-                        add_or_replace_snapshot(self._snapshot_from_pump_coin(row))
-                        if len(rows) >= target:
-                            break
             except Exception as exc:  # noqa: BLE001
                 error_msg = f"pumpfun_fetch_failed: {exc}"
 
@@ -3257,34 +5304,65 @@ class TradingEngine:
         # appearing frozen.
         held_tokens: list[str] = []
         with self._lock:
-            for model_id in MODEL_IDS:
+            for model_id in MEME_MODEL_IDS:
                 run = self._get_market_run(self.state.model_runs or {}, "meme", model_id)
                 for token_address in dict(run.get("meme_positions") or {}).keys():
                     addr = str(token_address or "").strip()
                     if addr:
                         held_tokens.append(addr)
-        if held_tokens:
-            unique_held: list[str] = []
-            seen_held: set[str] = set()
-            for addr in held_tokens:
-                if addr in seen_held:
-                    continue
-                seen_held.add(addr)
-                unique_held.append(addr)
-            for addr in unique_held[:40]:
-                try:
-                    snap = self.dex.fetch_snapshot_for_token(self.settings.dex_chain, addr)
-                except Exception:
-                    snap = None
-                add_or_replace_snapshot(snap)
+        unique_held: list[str] = []
+        seen_held: set[str] = set()
+        for addr in held_tokens:
+            token_addr = str(addr or "").strip()
+            if not token_addr or token_addr in seen_held:
+                continue
+            seen_held.add(token_addr)
+            unique_held.append(token_addr)
+        watch_map = self._meme_watch_tokens_snapshot(int(time.time()))
+        for addr in watch_map.keys():
+            token_addr = str(addr or "").strip()
+            if not token_addr or token_addr in seen_held:
+                continue
+            seen_held.add(token_addr)
+            unique_held.append(token_addr)
+        for addr in unique_held[:120]:
+            try:
+                snap = self.dex.fetch_snapshot_for_token(self.settings.dex_chain, addr)
+            except Exception:
+                snap = None
+            if snap is None and addr in watch_map:
+                with self._lock:
+                    cached_row = dict((self._meme_watch_snapshot_cache or {}).get(addr) or {})
+                cached_ts = int(cached_row.get("ts") or 0)
+                cached_snap = cached_row.get("snapshot")
+                if (
+                    isinstance(cached_snap, TokenSnapshot)
+                    and cached_ts > 0
+                    and (int(time.time()) - cached_ts) <= int(MEME_WATCH_SNAPSHOT_CACHE_SECONDS)
+                ):
+                    snap = cached_snap
+            add_or_replace_snapshot(snap)
         with self._lock:
             if rows:
                 self.state.memecoin_error = ""
             elif error_msg:
                 self.state.memecoin_error = str(error_msg)
+        watch_set = set(self._meme_watch_tokens_snapshot(int(time.time())).keys())
+        if watch_set:
+            rows.sort(
+                key=lambda s: (
+                    1 if str(getattr(s, "token_address", "") or "").strip() in watch_set else 0,
+                    float(getattr(s, "volume_5m_usd", 0.0) or 0.0),
+                    float(getattr(s, "liquidity_usd", 0.0) or 0.0),
+                ),
+                reverse=True,
+            )
         for snap in rows:
             self._last_prices[snap.token_address] = float(snap.price_usd)
-        return rows[:target]
+        extra_watch = min(20, len(watch_set))
+        launch_slots = min(60, int(MEME_THEME_RAW_FEED_SLOTS))
+        limit = min(120, target + max(extra_watch, launch_slots))
+        return rows[:limit]
 
     def _fetch_trends(self) -> dict[str, Any]:
         now = int(time.time())
@@ -3424,6 +5502,17 @@ class TradingEngine:
                 self.settings.community_max_items_per_subreddit,
             ),
         )
+        community_4chan_events = _fetch_with_cache(
+            "community_4chan",
+            enabled=bool(self.settings.social_4chan_enabled) and bool(str(self.settings.social_4chan_boards or "").strip()),
+            interval_seconds=max(120, int(self.settings.trend_community_interval_seconds)),
+            fetcher=lambda: self.trend.fetch_4chan_events(
+                self.settings.social_4chan_boards,
+                self.settings.social_4chan_max_threads_per_board,
+            ),
+        )
+        if community_4chan_events:
+            community_events.extend(list(community_4chan_events))
 
         context_lines = [e.text for e in (trader_events + news_events + community_events)[:100]]
         google_cached = list(self._trend_cache_events.get("google_gemini") or [])
@@ -3624,12 +5713,84 @@ class TradingEngine:
         self._wallet_pattern_cache[token] = {"cached_ts": now, "analysis": dict(analysis)}
         return dict(analysis)
 
+    def _get_wallet_pattern_cached(self, token_address: str, now_ts: int | None = None) -> dict[str, Any]:
+        token = str(token_address or "").strip()
+        if not token:
+            return {"available": False, "smart_wallet_score": 0.50, "holder_risk": 0.50}
+        now = int(now_ts or int(time.time()))
+        cached = self._wallet_pattern_cache.get(token) or {}
+        ts = int(cached.get("cached_ts") or 0)
+        if ts > 0 and (now - ts) < int(self.settings.solscan_cache_seconds):
+            analysis = dict(cached.get("analysis") or {})
+            if analysis:
+                return analysis
+        return {"available": False, "smart_wallet_score": 0.50, "holder_risk": 0.50}
+
+    def _score_meme_snapshot_variant(
+        self,
+        snap: TokenSnapshot,
+        model_id: str,
+        *,
+        trend_hit: int,
+        trader_hits: int,
+        wallet_hits: int,
+        news_hits: int,
+        community_hits: int,
+        google_hits: int,
+        wallet_pattern: dict[str, Any] | None = None,
+        peer_info: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        wp = dict(wallet_pattern or {})
+        if not wp:
+            wp = {"available": False, "smart_wallet_score": 0.50, "holder_risk": 0.50}
+        features = self._build_features(
+            snap,
+            trend_hit,
+            trader_hits,
+            wallet_hits,
+            news_hits,
+            community_hits,
+            google_hits,
+            wp,
+            peer_info,
+        )
+        probability = self.model.predict_proba(features)
+        heuristic = self._heuristic_score(features)
+        score = self._variant_mix_score(model_id, probability, heuristic, features)
+        grade = self._meme_grade(score)
+        reason = self._build_reason(features, score, trend_hit, trader_hits, model_id, grade)
+        strategy_id = self._meme_strategy_id_from_signal_context(
+            snap=snap,
+            features=features,
+            reason=reason,
+            current_strategy_id=self._meme_strategy_id_for_model(model_id),
+        )
+        strategy_name = self._meme_strategy_name(strategy_id)
+        diagnostics = self._meme_score_diagnostics(model_id, features, score, grade)
+        return {
+            "model_id": str(model_id or "").upper().strip() or "A",
+            "strategy_id": str(strategy_id),
+            "strategy_name": str(strategy_name),
+            "token": snap,
+            "score": float(score),
+            "grade": str(grade),
+            "probability": float(probability),
+            "reason": str(reason),
+            "score_low_reason": str(diagnostics.get("low_reason") or ""),
+            "score_hold_hint": str(diagnostics.get("hold_hint") or ""),
+            "score_hold_target_grade": str(diagnostics.get("hold_target_grade") or ""),
+            "score_hold_target_score": float(diagnostics.get("hold_target_score") or 0.0),
+            "score_hold_gap": float(diagnostics.get("hold_gap") or 0.0),
+            "features": features,
+            "wallet_pattern": wp,
+        }
+
     def _score_signals_variant(
         self,
         snapshots: list[TokenSnapshot],
         trend_bundle: dict[str, Any],
         model_id: str,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         trending: set[str] = set(trend_bundle.get("trending") or set())
         trader_count: dict[str, int] = dict(trend_bundle.get("trader_counts") or {})
         wallet_count: dict[str, int] = dict(trend_bundle.get("wallet_counts") or {})
@@ -3639,12 +5800,30 @@ class TradingEngine:
 
         out: list[dict[str, Any]] = []
         relaxed: list[dict[str, Any]] = []
+        scored_all: list[dict[str, Any]] = []
+        now_ts = int(time.time())
+        watch_map = self._meme_watch_tokens_snapshot(now_ts=now_ts)
+        peer_map = self._meme_similarity_map(snapshots)
         wallet_budget = 6 if bool(self.settings.solscan_tracker_only) else 12
+        wallet_pattern_map: dict[str, dict[str, Any]] = {}
         threshold = self._variant_threshold(model_id)
         guard = self._entry_guard_profile(model_id, "meme")
         threshold += float(guard.get("threshold_boost") or 0.0)
         for snap in snapshots:
-            if not self._is_smallcap_memecoin_snapshot(snap):
+            is_smallcap = self._is_smallcap_memecoin_snapshot(snap)
+            tracked_wide_cap = False
+            if (not is_smallcap) and str(model_id).upper() == "C" and self._is_memecoin_snapshot(snap):
+                cap_usd = self._meme_effective_cap_usd(snap)
+                token_addr = str(snap.token_address or "").strip()
+                if token_addr:
+                    watched = int(watch_map.get(token_addr) or 0) > now_ts
+                    seen_before = any(f"{mid}:{token_addr}" in self._meme_score_log_guard for mid in MEME_MODEL_IDS)
+                    tracked_wide_cap = bool(
+                        (watched or seen_before)
+                        and 0.0 < float(cap_usd) <= float(MEME_TRACKED_MAX_CAP_USD)
+                        and self._meme_age_allowed(float(getattr(snap, "age_minutes", 0.0) or 0.0))
+                    )
+            if not is_smallcap and not tracked_wide_cap:
                 continue
             symbol = snap.symbol.upper()
             trader_hits = int(trader_count.get(symbol, 0))
@@ -3653,21 +5832,34 @@ class TradingEngine:
             community_hits = int(community_count.get(symbol, 0))
             google_hits = int(google_count.get(symbol, 0))
             trend_hit = 1 if (symbol in trending) else 0
-            normal_candidate = self._is_candidate(snap, trend_hit, trader_hits)
-            relaxed_candidate = self._is_relaxed_demo_candidate(
-                snap,
-                trend_hit,
-                trader_hits,
-                news_hits,
-                community_hits,
-                google_hits,
-            )
-            if not normal_candidate and not relaxed_candidate:
-                continue
-
+            if is_smallcap:
+                normal_candidate = self._is_candidate(snap, trend_hit, trader_hits)
+                relaxed_candidate = self._is_relaxed_demo_candidate(
+                    snap,
+                    trend_hit,
+                    trader_hits,
+                    news_hits,
+                    community_hits,
+                    google_hits,
+                )
+            else:
+                normal_candidate = False
+                relaxed_candidate = False
+            if tracked_wide_cap:
+                cap_usd = self._meme_effective_cap_usd(snap)
+                tracked_entry_ok = bool(
+                    float(cap_usd) <= float(MEME_TRACKED_ENTRY_MAX_CAP_USD)
+                    and float(snap.liquidity_usd) >= max(8000.0, float(self.settings.dex_min_liquidity_usd) * 1.20)
+                    and float(snap.volume_5m_usd) >= max(4000.0, float(self.settings.dex_min_5m_volume_usd) * 1.00)
+                    and float(snap.buy_sell_ratio) >= max(0.95, float(self.settings.dex_min_5m_buy_sell_ratio) * 0.85)
+                )
+                normal_candidate = bool(tracked_entry_ok)
+                relaxed_candidate = False
             wallet_pattern: dict[str, Any] = {"available": False, "smart_wallet_score": 0.50, "holder_risk": 0.50}
             tracker_driven = bool(wallet_hits > 0 or trader_hits > 0)
             if (
+                (normal_candidate or relaxed_candidate)
+                and
                 self.settings.solscan_enable_pattern
                 and self.solscan.enabled
                 and wallet_budget > 0
@@ -3675,30 +5867,39 @@ class TradingEngine:
             ):
                 wallet_pattern = self._get_wallet_pattern(snap.token_address)
                 wallet_budget -= 1
-
-            features = self._build_features(
-                snap,
-                trend_hit,
-                trader_hits,
-                wallet_hits,
-                news_hits,
-                community_hits,
-                google_hits,
-                wallet_pattern,
+            elif self.settings.solscan_enable_pattern and self.solscan.enabled and model_id in {"A", "B"}:
+                wallet_pattern = self._get_wallet_pattern_cached(snap.token_address)
+            token_addr = str(snap.token_address or "").strip()
+            if token_addr:
+                wallet_pattern_map[token_addr] = dict(wallet_pattern or {})
+            peer_info = dict(peer_map.get(token_addr) or {})
+            peer_info.update(
+                self._holder_overlap_features(
+                    token_addr,
+                    wallet_pattern,
+                    peer_info,
+                    peer_patterns=wallet_pattern_map,
+                    now_ts=now_ts,
+                    fetch_missing_peers=False,
+                )
             )
-            probability = self.model.predict_proba(features)
-            heuristic = self._heuristic_score(features)
-            score = self._variant_mix_score(model_id, probability, heuristic, features)
-            grade = self._meme_grade(score)
-            reason = self._build_reason(features, score, trend_hit, trader_hits, model_id, grade)
-            row = {
-                "token": snap,
-                "score": score,
-                "grade": grade,
-                "probability": probability,
-                "reason": reason,
-                "features": features,
-            }
+
+            row = self._score_meme_snapshot_variant(
+                snap,
+                model_id,
+                trend_hit=trend_hit,
+                trader_hits=trader_hits,
+                wallet_hits=wallet_hits,
+                news_hits=news_hits,
+                community_hits=community_hits,
+                google_hits=google_hits,
+                wallet_pattern=wallet_pattern,
+                peer_info=peer_info,
+            )
+            scored_all.append(row)
+            if not normal_candidate and not relaxed_candidate:
+                continue
+            score = float(row.get("score") or 0.0)
             if score < threshold:
                 if normal_candidate or relaxed_candidate:
                     relaxed.append(row)
@@ -3706,7 +5907,8 @@ class TradingEngine:
             out.append(row)
         if not out and relaxed:
             if not bool(guard.get("allow_demo_fallback", True)):
-                return out
+                scored_all.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
+                return out, scored_all
             floor = self._demo_meme_score_floor(model_id)
             floor += max(0.0, float(guard.get("threshold_boost") or 0.0))
             relaxed.sort(key=lambda row: float(row["score"]), reverse=True)
@@ -3729,7 +5931,8 @@ class TradingEngine:
                 if len(out) >= limit:
                     break
         out.sort(key=lambda row: float(row["score"]), reverse=True)
-        return out
+        scored_all.sort(key=lambda row: float(row.get("score") or 0.0), reverse=True)
+        return out, scored_all
 
     @staticmethod
     def _meme_grade(score: float) -> str:
@@ -3758,10 +5961,168 @@ class TradingEngine:
             {"grade": "B", "score_min": 0.74, "score_max": 0.8199, "meaning": "우세. 진입 고려 구간"},
             {"grade": "C", "score_min": 0.66, "score_max": 0.7399, "meaning": "보통 이상. 기본 진입 최소 등급"},
             {"grade": "D", "score_min": 0.58, "score_max": 0.6599, "meaning": "애매. 변동성 대비 신뢰도 낮음"},
-            {"grade": "E", "score_min": 0.50, "score_max": 0.5799, "meaning": "약함. 관망 권장"},
+            {"grade": "E", "score_min": 0.50, "score_max": 0.5799, "meaning": "초기 후보. 실시간 추적/시험 진입 가능한 하한 구간"},
             {"grade": "F", "score_min": 0.42, "score_max": 0.4999, "meaning": "매우 약함. 진입 비권장"},
             {"grade": "G", "score_min": 0.00, "score_max": 0.4199, "meaning": "노이즈 구간"},
         ]
+
+    @classmethod
+    def _meme_grade_min_score(cls, grade: str) -> float:
+        target = str(grade or "").upper().strip()
+        for row in cls._meme_grade_criteria():
+            if str(row.get("grade") or "").upper() == target:
+                return float(row.get("score_min") or 0.0)
+        return 0.0
+
+    @staticmethod
+    def _meme_hold_target_grade(model_id: str, strategy: str = "") -> str:
+        mid = str(model_id or "").upper().strip()
+        strat = str(strategy or "").lower().strip()
+        if mid == "B" or strat == "swing":
+            return "B"
+        if mid == "A":
+            return "B"
+        return "A"
+
+    def _meme_score_diagnostics(
+        self,
+        model_id: str,
+        features: dict[str, Any],
+        score: float,
+        grade: str,
+        *,
+        strategy: str = "",
+    ) -> dict[str, Any]:
+        feats = dict(features or {})
+        mid = str(model_id or "").upper().strip() or "C"
+        hold_grade = self._meme_hold_target_grade(mid, strategy)
+        hold_score = float(self._meme_grade_min_score(hold_grade))
+        score_now = _clamp(float(score or 0.0), 0.0, 1.0)
+        gap_to_hold = max(0.0, hold_score - score_now)
+
+        issues: list[dict[str, Any]] = []
+        seen_actions: set[str] = set()
+        actions: list[str] = []
+
+        def add_issue(label: str, severity: float, action: str) -> None:
+            sev = float(max(0.0, severity))
+            if sev <= 0.0:
+                return
+            issues.append({"label": label, "severity": sev, "action": action})
+            if action and action not in seen_actions:
+                seen_actions.add(action)
+                actions.append(action)
+
+        trend = float(feats.get("trend_strength") or 0.0)
+        trader = float(feats.get("trader_strength") or 0.0)
+        wallet = float(feats.get("wallet_strength") or 0.0)
+        news = float(feats.get("news_strength") or 0.0)
+        community = float(feats.get("community_strength") or 0.0)
+        google = float(feats.get("google_strength") or 0.0)
+        buy_ratio = float(feats.get("buy_sell_ratio") or 0.0)
+        tx_flow = float(feats.get("tx_flow") or 0.0)
+        liq_log = float(feats.get("liq_log") or 0.0)
+        vol_log = float(feats.get("vol_log") or 0.0)
+        age_freshness = float(feats.get("age_freshness") or 0.0)
+        age_stability = float(feats.get("age_stability") or 0.0)
+        noise = float(feats.get("noise_penalty") or 0.0)
+        spread = float(feats.get("spread_proxy") or 0.0)
+        smart = float(feats.get("smart_wallet_score") or 0.0)
+        holder_risk = float(feats.get("holder_risk") or 0.0)
+        transfer_diversity = float(feats.get("transfer_diversity") or 0.0)
+        pattern_available = float(feats.get("wallet_pattern_available") or 0.0)
+        suspicious = float(feats.get("wallet_suspicious") or 0.0)
+        new_meme_instant = float(feats.get("new_meme_instant") or 0.0)
+        similar_count = float(feats.get("similar_token_count") or 0.0)
+        theme_confirmation = float(feats.get("theme_confirmation") or 0.0)
+        theme_leader_score = float(feats.get("theme_leader_score") or 0.0)
+        clone_pressure = float(feats.get("clone_pressure") or 0.0)
+        late_clone_pressure = float(feats.get("late_clone_pressure") or 0.0)
+        holder_overlap_risk = float(feats.get("holder_overlap_risk") or 0.0)
+
+        social_mix = (news + community + google) / 3.0
+        social_target = 0.16 if mid == "C" else 0.22
+        flow_target = 0.58 if mid == "C" else 0.60
+        liq_target = 0.56 if mid == "C" else 0.60
+        vol_target = 0.60 if mid == "C" else 0.55
+
+        if trend < 0.40:
+            add_issue("트렌드 언급이 약함", 0.40 - trend, "X/뉴스/커뮤니티에서 동시 언급이 더 붙어야 합니다.")
+        if trader < 0.22:
+            add_issue("트레이더 언급이 부족함", 0.22 - trader, "유명 트레이더/탐지 계정에서 반복 언급되는 흐름이 필요합니다.")
+        if social_mix < social_target:
+            add_issue("소셜 확산이 약함", social_target - social_mix, "뉴스/커뮤니티 확산이 늘어야 홀딩 확률이 올라갑니다.")
+        if 0.0 < similar_count < 1.5 and theme_confirmation < 0.34:
+            add_issue("유사 코인 검증이 부족함", 0.34 - theme_confirmation, "같은 테마 확산이 1~2개 더 붙는지 확인이 필요합니다.")
+        if clone_pressure >= 0.45:
+            add_issue("유사 코인 과밀", clone_pressure - 0.35, "비슷한 코인이 너무 많아 선두 종목 여부를 더 엄격히 봐야 합니다.")
+        if late_clone_pressure >= 0.45:
+            add_issue("늦은 카피캣 가능성", late_clone_pressure - 0.35, "동일 테마 내 선두/원조인지 확인돼야 합니다.")
+        if similar_count >= 1.0 and theme_leader_score < 0.5:
+            add_issue("테마 선두가 아님", 0.55 - theme_leader_score, "동일 테마 중 거래대금/유동성 선두인지 확인돼야 합니다.")
+        if holder_overlap_risk >= 0.30:
+            add_issue("유사 코인과 상위 홀더 겹침 높음", holder_overlap_risk, "같은 지갑군이 여러 밈을 돌리는지 확인돼야 합니다.")
+        if buy_ratio < 0.54:
+            add_issue("매수 우위가 약함", 0.54 - buy_ratio, "매수/매도 비율이 더 개선돼야 합니다.")
+        if tx_flow < flow_target:
+            add_issue("체결 흐름이 약함", flow_target - tx_flow, "5분 체결 흐름이 순매수 쪽으로 더 기울어야 합니다.")
+        if liq_log < liq_target:
+            add_issue("유동성이 얕음", liq_target - liq_log, "유동성이 더 쌓여야 급락/청산 리스크가 줄어듭니다.")
+        if vol_log < vol_target:
+            add_issue("5분 거래량이 부족함", vol_target - vol_log, "5분 거래대금이 더 늘어야 추세 지속 가능성이 높아집니다.")
+        if spread > 0.56:
+            add_issue("스프레드/라우팅 부담이 큼", spread - 0.56, "더 두꺼운 유동성과 안정적인 라우트가 필요합니다.")
+        if noise >= 0.5:
+            add_issue("체결 표본이 너무 적음", noise, "틱 수가 더 쌓여 실제 수요인지 확인이 필요합니다.")
+        if pattern_available < 0.5:
+            add_issue("지갑 패턴 데이터가 없음", 0.22 if mid in {"A", "B"} else 0.12, "상위 홀더 분산과 스마트월렛 유입 확인이 필요합니다.")
+        if smart < 0.60 and mid in {"A", "B"}:
+            add_issue("스마트월렛 유입이 약함", 0.60 - smart, "상위 지갑의 순매수/분산 매집이 더 확인돼야 합니다.")
+        if holder_risk > 0.60:
+            add_issue("상위 지갑 집중 위험이 큼", holder_risk - 0.60, "홀더 분산이 개선돼야 홀딩 적합도가 올라갑니다.")
+        if suspicious >= 0.5:
+            add_issue("작업 지갑 패턴이 의심됨", suspicious, "의심 지갑 신호가 해소될 때까지 홀딩 비중을 낮춰야 합니다.")
+        if mid == "B":
+            if transfer_diversity < 0.20:
+                add_issue("지갑 분산도가 낮음", 0.20 - transfer_diversity, "장기 홀딩용으로는 홀더 분산이 더 필요합니다.")
+            if age_stability < 0.20:
+                add_issue("홀딩 안정성이 아직 부족함", 0.20 - age_stability, "시간 경과 후에도 매수 흐름이 유지되는지 더 확인해야 합니다.")
+        if mid == "C":
+            if new_meme_instant < 0.5 and age_freshness < 0.78:
+                add_issue("초기 버스트 강도가 약함", 0.78 - age_freshness, "초기 5~10분 버스트나 재버스트가 다시 붙어야 합니다.")
+            if age_stability > 0.88:
+                add_issue("신규성 메리트가 약함", age_stability - 0.88, "너무 성숙한 밈이면 재버스트 전까지 추적 우선이 맞습니다.")
+        if mid == "A":
+            quality_mix = (trend + trader + wallet) / 3.0
+            if quality_mix < 0.28:
+                add_issue("품질형 근거가 약함", 0.28 - quality_mix, "트렌드와 지갑 품질이 함께 보강돼야 합니다.")
+
+        issues.sort(key=lambda row: float(row.get("severity") or 0.0), reverse=True)
+        top_issues = issues[:3]
+        low_reason = ", ".join(str(row.get("label") or "") for row in top_issues if str(row.get("label") or "")) or "주요 감점 요인 없음"
+
+        if gap_to_hold > 0.0:
+            hold_intro = f"홀딩권장 {hold_grade}({hold_score:.2f})까지 +{gap_to_hold:.2f}"
+        else:
+            hold_intro = f"현재 {grade}로 홀딩권장 {hold_grade} 구간 충족"
+
+        top_actions = [str(text) for text in actions[:3] if str(text or "").strip()]
+        if top_actions:
+            hold_hint = hold_intro + " | " + " / ".join(top_actions)
+        elif gap_to_hold > 0.0:
+            hold_hint = hold_intro + " | 트렌드/거래량/지갑 분산이 함께 강화돼야 합니다."
+        else:
+            hold_hint = hold_intro + " | 추세 유지 여부만 계속 모니터링하면 됩니다."
+
+        return {
+            "low_reason": low_reason,
+            "hold_hint": hold_hint,
+            "hold_target_grade": hold_grade,
+            "hold_target_score": float(round(hold_score, 4)),
+            "hold_gap": float(round(gap_to_hold, 4)),
+            "issues": [str(row.get("label") or "") for row in top_issues if str(row.get("label") or "")],
+            "actions": top_actions,
+        }
 
     @staticmethod
     def _crypto_param_legend() -> list[dict[str, str]]:
@@ -3893,12 +6254,20 @@ class TradingEngine:
                 + (0.06 * features.get("trader_strength", 0.0))
                 + (0.04 * features.get("liq_log", 0.0))
                 + (0.03 * features.get("is_pump_fun", 0.0))
+                + (0.10 * features.get("theme_launch_fit", 0.0))
+                + (0.08 * features.get("theme_launch_ready", 0.0))
+                + (0.03 * features.get("theme_confirmation", 0.0))
+                + (0.04 * features.get("theme_leader_score", 0.0))
+                + (0.03 * features.get("holder_overlap_clean", 0.0))
                 - (0.08 * features.get("spread_proxy", 0.0))
                 - (0.12 * features.get("holder_risk", 0.0))
                 - (0.06 * features.get("noise_penalty", 0.0))
                 - (0.12 * features.get("wallet_suspicious", 0.0))
                 - (0.06 * (1.0 - float(features.get("wallet_pattern_available", 0.0))))
                 - (0.03 * features.get("new_meme_instant", 0.0))
+                - (0.10 * features.get("clone_pressure", 0.0))
+                - (0.12 * features.get("late_clone_pressure", 0.0))
+                - (0.14 * features.get("holder_overlap_risk", 0.0))
             )
             return _clamp(score, 0.0, 1.0)
         if model_id == "B":
@@ -3912,25 +6281,48 @@ class TradingEngine:
                 + (0.18 * features.get("trader_strength", 0.0))
                 + (0.10 * features.get("tx_flow", 0.0))
                 + (0.08 * features.get("is_pump_fun", 0.0))
+                + (0.10 * features.get("theme_launch_fit", 0.0))
+                + (0.05 * features.get("theme_launch_ready", 0.0))
                 + (0.18 * features.get("smart_wallet_score", 0.0))
                 + (0.08 * features.get("transfer_diversity", 0.0))
+                + (0.05 * features.get("theme_confirmation", 0.0))
+                + (0.05 * features.get("theme_leader_score", 0.0))
+                + (0.04 * features.get("holder_overlap_clean", 0.0))
                 - (0.05 * features.get("noise_penalty", 0.0))
                 - (0.14 * features.get("holder_risk", 0.0))
                 - (0.12 * features.get("wallet_suspicious", 0.0))
                 - (0.08 * (1.0 - float(features.get("wallet_pattern_available", 0.0))))
+                - (0.10 * features.get("clone_pressure", 0.0))
+                - (0.12 * features.get("late_clone_pressure", 0.0))
+                - (0.16 * features.get("holder_overlap_risk", 0.0))
             )
             return _clamp(score, 0.0, 1.0)
         score = (
-            (0.30 * probability)
-            + (0.70 * heuristic)
-            + (0.24 * features.get("new_meme_instant", 0.0))
-            + (0.19 * features.get("tx_flow", 0.0))
-            + (0.16 * features.get("trend_strength", 0.0))
-            + (0.14 * features.get("is_pump_fun", 0.0))
-            + (0.02 * features.get("google_strength", 0.0))
+            (0.24 * probability)
+            + (0.76 * heuristic)
+            + (0.16 * features.get("sniper_social_burst", 0.0))
+            + (0.18 * features.get("sniper_signal_fit", 0.0))
+            + (0.12 * features.get("sniper_cap_fit", 0.0))
+            + (0.16 * features.get("tx_flow", 0.0))
+            + (0.12 * features.get("buy_sell_ratio", 0.0))
+            + (0.10 * features.get("trader_strength", 0.0))
+            + (0.08 * features.get("community_strength", 0.0))
             + (0.06 * features.get("news_strength", 0.0))
-            - (0.03 * features.get("spread_proxy", 0.0))
-            - (0.02 * features.get("holder_risk", 0.0))
+            + (0.12 * features.get("theme_launch_fit", 0.0))
+            + (0.10 * features.get("theme_launch_ready", 0.0))
+            + (0.08 * features.get("theme_confirmation", 0.0))
+            + (0.08 * features.get("new_meme_instant", 0.0))
+            + (0.08 * features.get("vol_log", 0.0))
+            + (0.06 * features.get("liq_log", 0.0))
+            + (0.04 * features.get("is_pump_fun", 0.0))
+            + (0.04 * features.get("theme_leader_score", 0.0))
+            + (0.02 * features.get("holder_overlap_clean", 0.0))
+            - (0.04 * features.get("spread_proxy", 0.0))
+            - (0.04 * features.get("holder_risk", 0.0))
+            - (0.06 * features.get("noise_penalty", 0.0))
+            - (0.10 * features.get("clone_pressure", 0.0))
+            - (0.14 * features.get("late_clone_pressure", 0.0))
+            - (0.18 * features.get("holder_overlap_risk", 0.0))
         )
         return _clamp(score, 0.0, 1.0)
 
@@ -3981,6 +6373,302 @@ class TradingEngine:
             cap = float(getattr(snap, "fdv_usd", 0.0) or 0.0)
         return max(0.0, cap)
 
+    @staticmethod
+    def _meme_similarity_terms(symbol: str, name: str) -> set[str]:
+        raw = re.findall(r"[a-z0-9]+", f"{str(symbol or '')} {str(name or '')}".lower())
+        out: set[str] = set()
+        for token in raw:
+            tok = str(token or "").strip()
+            if not tok or tok in MEME_SIMILARITY_STOPWORDS:
+                continue
+            if len(tok) >= 3:
+                out.add(tok)
+            elif tok in {"ai", "gm"}:
+                out.add(tok)
+            for suffix in MEME_SIMILARITY_SPLIT_SUFFIXES:
+                if tok.endswith(suffix) and len(tok) > len(suffix) + 2:
+                    stem = tok[: -len(suffix)]
+                    if len(stem) >= 3:
+                        out.add(stem)
+                    if len(suffix) >= 2:
+                        out.add(suffix)
+        return out
+
+    @classmethod
+    def _meme_similarity_signature(cls, symbol: str, name: str) -> str:
+        terms = sorted(cls._meme_similarity_terms(symbol, name))
+        if terms:
+            return " ".join(terms[:6])
+        return re.sub(r"[^a-z0-9]+", " ", f"{str(symbol or '')} {str(name or '')}".lower()).strip()
+
+    @classmethod
+    def _meme_similarity_match(cls, left: dict[str, Any], right: dict[str, Any]) -> bool:
+        left_terms = set(left.get("terms") or set())
+        right_terms = set(right.get("terms") or set())
+        shared = left_terms & right_terms
+        left_sig = str(left.get("signature") or "")
+        right_sig = str(right.get("signature") or "")
+        ratio = SequenceMatcher(None, left_sig, right_sig).ratio() if left_sig and right_sig else 0.0
+        if len(shared) >= 2:
+            return True
+        if len(shared) >= 1 and ratio >= 0.52:
+            return True
+        if ratio >= 0.84:
+            return True
+        return False
+
+    @classmethod
+    def _meme_similarity_features_from_rows(
+        cls,
+        target: dict[str, Any],
+        peers: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        similar_rows = [row for row in list(peers or []) if cls._meme_similarity_match(target, row)]
+        similar_count = len(similar_rows)
+        if similar_count <= 0:
+            return {
+                "similar_token_count": 0.0,
+                "similar_token_count_norm": 0.0,
+                "theme_confirmation": 0.0,
+                "theme_leader_score": 0.0,
+                "clone_pressure": 0.0,
+                "late_clone_pressure": 0.0,
+                "similar_peer_tokens": [],
+            }
+        self_strength = float(target.get("strength") or 0.0)
+        older_peers = sum(1 for row in similar_rows if float(row.get("age_minutes") or 0.0) + 1.0 < float(target.get("age_minutes") or 0.0))
+        stronger_peers = sum(1 for row in similar_rows if float(row.get("strength") or 0.0) > (self_strength * 1.08))
+        leader_score = 1.0 if stronger_peers <= 0 else 0.0
+        theme_confirmation = _clamp(min(similar_count, 3) / 3.0, 0.0, 1.0)
+        clone_pressure = _clamp(max(0, similar_count - 1) / 5.0, 0.0, 1.0)
+        late_clone_pressure = _clamp(
+            (0.55 if stronger_peers > 0 else 0.0)
+            + (0.30 if older_peers > 0 else 0.0)
+            + (0.12 * max(0, similar_count - 2)),
+            0.0,
+            1.0,
+        )
+        return {
+            "similar_token_count": float(similar_count),
+            "similar_token_count_norm": float(_clamp(similar_count / 6.0, 0.0, 1.0)),
+            "theme_confirmation": float(theme_confirmation),
+            "theme_leader_score": float(leader_score),
+            "clone_pressure": float(clone_pressure),
+            "late_clone_pressure": float(late_clone_pressure),
+            "similar_peer_tokens": [
+                str(row.get("token_address") or "")
+                for row in similar_rows[:8]
+                if str(row.get("token_address") or "")
+            ],
+        }
+
+    @classmethod
+    def _meme_similarity_row_from_snapshot(cls, snap: TokenSnapshot) -> dict[str, Any]:
+        liq = float(snap.liquidity_usd or 0.0)
+        vol = float(snap.volume_5m_usd or 0.0)
+        return {
+            "token_address": str(snap.token_address or "").strip(),
+            "symbol": str(snap.symbol or "").upper().strip(),
+            "name": str(snap.name or "").strip(),
+            "age_minutes": float(snap.age_minutes or 0.0),
+            "liquidity_usd": liq,
+            "volume_5m_usd": vol,
+            "market_cap_usd": float(cls._meme_effective_cap_usd(snap)),
+            "strength": float(vol + (0.35 * liq)),
+            "terms": cls._meme_similarity_terms(snap.symbol, snap.name),
+            "signature": cls._meme_similarity_signature(snap.symbol, snap.name),
+        }
+
+    def _meme_similarity_map(self, snapshots: list[TokenSnapshot]) -> dict[str, dict[str, Any]]:
+        rows = [
+            self._meme_similarity_row_from_snapshot(snap)
+            for snap in list(snapshots or [])
+            if isinstance(snap, TokenSnapshot)
+            and self._is_memecoin_snapshot(snap)
+            and float(getattr(snap, "age_minutes", 0.0) or 0.0) <= float(MEME_SIMILARITY_LOOKBACK_MINUTES)
+            and 0.0 < float(self._meme_effective_cap_usd(snap)) <= float(MEME_TRACKED_MAX_CAP_USD)
+        ]
+        out: dict[str, dict[str, float]] = {}
+        for row in rows:
+            token = str(row.get("token_address") or "").strip()
+            if not token:
+                continue
+            peers = [peer for peer in rows if str(peer.get("token_address") or "") != token]
+            out[token] = self._meme_similarity_features_from_rows(row, peers)
+        return out
+
+    def _meme_similarity_for_snapshot(self, snapshot: TokenSnapshot) -> dict[str, Any]:
+        if not isinstance(snapshot, TokenSnapshot):
+            return {
+                "similar_token_count": 0.0,
+                "similar_token_count_norm": 0.0,
+                "theme_confirmation": 0.0,
+                "theme_leader_score": 0.0,
+                "clone_pressure": 0.0,
+                "late_clone_pressure": 0.0,
+            }
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        target_row = self._meme_similarity_row_from_snapshot(snapshot)
+        target_token = str(target_row.get("token_address") or "").strip()
+        if target_token:
+            seen.add(target_token)
+        rows.append(target_row)
+        with self._lock:
+            feed_rows = list(self._new_meme_feed or [])
+            cache_rows = dict(self._meme_watch_snapshot_cache or {})
+        for row in feed_rows:
+            token = str((row or {}).get("token_address") or "").strip()
+            if not token or token in seen:
+                continue
+            age_minutes = float((row or {}).get("age_minutes") or 0.0)
+            mcap = float((row or {}).get("market_cap_usd") or 0.0)
+            if age_minutes > float(MEME_SIMILARITY_LOOKBACK_MINUTES):
+                continue
+            if not (0.0 < mcap <= float(MEME_TRACKED_MAX_CAP_USD)):
+                continue
+            symbol = str((row or {}).get("symbol") or "").upper().strip()
+            name = str((row or {}).get("name") or "").strip()
+            liq = float((row or {}).get("liquidity_usd") or 0.0)
+            vol = float((row or {}).get("volume_5m_usd") or 0.0)
+            rows.append(
+                {
+                    "token_address": token,
+                    "symbol": symbol,
+                    "name": name,
+                    "age_minutes": age_minutes,
+                    "liquidity_usd": liq,
+                    "volume_5m_usd": vol,
+                    "market_cap_usd": mcap,
+                    "strength": float(vol + (0.35 * liq)),
+                    "terms": self._meme_similarity_terms(symbol, name),
+                    "signature": self._meme_similarity_signature(symbol, name),
+                }
+            )
+            seen.add(token)
+        for cached in list(cache_rows.values()):
+            snap = (cached or {}).get("snapshot")
+            if not isinstance(snap, TokenSnapshot):
+                continue
+            token = str(snap.token_address or "").strip()
+            if not token or token in seen:
+                continue
+            if not self._is_memecoin_snapshot(snap):
+                continue
+            if float(getattr(snap, "age_minutes", 0.0) or 0.0) > float(MEME_SIMILARITY_LOOKBACK_MINUTES):
+                continue
+            if not (0.0 < float(self._meme_effective_cap_usd(snap)) <= float(MEME_TRACKED_MAX_CAP_USD)):
+                continue
+            rows.append(self._meme_similarity_row_from_snapshot(snap))
+            seen.add(token)
+        peers = [row for row in rows if str(row.get("token_address") or "") != target_token]
+        return self._meme_similarity_features_from_rows(target_row, peers)
+
+    def _holder_overlap_features(
+        self,
+        token_address: str,
+        wallet_pattern: dict[str, Any] | None,
+        peer_info: dict[str, Any] | None,
+        *,
+        peer_patterns: dict[str, dict[str, Any]] | None = None,
+        now_ts: int | None = None,
+        fetch_missing_peers: bool = False,
+        max_peer_fetches: int = 2,
+    ) -> dict[str, float]:
+        target_token = str(token_address or "").strip()
+        pattern = dict(wallet_pattern or {})
+        peer_ctx = dict(peer_info or {})
+        target_wallets = [str(v or "").strip() for v in list(pattern.get("top_holder_wallets") or []) if str(v or "").strip()]
+        target_weights_raw = dict(pattern.get("top_holder_weights") or {})
+        target_weights = {str(k or "").strip(): float(v or 0.0) for k, v in target_weights_raw.items() if str(k or "").strip()}
+        if not target_token or not target_wallets:
+            return {
+                "holder_overlap_max": 0.0,
+                "holder_overlap_mean": 0.0,
+                "holder_overlap_weighted_max": 0.0,
+                "holder_overlap_peer_count": 0.0,
+                "holder_overlap_risk": 0.0,
+                "holder_overlap_clean": 0.0,
+            }
+
+        cached_peer_patterns = dict(peer_patterns or {})
+        overlap_ratios: list[float] = []
+        weighted_overlaps: list[float] = []
+        peer_hits = 0
+        fetched = 0
+        target_set = set(target_wallets)
+        peer_tokens = [
+            str(v or "").strip()
+            for v in list(peer_ctx.get("similar_peer_tokens") or [])
+            if str(v or "").strip() and str(v or "").strip() != target_token
+        ][:8]
+        for peer_token in peer_tokens:
+            pat = dict(cached_peer_patterns.get(peer_token) or {})
+            if not pat:
+                pat = self._get_wallet_pattern_cached(peer_token, now_ts=now_ts)
+            if (not bool(pat.get("available"))) and fetch_missing_peers and fetched < max(0, int(max_peer_fetches)):
+                try:
+                    pat = self._get_wallet_pattern(peer_token, now_ts=now_ts)
+                    fetched += 1
+                except Exception:
+                    pat = dict(pat or {})
+            peer_wallets = [str(v or "").strip() for v in list(pat.get("top_holder_wallets") or []) if str(v or "").strip()]
+            if not peer_wallets:
+                continue
+            peer_weights_raw = dict(pat.get("top_holder_weights") or {})
+            peer_weights = {str(k or "").strip(): float(v or 0.0) for k, v in peer_weights_raw.items() if str(k or "").strip()}
+            peer_set = set(peer_wallets)
+            common = target_set & peer_set
+            if not common:
+                continue
+            peer_hits += 1
+            overlap_ratios.append(float(len(common)) / float(max(1, min(len(target_set), len(peer_set)))))
+            weighted_overlaps.append(
+                float(
+                    sum(
+                        min(float(target_weights.get(owner) or 0.0), float(peer_weights.get(owner) or 0.0))
+                        for owner in common
+                    )
+                )
+            )
+        if not overlap_ratios:
+            return {
+                "holder_overlap_max": 0.0,
+                "holder_overlap_mean": 0.0,
+                "holder_overlap_weighted_max": 0.0,
+                "holder_overlap_peer_count": 0.0,
+                "holder_overlap_risk": 0.0,
+                "holder_overlap_clean": float(
+                    _clamp(float(peer_ctx.get("theme_confirmation") or 0.0), 0.0, 1.0) * 0.15
+                ),
+            }
+
+        max_ratio = max(overlap_ratios)
+        mean_ratio = float(sum(overlap_ratios)) / float(len(overlap_ratios))
+        max_weighted = max(weighted_overlaps) if weighted_overlaps else 0.0
+        peer_count_norm = _clamp(float(peer_hits) / 3.0, 0.0, 1.0)
+        overlap_risk = _clamp(
+            (0.45 * max_ratio)
+            + (0.20 * mean_ratio)
+            + (0.25 * _clamp(max_weighted / 0.18, 0.0, 1.0))
+            + (0.10 * peer_count_norm),
+            0.0,
+            1.0,
+        )
+        clean_score = _clamp(
+            float(peer_ctx.get("theme_confirmation") or 0.0) * (1.0 - overlap_risk),
+            0.0,
+            1.0,
+        )
+        return {
+            "holder_overlap_max": float(max_ratio),
+            "holder_overlap_mean": float(mean_ratio),
+            "holder_overlap_weighted_max": float(max_weighted),
+            "holder_overlap_peer_count": float(peer_hits),
+            "holder_overlap_risk": float(overlap_risk),
+            "holder_overlap_clean": float(clean_score),
+        }
+
     def _is_smallcap_memecoin_snapshot(self, snap: TokenSnapshot) -> bool:
         if not self._is_memecoin_snapshot(snap):
             return False
@@ -3994,6 +6682,7 @@ class TradingEngine:
     def _is_candidate(self, snap: TokenSnapshot, trend_hit: int, trader_hits: int) -> bool:
         if not self._is_smallcap_memecoin_snapshot(snap):
             return False
+        cap = self._meme_effective_cap_usd(snap)
         base_ok = (
             snap.liquidity_usd >= self.settings.dex_min_liquidity_usd
             and snap.volume_5m_usd >= self.settings.dex_min_5m_volume_usd
@@ -4017,7 +6706,237 @@ class TradingEngine:
             and snap.volume_5m_usd >= (self.settings.dex_min_5m_volume_usd * 0.20)
             and snap.age_minutes >= 0.5
         )
-        return fast_lane or trend_lane
+        launch_lane = (
+            str(getattr(snap, "source", "") or "").lower().startswith("pumpfun")
+            and 0.0 < float(cap) <= float(MEME_THEME_LAUNCH_HARD_MAX_CAP_USD)
+            and float(snap.age_minutes) <= float(MEME_THEME_LAUNCH_MAX_AGE_MINUTES)
+            and (
+                (
+                    float(snap.liquidity_usd) >= float(MEME_THEME_LAUNCH_MIN_LIQUIDITY_USD)
+                    and float(snap.volume_5m_usd) >= float(MEME_THEME_LAUNCH_MIN_VOLUME_5M_USD)
+                    and int(snap.buys_5m) >= 2
+                    and int(snap.buys_5m) >= int(snap.sells_5m)
+                )
+                or self._is_theme_launch_zone(snap)
+            )
+        )
+        return base_ok or fast_lane or trend_lane or launch_lane
+
+    def _theme_launch_entry_ok(self, snap: TokenSnapshot, features: dict[str, Any] | None = None) -> bool:
+        feats = dict(features or {})
+        cap = float(self._meme_effective_cap_usd(snap))
+        age = float(getattr(snap, "age_minutes", 0.0) or 0.0)
+        source = str(getattr(snap, "source", "") or "").strip().lower()
+        vol_5m = float(getattr(snap, "volume_5m_usd", 0.0) or 0.0)
+        buys_5m = int(getattr(snap, "buys_5m", 0) or 0)
+        buy_sell_ratio = float(getattr(snap, "buy_sell_ratio", 0.0) or 0.0)
+        tx_flow = float(feats.get("tx_flow") or 0.0)
+        similar_count = int(float(feats.get("similar_token_count") or 0.0))
+        theme_confirmation = float(feats.get("theme_confirmation") or 0.0)
+        social_burst = float(feats.get("sniper_social_burst") or 0.0)
+        clone_pressure = float(feats.get("clone_pressure") or 0.0)
+        late_clone_pressure = float(feats.get("late_clone_pressure") or 0.0)
+        holder_overlap_risk = float(feats.get("holder_overlap_risk") or 0.0)
+        is_launch_source = bool(
+            source.startswith("pumpfun")
+            or source.startswith("bonk")
+            or float(feats.get("new_meme_instant") or 0.0) > 0.0
+            or float(feats.get("is_pump_fun") or 0.0) > 0.0
+        )
+        if cap <= 0.0 or cap > float(MEME_THEME_LAUNCH_HARD_MAX_CAP_USD):
+            return False
+        if age > float(MEME_THEME_LAUNCH_MAX_AGE_MINUTES):
+            return False
+        if not is_launch_source:
+            return False
+        if late_clone_pressure >= 0.72 or holder_overlap_risk >= 0.74:
+            return False
+        cluster_required = max(1, int(self.settings.meme_theme_cluster_min_tokens) - 1)
+        cluster_ready = similar_count >= cluster_required or theme_confirmation >= 0.34
+        flow_ready = buys_5m >= 2 and buy_sell_ratio >= 1.02 and tx_flow >= 0.52
+        raw_launch_source = bool(source.startswith("pumpfun") or source.startswith("bonk"))
+        if (
+            raw_launch_source
+            and float(MEME_THEME_LAUNCH_IDEAL_MIN_CAP_USD) <= cap <= float(MEME_THEME_LAUNCH_IDEAL_MAX_CAP_USD)
+            and age <= float(MEME_THEME_LAUNCH_ENTRY_MAX_AGE_MINUTES)
+            and flow_ready
+            and (cluster_ready or social_burst >= 0.46)
+        ):
+            return True
+        if (
+            raw_launch_source
+            and age <= float(MEME_THEME_LAUNCH_MAX_AGE_MINUTES)
+            and vol_5m >= 250.0
+            and buys_5m >= 20
+            and buy_sell_ratio >= 0.80
+            and (cluster_ready or social_burst >= 0.54)
+        ):
+            return True
+        if (
+            raw_launch_source
+            and float(MEME_THEME_LAUNCH_SOFT_MIN_CAP_USD) <= cap <= float(MEME_THEME_LAUNCH_SOFT_MAX_CAP_USD)
+            and age <= max(float(MEME_THEME_LAUNCH_ENTRY_MAX_AGE_MINUTES), 10.0)
+            and vol_5m >= 250.0
+            and buys_5m >= 20
+            and buy_sell_ratio >= 0.80
+            and (cluster_ready or social_burst >= 0.56)
+        ):
+            return True
+        if float(getattr(snap, "liquidity_usd", 0.0) or 0.0) < float(MEME_THEME_LAUNCH_MIN_LIQUIDITY_USD):
+            return False
+        if vol_5m < float(MEME_THEME_LAUNCH_MIN_VOLUME_5M_USD):
+            return False
+        if buys_5m < 2:
+            return False
+        if buy_sell_ratio < 1.05:
+            return False
+        if tx_flow < 0.52:
+            return False
+        if not cluster_ready and social_burst < 0.60:
+            return False
+        if clone_pressure >= 0.78:
+            return False
+        return True
+
+    def _sniper_entry_ok(self, snap: TokenSnapshot, features: dict[str, Any] | None = None) -> bool:
+        feats = dict(features or {})
+        cap = float(self._meme_effective_cap_usd(snap))
+        liq = float(getattr(snap, "liquidity_usd", 0.0) or 0.0)
+        vol_5m = float(getattr(snap, "volume_5m_usd", 0.0) or 0.0)
+        buy_sell_ratio = float(getattr(snap, "buy_sell_ratio", 0.0) or 0.0)
+        social_burst = float(feats.get("sniper_social_burst") or 0.0)
+        signal_fit = float(feats.get("sniper_signal_fit") or 0.0)
+        tx_flow = float(feats.get("tx_flow") or 0.0)
+        trader_strength = float(feats.get("trader_strength") or 0.0)
+        community_strength = float(feats.get("community_strength") or 0.0)
+        news_strength = float(feats.get("news_strength") or 0.0)
+        trend_strength = float(feats.get("trend_strength") or 0.0)
+        clone_pressure = float(feats.get("clone_pressure") or 0.0)
+        late_clone_pressure = float(feats.get("late_clone_pressure") or 0.0)
+        holder_overlap_risk = float(feats.get("holder_overlap_risk") or 0.0)
+        if cap < MEME_SNIPER_MIN_CAP_USD or cap > MEME_SNIPER_MAX_CAP_USD:
+            return False
+        if liq < MEME_SNIPER_MIN_LIQUIDITY_USD:
+            return False
+        if vol_5m < MEME_SNIPER_MIN_VOLUME_5M_USD:
+            return False
+        if social_burst < MEME_SNIPER_MIN_SOCIAL_BURST and signal_fit < MEME_SNIPER_MIN_SIGNAL_FIT:
+            return False
+        if buy_sell_ratio < 0.98 and tx_flow < 0.52:
+            return False
+        if max(trader_strength, community_strength, news_strength, trend_strength) < 0.18:
+            return False
+        if late_clone_pressure >= 0.82 or holder_overlap_risk >= 0.78:
+            return False
+        if clone_pressure >= 0.88 and social_burst < 0.70:
+            return False
+        return True
+
+    def _theme_launch_priority_tuple(self, snap: TokenSnapshot, score: float) -> tuple[float, float, float, float]:
+        cap = float(self._meme_effective_cap_usd(snap))
+        age = float(getattr(snap, "age_minutes", 0.0) or 0.0)
+        vol = float(getattr(snap, "volume_5m_usd", 0.0) or 0.0)
+        if float(MEME_THEME_LAUNCH_IDEAL_MIN_CAP_USD) <= cap <= float(MEME_THEME_LAUNCH_IDEAL_MAX_CAP_USD):
+            cap_penalty = 0.0
+        else:
+            cap_penalty = abs(cap - 4_000.0) / 4_000.0 if cap > 0.0 else 99.0
+        return (
+            float(cap_penalty),
+            float(_clamp(age / max(MEME_THEME_LAUNCH_MAX_AGE_MINUTES, 1.0), 0.0, 10.0)),
+            float(-score),
+            float(-vol),
+        )
+
+    def _is_theme_launch_zone(self, snap: TokenSnapshot, features: dict[str, Any] | None = None) -> bool:
+        feats = dict(features or {})
+        cap = float(self._meme_effective_cap_usd(snap))
+        age = float(getattr(snap, "age_minutes", 0.0) or 0.0)
+        source = str(getattr(snap, "source", "") or "").strip().lower()
+        return bool(
+            (source.startswith("pumpfun") or float(feats.get("is_pump_fun") or 0.0) > 0.0)
+            and float(MEME_THEME_LAUNCH_IDEAL_MIN_CAP_USD) <= cap <= float(MEME_THEME_LAUNCH_IDEAL_MAX_CAP_USD)
+            and age <= float(MEME_THEME_LAUNCH_ENTRY_MAX_AGE_MINUTES)
+        )
+
+    @staticmethod
+    def _pumpportal_sell_ratio_text(close_fraction: float) -> str:
+        pct = _clamp(float(close_fraction or 1.0), 0.01, 1.0) * 100.0
+        if pct >= 99.9:
+            return "100%"
+        if abs(pct - round(pct)) < 0.001:
+            return f"{int(round(pct))}%"
+        return f"{pct:.2f}%"
+
+    def _live_meme_buy(
+        self,
+        *,
+        token: TokenSnapshot,
+        strategy_id: str,
+        order_sol: float,
+        model_id: str,
+        features: dict[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        strategy_key = str(strategy_id or "").upper().strip()
+        if strategy_key == "THEME" and self._is_theme_launch_zone(token, features) and self.pumpportal_trader.enabled:
+            result = self.pumpportal_trader.buy_token_with_sol(
+                token.token_address,
+                amount_sol=float(order_sol),
+                slippage_pct=MEME_PUMPPORTAL_SLIPPAGE_PCT,
+                priority_fee_sol=MEME_PUMPPORTAL_PRIORITY_FEE_SOL,
+                pool="auto",
+            )
+            return dict(result or {}), "pumpportal"
+        slippage_try = 280 if model_id == "A" else (320 if model_id == "B" else 380)
+        result = self.solana_trader.swap_sol_to_token(
+            token.token_address,
+            amount_sol=float(order_sol),
+            slippage_bps=slippage_try,
+        )
+        return dict(result or {}), "jupiter"
+
+    def _live_meme_sell(
+        self,
+        *,
+        token_address: str,
+        position: dict[str, Any],
+        close_fraction: float,
+        raw_amount: int,
+        wallet_qty: float,
+    ) -> tuple[dict[str, Any], str]:
+        venue = str(position.get("execution_venue") or "").strip().lower()
+        if venue == "pumpportal" and self.pumpportal_trader.enabled:
+            result = self.pumpportal_trader.sell_token_to_sol(
+                token_address,
+                amount=self._pumpportal_sell_ratio_text(close_fraction),
+                slippage_pct=MEME_PUMPPORTAL_SLIPPAGE_PCT,
+                priority_fee_sol=MEME_PUMPPORTAL_PRIORITY_FEE_SOL,
+                pool="auto",
+            )
+            return dict(result or {}), "pumpportal"
+        swap_raw_amount = int(raw_amount)
+        requested_fraction = _clamp(float(close_fraction or 1.0), 0.01, 1.0)
+        if requested_fraction < 0.999 and wallet_qty > 0.0:
+            qty_ratio = _clamp(requested_fraction, 0.01, 1.0)
+            swap_raw_amount = int(max(1, math.floor(float(raw_amount) * float(qty_ratio))))
+            if swap_raw_amount >= raw_amount:
+                swap_raw_amount = max(1, raw_amount - 1)
+        if swap_raw_amount <= 0:
+            raise RuntimeError("close_amount_too_small")
+        last_exc: Exception | None = None
+        for slippage_try in (380, 520, 700):
+            try:
+                result = self.solana_trader.swap_token_to_sol(
+                    token_address,
+                    amount_raw=swap_raw_amount,
+                    slippage_bps=slippage_try,
+                )
+                return dict(result or {}), "jupiter"
+            except Exception as exc:
+                err_low = str(exc).lower()
+                last_exc = exc
+                if "token_not_tradable" in err_low or "not tradable" in err_low:
+                    raise
+        raise last_exc if last_exc is not None else RuntimeError("live_close_swap_failed")
 
     def _is_relaxed_demo_candidate(
         self,
@@ -4030,32 +6949,75 @@ class TradingEngine:
     ) -> bool:
         if not self._is_smallcap_memecoin_snapshot(snap):
             return False
+        cap = self._meme_effective_cap_usd(snap)
         signal_hits = int(trend_hit) + int(trader_hits) + int(news_hits) + int(community_hits) + int(google_hits)
         min_liq = max(350.0, float(self.settings.dex_min_liquidity_usd) * 0.08)
         min_vol = max(120.0, float(self.settings.dex_min_5m_volume_usd) * 0.10)
         flow_ok = snap.buys_5m >= max(2, snap.sells_5m)
         interest_ok = signal_hits > 0 or snap.age_minutes <= 90.0
-        return bool(snap.liquidity_usd >= min_liq and snap.volume_5m_usd >= min_vol and flow_ok and interest_ok)
+        launch_relaxed = bool(
+            str(getattr(snap, "source", "") or "").lower().startswith("pumpfun")
+            and 0.0 < float(cap) <= float(MEME_THEME_LAUNCH_HARD_MAX_CAP_USD)
+            and float(snap.age_minutes) <= float(MEME_THEME_LAUNCH_MAX_AGE_MINUTES)
+            and (
+                (
+                    float(snap.liquidity_usd) >= max(300.0, float(MEME_THEME_LAUNCH_MIN_LIQUIDITY_USD) * 0.50)
+                    and float(snap.volume_5m_usd) >= max(100.0, float(MEME_THEME_LAUNCH_MIN_VOLUME_5M_USD) * 0.50)
+                    and int(snap.buys_5m) >= 1
+                )
+                or self._is_theme_launch_zone(snap)
+            )
+        )
+        return bool((snap.liquidity_usd >= min_liq and snap.volume_5m_usd >= min_vol and flow_ok and interest_ok) or launch_relaxed)
 
     @staticmethod
     def _demo_meme_score_floor(model_id: str) -> float:
         if model_id == "A":
-            return 0.36
+            return 0.52
         if model_id == "B":
-            return 0.31
-        return 0.27
+            return 0.50
+        return 0.50
+
+    @staticmethod
+    def _meme_score_target_tp_pct(score: float) -> float:
+        score_now = _clamp(float(score or 0.0), 0.0, 1.0)
+        score_norm = _clamp((score_now - 0.50) / 0.40, 0.0, 1.0)
+        return _clamp(0.10 + (0.10 * score_norm), 0.10, 0.20)
+
+    def _meme_strategy_entry_sol(self, strategy_or_model_id: str) -> float:
+        strategy_id = self._meme_strategy_id_for_model(strategy_or_model_id)
+        if strategy_id == "THEME":
+            return float(max(0.001, self.settings.meme_theme_entry_sol))
+        if strategy_id == "NARRATIVE":
+            return float(max(0.001, self.settings.meme_narrative_entry_sol))
+        return float(max(0.001, self.settings.meme_launch_entry_sol))
+
+    def _meme_partial_take_profit_pct(self, pos: dict[str, Any] | None = None) -> float:
+        if isinstance(pos, dict) and float(pos.get("partial_tp_pct") or 0.0) > 0.0:
+            return float(pos.get("partial_tp_pct") or 0.0)
+        return float(max(0.01, self.settings.meme_partial_take_profit_pct))
+
+    def _meme_partial_take_profit_sell_ratio(self, pos: dict[str, Any] | None = None) -> float:
+        if isinstance(pos, dict) and float(pos.get("partial_tp_sell_ratio") or 0.0) > 0.0:
+            return float(pos.get("partial_tp_sell_ratio") or 0.0)
+        return float(_clamp(self.settings.meme_partial_take_profit_sell_ratio, 0.01, 1.0))
+
+    def _meme_exit_rule_text(self, pos: dict[str, Any] | None = None) -> str:
+        row = dict(pos or {})
+        partial_tp_pct = self._meme_partial_take_profit_pct(row) * 100.0
+        partial_ratio = self._meme_partial_take_profit_sell_ratio(row) * 100.0
+        sl_pct = float(row.get("sl_pct") or 0.0) * 100.0
+        parts = [f"+{partial_tp_pct:.0f}%시 {partial_ratio:.0f}% 매도"]
+        if sl_pct > 0.0:
+            parts.append(f"SL {sl_pct:.0f}%")
+        if bool(row.get("partial_tp_done")):
+            parts.append("부분익절 완료")
+        return " | ".join(parts)
 
     def _meme_min_entry_rank_for_model(self, model_id: str) -> int:
-        base_grade = str(self.settings.meme_min_entry_grade or "C").upper()
+        base_grade = str(self.settings.meme_min_entry_grade or "E").upper()
         base_rank = self._grade_rank(base_grade)
-        # C(밈 단타 모멘텀)는 항상 D 이상만 진입.
-        if model_id == "C":
-            return max(base_rank, self._grade_rank("D"))
-        if model_id == "A":
-            return max(base_rank, self._grade_rank("C"))
-        if model_id == "B":
-            return max(base_rank, self._grade_rank("B"))
-        return max(base_rank, self._grade_rank("D"))
+        return max(base_rank, self._grade_rank("E"))
 
     def _recent_market_trade_stats(self, model_id: str, market: str, lookback: int = 40) -> dict[str, float]:
         source_name = "memecoin" if market == "meme" else "crypto_demo"
@@ -4155,12 +7117,15 @@ class TradingEngine:
         community_hits: int,
         google_hits: int,
         wallet_pattern: dict[str, Any] | None = None,
+        peer_info: dict[str, Any] | None = None,
     ) -> dict[str, float]:
         pattern = dict(wallet_pattern or {})
+        peer = dict(peer_info or {})
         liq_log = min(1.0, math.log10(1.0 + snap.liquidity_usd) / 7.0)
         vol_log = min(1.0, math.log10(1.0 + snap.volume_5m_usd) / 6.0)
         age_freshness = _clamp(1.0 - (snap.age_minutes / 240.0), 0.0, 1.0)
         age_stability = _clamp(snap.age_minutes / 180.0, 0.0, 1.0)
+        cap_usd = float(self._meme_effective_cap_usd(snap))
         buy_sell_ratio = _clamp(snap.buy_sell_ratio / 2.2, 0.0, 1.0)
         tx_total = max(1.0, float(snap.buys_5m + snap.sells_5m))
         tx_flow_raw = (float(snap.buys_5m) - float(snap.sells_5m)) / tx_total
@@ -4174,6 +7139,46 @@ class TradingEngine:
         new_meme_quality = _clamp((liq_log * 0.45) + (vol_log * 0.55), 0.0, 1.0) * age_freshness
         new_meme_instant = 1.0 if (snap.age_minutes <= 8 and snap.buys_5m >= max(3, snap.sells_5m + 1)) else 0.0
         is_pump_fun = 1.0 if str(snap.token_address or "").strip().lower().endswith("pump") else 0.0
+        launch_source = 1.0 if str(getattr(snap, "source", "") or "").strip().lower().startswith(("pumpfun", "bonk")) else 0.0
+        if float(MEME_THEME_LAUNCH_IDEAL_MIN_CAP_USD) <= cap_usd <= float(MEME_THEME_LAUNCH_IDEAL_MAX_CAP_USD):
+            launch_cap_fit = 1.0
+        elif cap_usd > 0.0 and cap_usd <= float(MEME_THEME_LAUNCH_HARD_MAX_CAP_USD):
+            launch_cap_fit = _clamp(1.0 - (abs(cap_usd - 4_000.0) / 8_000.0), 0.0, 1.0)
+        else:
+            launch_cap_fit = 0.0
+        launch_age_fit = _clamp(1.0 - (float(snap.age_minutes or 0.0) / float(max(MEME_THEME_LAUNCH_MAX_AGE_MINUTES, 1.0))), 0.0, 1.0)
+        theme_launch_fit = _clamp(launch_source * launch_cap_fit * launch_age_fit, 0.0, 1.0)
+        theme_launch_ready = 1.0 if self._is_theme_launch_zone(snap) else 0.0
+        if MEME_SNIPER_MIN_CAP_USD <= cap_usd <= MEME_SNIPER_MAX_CAP_USD:
+            sniper_cap_fit = 1.0
+        elif cap_usd > 0.0 and cap_usd < MEME_SNIPER_MIN_CAP_USD:
+            sniper_cap_fit = _clamp(cap_usd / max(MEME_SNIPER_MIN_CAP_USD, 1.0), 0.0, 1.0)
+        elif cap_usd > MEME_SNIPER_MAX_CAP_USD:
+            sniper_cap_fit = _clamp(1.0 - ((cap_usd - MEME_SNIPER_MAX_CAP_USD) / max(MEME_SNIPER_MAX_CAP_USD, 1.0)), 0.0, 1.0)
+        else:
+            sniper_cap_fit = 0.0
+        sniper_social_burst = _clamp(
+            (0.34 * trader_strength)
+            + (0.20 * community_strength)
+            + (0.14 * news_strength)
+            + (0.06 * google_strength)
+            + (0.14 * trend_strength)
+            + (0.06 * wallet_strength)
+            + (0.06 * tx_flow)
+            + (0.04 * buy_sell_ratio),
+            0.0,
+            1.0,
+        )
+        sniper_signal_fit = _clamp(
+            (0.44 * sniper_social_burst)
+            + (0.18 * sniper_cap_fit)
+            + (0.14 * tx_flow)
+            + (0.10 * buy_sell_ratio)
+            + (0.08 * vol_log)
+            + (0.06 * liq_log),
+            0.0,
+            1.0,
+        )
         spread_proxy = _clamp(1.0 - (snap.liquidity_usd / (snap.liquidity_usd + 140_000.0)), 0.0, 1.0)
         noise_penalty = 1.0 if tx_total <= 3 else 0.0
         smart_wallet_score = _clamp(float(pattern.get("smart_wallet_score") or 0.50), 0.0, 1.0)
@@ -4182,6 +7187,18 @@ class TradingEngine:
         wallet_pattern_available = 1.0 if bool(pattern.get("available")) else 0.0
         wallet_suspicious = 1.0 if bool(pattern.get("suspicious")) else 0.0
         whale_count_norm = _clamp(float(pattern.get("whale_count_ge_1pct") or 0.0) / 40.0, 0.0, 1.0)
+        similar_token_count = max(0.0, float(peer.get("similar_token_count") or 0.0))
+        similar_token_count_norm = _clamp(float(peer.get("similar_token_count_norm") or 0.0), 0.0, 1.0)
+        theme_confirmation = _clamp(float(peer.get("theme_confirmation") or 0.0), 0.0, 1.0)
+        theme_leader_score = _clamp(float(peer.get("theme_leader_score") or 0.0), 0.0, 1.0)
+        clone_pressure = _clamp(float(peer.get("clone_pressure") or 0.0), 0.0, 1.0)
+        late_clone_pressure = _clamp(float(peer.get("late_clone_pressure") or 0.0), 0.0, 1.0)
+        holder_overlap_max = _clamp(float(peer.get("holder_overlap_max") or 0.0), 0.0, 1.0)
+        holder_overlap_mean = _clamp(float(peer.get("holder_overlap_mean") or 0.0), 0.0, 1.0)
+        holder_overlap_weighted_max = _clamp(float(peer.get("holder_overlap_weighted_max") or 0.0), 0.0, 1.0)
+        holder_overlap_peer_count = max(0.0, float(peer.get("holder_overlap_peer_count") or 0.0))
+        holder_overlap_risk = _clamp(float(peer.get("holder_overlap_risk") or 0.0), 0.0, 1.0)
+        holder_overlap_clean = _clamp(float(peer.get("holder_overlap_clean") or 0.0), 0.0, 1.0)
         return {
             "trend_strength": trend_strength,
             "trader_strength": trader_strength,
@@ -4198,6 +7215,11 @@ class TradingEngine:
             "new_meme_quality": new_meme_quality,
             "new_meme_instant": new_meme_instant,
             "is_pump_fun": is_pump_fun,
+            "theme_launch_fit": theme_launch_fit,
+            "theme_launch_ready": theme_launch_ready,
+            "sniper_cap_fit": sniper_cap_fit,
+            "sniper_social_burst": sniper_social_burst,
+            "sniper_signal_fit": sniper_signal_fit,
             "spread_proxy": spread_proxy,
             "noise_penalty": noise_penalty,
             "smart_wallet_score": smart_wallet_score,
@@ -4206,6 +7228,18 @@ class TradingEngine:
             "wallet_pattern_available": wallet_pattern_available,
             "wallet_suspicious": wallet_suspicious,
             "whale_count_norm": whale_count_norm,
+            "similar_token_count": similar_token_count,
+            "similar_token_count_norm": similar_token_count_norm,
+            "theme_confirmation": theme_confirmation,
+            "theme_leader_score": theme_leader_score,
+            "clone_pressure": clone_pressure,
+            "late_clone_pressure": late_clone_pressure,
+            "holder_overlap_max": holder_overlap_max,
+            "holder_overlap_mean": holder_overlap_mean,
+            "holder_overlap_weighted_max": holder_overlap_weighted_max,
+            "holder_overlap_peer_count": holder_overlap_peer_count,
+            "holder_overlap_risk": holder_overlap_risk,
+            "holder_overlap_clean": holder_overlap_clean,
         }
 
     @staticmethod
@@ -4222,13 +7256,24 @@ class TradingEngine:
         base += 0.07 * features.get("liq_log", 0.0)
         base += 0.07 * features.get("vol_log", 0.0)
         base += 0.09 * features.get("new_meme_quality", 0.0)
-        base += 0.10 * features.get("new_meme_instant", 0.0)
-        base += 0.10 * features.get("is_pump_fun", 0.0)
+        base += 0.09 * features.get("new_meme_instant", 0.0)
+        base += 0.07 * features.get("is_pump_fun", 0.0)
+        base += 0.14 * features.get("theme_launch_fit", 0.0)
+        base += 0.10 * features.get("theme_launch_ready", 0.0)
+        base += 0.12 * features.get("sniper_social_burst", 0.0)
+        base += 0.10 * features.get("sniper_signal_fit", 0.0)
+        base += 0.08 * features.get("sniper_cap_fit", 0.0)
         base += 0.09 * features.get("smart_wallet_score", 0.0)
         base += 0.04 * features.get("transfer_diversity", 0.0)
+        base += 0.06 * features.get("theme_confirmation", 0.0)
+        base += 0.05 * features.get("theme_leader_score", 0.0)
+        base += 0.04 * features.get("holder_overlap_clean", 0.0)
         base -= 0.07 * features.get("spread_proxy", 0.0)
         base -= 0.09 * features.get("noise_penalty", 0.0)
         base -= 0.10 * features.get("holder_risk", 0.0)
+        base -= 0.10 * features.get("clone_pressure", 0.0)
+        base -= 0.12 * features.get("late_clone_pressure", 0.0)
+        base -= 0.14 * features.get("holder_overlap_risk", 0.0)
         return _clamp(base, 0.0, 1.0)
 
     def _build_reason(
@@ -4255,8 +7300,25 @@ class TradingEngine:
             tags.append("신규코인")
         if features.get("is_pump_fun", 0.0) > 0.0:
             tags.append("pumpfun")
+        if features.get("sniper_social_burst", 0.0) >= 0.58:
+            tags.append("소셜버스트")
+        if features.get("sniper_cap_fit", 0.0) >= 0.95:
+            tags.append("1k-50k")
+        if features.get("theme_launch_ready", 0.0) > 0.0:
+            tags.append("런치존3-5k")
+        elif features.get("theme_launch_fit", 0.0) >= 0.60:
+            tags.append("런치근접")
         if features.get("buy_sell_ratio", 0.0) >= 0.55:
             tags.append("매수우위")
+        similar_count = int(float(features.get("similar_token_count") or 0.0))
+        if similar_count > 0:
+            tags.append(f"유사{similar_count}")
+        if features.get("theme_leader_score", 0.0) >= 0.8:
+            tags.append("테마선두")
+        if features.get("late_clone_pressure", 0.0) >= 0.55:
+            tags.append("복제혼잡")
+        if features.get("holder_overlap_risk", 0.0) >= 0.35:
+            tags.append("홀더겹침")
         if features.get("smart_wallet_score", 0.0) >= 0.65:
             tags.append("지갑패턴양호")
         if features.get("wallet_pattern_available", 0.0) < 0.5:
@@ -4309,7 +7371,10 @@ class TradingEngine:
             else:  # short-term scalp
                 tp_mul, sl_mul = 1.05, 0.86
             tp = base_tp * tp_mul * (0.85 + (1.15 * vol))
-            sl = base_sl * sl_mul * (0.80 + (0.95 * vol))
+            if model_id == "C":
+                sl = float(MEME_C_FIXED_SL_PCT)
+            else:
+                sl = base_sl * sl_mul * (0.80 + (0.95 * vol))
             return (_clamp(sl, 0.015, 0.30), _clamp(tp, 0.05, 0.80))
 
         with self._lock:
@@ -4335,6 +7400,8 @@ class TradingEngine:
         return (_clamp(sl, 0.010, 0.16), _clamp(tp, 0.05, 0.40))
 
     def _demo_order_pct_for_entry(self, market: str, score: float, threshold: float) -> float:
+        if str(market).lower() == "crypto":
+            return _clamp(float(self.settings.bybit_order_pct or 0.30), 0.01, 0.95)
         min_pct = _clamp(float(self.settings.demo_order_pct_min), 0.01, 0.95)
         max_pct = _clamp(float(self.settings.demo_order_pct_max), min_pct, 0.95)
         gap = float(score) - float(threshold)
@@ -4342,6 +7409,21 @@ class TradingEngine:
         scale = 0.30 if str(market).lower() == "meme" else 0.35
         confidence = _clamp(gap / max(1e-6, scale), 0.0, 1.0)
         return float(min_pct + ((max_pct - min_pct) * confidence))
+
+    def _crypto_target_order_usd(self, run: dict[str, Any], prices: dict[str, float] | None = None) -> float:
+        cash = float(run.get("bybit_cash_usd") or 0.0)
+        positions = list((run.get("bybit_positions") or {}).values())
+        position_equity = 0.0
+        for pos in positions:
+            symbol = str((pos or {}).get("symbol") or "")
+            current = 0.0
+            if isinstance(prices, dict) and symbol:
+                current = float(prices.get(symbol) or 0.0)
+            marked = self._mark_crypto_position(pos, current)
+            position_equity += float(marked.get("position_equity_usd") or 0.0)
+        total_equity = max(0.0, cash + position_equity)
+        fixed_pct = _clamp(float(self.settings.bybit_order_pct or 0.30), 0.01, 0.95)
+        return float(total_equity * fixed_pct)
 
     @staticmethod
     def _record_last_entry_alloc(
@@ -4516,11 +7598,29 @@ class TradingEngine:
             pnl_pct = (current_price - entry) / entry
             tp_pct = float(pos.get("tp_pct") or self.settings.take_profit_pct)
             sl_pct = float(pos.get("sl_pct") or self.settings.stop_loss_pct)
+            partial_tp_pct = float(pos.get("partial_tp_pct") or self.settings.meme_partial_take_profit_pct)
+            partial_tp_sell_ratio = float(pos.get("partial_tp_sell_ratio") or self.settings.meme_partial_take_profit_sell_ratio)
+            partial_tp_done = bool(pos.get("partial_tp_done"))
+            if str(model_id).upper() == "C":
+                sl_pct = float(MEME_C_FIXED_SL_PCT)
+                pos["sl_pct"] = float(MEME_C_FIXED_SL_PCT)
             strategy = str(pos.get("strategy") or "scalp").lower()
             peak = float(pos.get("peak_price_usd") or entry)
             if current_price > peak:
                 peak = current_price
                 pos["peak_price_usd"] = peak
+
+            if (not partial_tp_done) and partial_tp_pct > 0.0 and pnl_pct >= partial_tp_pct:
+                did_partial = self._close_model_memecoin_position(
+                    model_id,
+                    run,
+                    pos,
+                    current_price,
+                    f"PARTIAL +{pnl_pct * 100:.2f}% {partial_tp_sell_ratio * 100:.0f}%매도",
+                    close_fraction=partial_tp_sell_ratio,
+                )
+                if did_partial:
+                    continue
 
             if strategy == "swing":
                 hold_until_ts = int(pos.get("hold_until_ts") or 0)
@@ -4544,10 +7644,6 @@ class TradingEngine:
                     if pnl_pct <= -hard_sl_pct:
                         self._close_model_memecoin_position(
                             model_id, run, pos, current_price, f"Swing Hard-SL {pnl_pct * 100:.2f}%"
-                        )
-                    elif pnl_pct >= max(tp_pct, 1.20):
-                        self._close_model_memecoin_position(
-                            model_id, run, pos, current_price, f"Swing TP {pnl_pct * 100:.2f}%"
                         )
                     elif peak > entry and pnl_pct >= 0.40 and current_price <= (peak * (1.0 - trail_pct)):
                         self._close_model_memecoin_position(
@@ -4574,8 +7670,6 @@ class TradingEngine:
                     continue
                 if pnl_pct <= -sl_pct:
                     self._close_model_memecoin_position(model_id, run, pos, current_price, f"Swing SL {pnl_pct * 100:.2f}%")
-                elif pnl_pct >= tp_pct:
-                    self._close_model_memecoin_position(model_id, run, pos, current_price, f"Swing TP {pnl_pct * 100:.2f}%")
                 elif peak > entry and current_price <= (peak * (1.0 - trail_pct)) and pnl_pct >= 0.10:
                     self._close_model_memecoin_position(
                         model_id,
@@ -4593,10 +7687,19 @@ class TradingEngine:
                         f"Swing horizon-end {pnl_pct * 100:.2f}%",
                     )
             else:
-                if pnl_pct >= tp_pct:
-                    self._close_model_memecoin_position(model_id, run, pos, current_price, f"TP {pnl_pct * 100:.2f}%")
-                elif pnl_pct <= -sl_pct:
+                if pnl_pct <= -sl_pct:
+                    if str(model_id).upper() == "C":
+                        sl_breach_ts = int(pos.get("sl_breach_ts") or 0)
+                        if sl_breach_ts <= 0:
+                            pos["sl_breach_ts"] = int(now)
+                            continue
+                        if (int(now) - int(sl_breach_ts)) < int(MEME_C_SL_CONFIRM_SECONDS):
+                            continue
                     self._close_model_memecoin_position(model_id, run, pos, current_price, f"SL {pnl_pct * 100:.2f}%")
+                elif str(model_id).upper() == "C":
+                    recover_level = -float(sl_pct) * float(MEME_C_SL_RECOVERY_RESET_FACTOR)
+                    if pnl_pct > recover_level:
+                        pos.pop("sl_breach_ts", None)
 
     def _close_model_memecoin_position(
         self,
@@ -4605,6 +7708,7 @@ class TradingEngine:
         pos: dict[str, Any],
         price_usd: float,
         reason: str,
+        close_fraction: float = 1.0,
     ) -> bool:
         token_address = str(pos.get("token_address") or "")
         if not token_address:
@@ -4628,7 +7732,12 @@ class TradingEngine:
 
         now_ts = int(time.time())
         is_live_market = self._is_live_execution_market("meme")
+        requested_fraction = _clamp(float(close_fraction or 1.0), 0.01, 1.0)
+        original_qty = max(0.0, float(pos.get("qty") or 0.0))
+        requested_close_qty = original_qty * requested_fraction
+        requested_full_close = requested_fraction >= 0.999
         close_signature = ""
+        live_accounting: dict[str, Any] = {}
         if is_live_market and is_live_position:
             wallet_row = self._wallet_asset_row(token_address)
             wallet_qty = float(wallet_row.get("qty") or 0.0)
@@ -4646,38 +7755,10 @@ class TradingEngine:
                 raw_amount = int(wallet_qty * (10**max(0, decimals)))
             if raw_amount <= 0 and wallet_qty <= 0.0:
                 # Wallet already no longer holds this token: close managed position as orphan cleanup
-                # to avoid repeated close-failure spam while keeping trade history continuity.
+                # and do not fabricate realized PNL for a close the bot did not execute.
                 close_fail_streak = int(pos.get("close_fail_streak") or 0)
-                qty = float(pos.get("qty") or 0.0)
-                avg = float(pos.get("avg_price_usd") or 0.0)
-                close_price = max(0.0, float(price_usd or avg))
-                notional = qty * close_price
-                pnl_usd = (close_price - avg) * qty
-                pnl_pct = pnl_usd / max(0.0001, avg * qty) if qty > 0.0 and avg > 0.0 else 0.0
                 del positions[position_key]
                 run["meme_positions"] = positions
-                run.setdefault("trades", []).append(
-                    {
-                        "ts": int(now_ts),
-                        "source": "memecoin",
-                        "side": "sell",
-                        "symbol": str(pos.get("symbol") or ""),
-                        "token_address": token_address,
-                        "qty": qty,
-                        "price_usd": close_price,
-                        "notional_usd": notional,
-                        "pnl_usd": pnl_usd,
-                        "pnl_pct": pnl_pct,
-                        "reason": (
-                            reason
-                            + "|wallet_miss_cleanup"
-                            + (f"|close_retry_streak={int(close_fail_streak)}" if close_fail_streak > 0 else "")
-                        ),
-                        "model_id": model_id,
-                        "mode": "live",
-                    }
-                )
-                self._prune_run_trades(run, int(now_ts))
                 with self._lock:
                     # Cleanup succeeded, so stale close-failed state should not keep notifying.
                     if "close_failed:" in str(self.state.memecoin_error or ""):
@@ -4709,28 +7790,35 @@ class TradingEngine:
                 return True
             if raw_amount > 0:
                 close_exc: Exception | None = None
-                for slippage_try in (380, 520, 700):
-                    try:
-                        swap_result = self.solana_trader.swap_token_to_sol(
-                            token_address,
-                            amount_raw=raw_amount,
-                            slippage_bps=slippage_try,
-                        )
-                        close_signature = str(swap_result.get("signature") or "")
-                        pos.pop("close_fail_streak", None)
-                        pos.pop("close_last_error", None)
-                        pos.pop("close_last_error_ts", None)
-                        pos.pop("close_retry_after_ts", None)
-                        self._sync_wallet(int(time.time()), force=True)
-                        with self._lock:
-                            self.state.memecoin_error = ""
-                        break
-                    except Exception as exc:
-                        close_exc = exc
-                        err_low = str(exc).lower()
-                        if "token_not_tradable" in err_low or "not tradable" in err_low:
-                            break
-                        continue
+                before_snapshot = self._capture_live_wallet_snapshot(token_address)
+                try:
+                    swap_result, close_venue = self._live_meme_sell(
+                        token_address=token_address,
+                        position=pos,
+                        close_fraction=requested_fraction,
+                        raw_amount=raw_amount,
+                        wallet_qty=wallet_qty,
+                    )
+                    close_signature = str(swap_result.get("signature") or "")
+                    self._mark_pending_live_trade_signature(close_signature, now_ts)
+                    pos.pop("close_fail_streak", None)
+                    pos.pop("close_last_error", None)
+                    pos.pop("close_last_error_ts", None)
+                    pos.pop("close_retry_after_ts", None)
+                    self._sync_wallet(int(time.time()), force=True)
+                    live_accounting = self._apply_live_swap_accounting(
+                        token_address=token_address,
+                        swap_signature=close_signature,
+                        before_snapshot=before_snapshot,
+                        now_ts=int(now_ts),
+                        side="sell",
+                        fallback_sol_price_usd=float(self._live_sol_price_usd()),
+                    )
+                    live_accounting["execution_venue"] = str(close_venue or "")
+                    with self._lock:
+                        self.state.memecoin_error = ""
+                except Exception as exc:
+                    close_exc = exc
                 if not close_signature:
                     err_obj = close_exc if close_exc is not None else RuntimeError("live_close_swap_failed")
                     retry_secs = 300
@@ -4782,11 +7870,45 @@ class TradingEngine:
 
         qty = float(pos.get("qty") or 0.0)
         avg = float(pos.get("avg_price_usd") or 0.0)
-        notional = qty * price_usd
-        pnl_usd = (price_usd - avg) * qty
-        pnl_pct = pnl_usd / max(0.0001, avg * qty)
-
-        del positions[position_key]
+        actual_qty = max(0.0, float(live_accounting.get("sold_qty") or 0.0)) if is_live_position else 0.0
+        actual_proceeds_usd = max(0.0, float(live_accounting.get("proceeds_usd") or 0.0)) if is_live_position else 0.0
+        actual_exit_price_usd = max(0.0, float(live_accounting.get("avg_exit_price_usd") or 0.0)) if is_live_position else 0.0
+        fee_usd = max(0.0, float(live_accounting.get("fee_usd") or 0.0)) if is_live_position else 0.0
+        close_qty = float(actual_qty or requested_close_qty or qty)
+        if close_qty <= 0.0:
+            close_qty = float(requested_close_qty or qty)
+        if is_live_position:
+            notional = float(actual_proceeds_usd or 0.0)
+            if notional <= 0.0:
+                notional = close_qty * max(0.0, float(price_usd or avg))
+            exit_price_usd = float(actual_exit_price_usd or (notional / max(close_qty, 1e-12) if close_qty > 0.0 else 0.0))
+        else:
+            notional = close_qty * price_usd
+            exit_price_usd = float(price_usd)
+        cost_basis = float(avg * close_qty)
+        pnl_usd = float(notional - cost_basis)
+        pnl_pct = float(pnl_usd / max(0.0001, cost_basis)) if cost_basis > 0.0 else 0.0
+        remaining_qty = max(0.0, float(qty - close_qty))
+        if is_live_position:
+            after_token_raw = int(live_accounting.get("after_token_raw") or 0)
+            token_decimals = int(live_accounting.get("token_decimals") or 0)
+            if after_token_raw > 0 and token_decimals >= 0:
+                remaining_qty = max(0.0, float(after_token_raw) / float(10**max(0, token_decimals)))
+        full_close = bool(requested_full_close or remaining_qty <= max(1e-9, qty * 0.002))
+        if full_close:
+            del positions[position_key]
+        else:
+            row = dict(pos or {})
+            row["qty"] = float(remaining_qty)
+            row["peak_price_usd"] = float(max(float(row.get("peak_price_usd") or 0.0), float(price_usd or 0.0)))
+            row["close_fail_streak"] = 0
+            row["close_last_error"] = ""
+            row["close_last_error_ts"] = 0
+            row["close_retry_after_ts"] = 0
+            if str(reason or "").upper().startswith("PARTIAL"):
+                row["partial_tp_done"] = True
+                row["partial_tp_done_ts"] = int(now_ts)
+            positions[position_key] = row
         run["meme_positions"] = positions
         if not is_live_position:
             run["meme_cash_usd"] = float(run.get("meme_cash_usd") or 0.0) + notional
@@ -4797,25 +7919,57 @@ class TradingEngine:
                 "side": "sell",
                 "symbol": str(pos.get("symbol") or ""),
                 "token_address": token_address,
-                "qty": qty,
-                "price_usd": price_usd,
-                "notional_usd": notional,
-                "pnl_usd": pnl_usd,
-                "pnl_pct": pnl_pct,
+                "qty": float(close_qty),
+                "price_usd": float(exit_price_usd),
+                "notional_usd": float(notional),
+                "pnl_usd": float(pnl_usd),
+                "pnl_pct": float(pnl_pct),
                 "reason": reason + (f"|live_tx={close_signature}" if close_signature else ""),
                 "model_id": model_id,
+                "strategy_id": str(
+                    self._meme_strategy_id_from_signal_context(
+                        features=dict(pos.get("entry_features") or {}),
+                        reason=str(pos.get("reason") or ""),
+                        current_strategy_id=str(
+                            pos.get("engine_strategy_id")
+                            or self._meme_strategy_id_for_model(str(pos.get("model_id") or model_id))
+                        ),
+                    )
+                ),
                 "mode": "live" if is_live_position else "paper",
+                "partial": not bool(full_close),
+                "realized_pnl_usd": float(pnl_usd),
+                "realized_pnl_pct": float(pnl_pct),
+                "network_fee_usd": float(fee_usd),
+                "before_sol_lamports": int(live_accounting.get("before_sol_lamports") or 0),
+                "after_sol_lamports": int(live_accounting.get("after_sol_lamports") or 0),
+                "before_token_raw": int(live_accounting.get("before_token_raw") or 0),
+                "after_token_raw": int(live_accounting.get("after_token_raw") or 0),
+                "realized": True,
+                "accounting_version": int(LIVE_ACCOUNTING_SCHEMA_VERSION) if is_live_position else 0,
             }
         )
+        reason_u = str(reason or "").upper().strip()
+        if full_close and str(model_id).upper() == "C" and reason_u.startswith("SL"):
+            sym = str(pos.get("symbol") or "").upper().strip()
+            if sym:
+                mode_prefix = "live" if is_live_position else "paper"
+                sym_key = f"{mode_prefix}:{sym}"
+                reentry_map = dict(run.get("meme_reentry_after_ts") or {})
+                reentry_map[sym_key] = int(now_ts) + int(MEME_C_REENTRY_WAIT_SECONDS)
+                if len(reentry_map) > 400:
+                    items = sorted(reentry_map.items(), key=lambda kv: int(kv[1] or 0), reverse=True)[:240]
+                    reentry_map = {str(k): int(v or 0) for k, v in items}
+                run["meme_reentry_after_ts"] = reentry_map
         self._prune_run_trades(run, int(now_ts))
 
         if model_id == "A":
             entry_features = dict(pos.get("entry_features") or {})
-            if entry_features:
+            if entry_features and full_close:
                 self.model.update(entry_features, pnl_pct)
             self._push_alert(
                 "trade",
-                f"[{self._display_model_name('A', 'meme')}] {pos.get('symbol')} 청산",
+                f"[{self._display_model_name('A', 'meme')}] {pos.get('symbol')} {'청산' if full_close else '부분청산'}",
                 f"{reason} | PNL {pnl_usd:+.2f} USD ({pnl_pct * 100:+.2f}%)",
                 send_telegram=True,
             )
@@ -4876,7 +8030,7 @@ class TradingEngine:
             if addr:
                 tokens.add(addr)
 
-        for model_id in MODEL_IDS:
+        for model_id in MEME_MODEL_IDS:
             meme_run = self._get_market_run(runs, "meme", model_id)
             for pos in dict(meme_run.get("meme_positions") or {}).values():
                 addr = str((pos or {}).get("token_address") or "").strip()
@@ -4893,36 +8047,72 @@ class TradingEngine:
         return tokens
 
     def _refresh_live_meme_basis(self, wallet_rows: list[dict[str, Any]], now_ts: int) -> None:
-        min_usd = float(self.settings.min_wallet_asset_usd or 1.0)
         with self._lock:
             runs = self.state.model_runs if isinstance(self.state.model_runs, dict) else {}
             if not isinstance(runs, dict):
                 runs = {}
                 self.state.model_runs = runs
-            basis_map = dict(runs.get("_live_meme_basis") or {})
-            for row in list(wallet_rows or []):
-                symbol = str((row or {}).get("symbol") or "").upper().strip()
-                name = str((row or {}).get("name") or "").strip()
-                token = str((row or {}).get("token_address") or "").strip()
-                price = float((row or {}).get("price_usd") or 0.0)
-                qty = float((row or {}).get("qty") or 0.0)
-                value = float((row or {}).get("value_usd") or 0.0)
-                if not token or price <= 0.0 or qty <= 0.0 or value < min_usd:
-                    continue
-                if not self._is_memecoin_token(symbol, name, token):
-                    continue
-                old = dict(basis_map.get(token) or {})
-                if float(old.get("entry_price_usd") or 0.0) > 0.0:
+            basis_map: dict[str, dict[str, Any]] = {}
+            cost_by_token: dict[str, dict[str, float]] = {}
+            for model_id in MEME_MODEL_IDS:
+                run = self._get_market_run(runs, "meme", model_id)
+                rows = sorted(list(run.get("trades") or []), key=lambda row: int((row or {}).get("ts") or 0))
+                for tr in rows:
+                    if str((tr or {}).get("source") or "").strip().lower() != "memecoin":
+                        continue
+                    if not self._is_live_trade_row(tr):
+                        continue
+                    token = str((tr or {}).get("token_address") or "").strip()
+                    if not token:
+                        continue
+                    qty = max(0.0, float((tr or {}).get("qty") or 0.0))
+                    notional = max(0.0, float((tr or {}).get("notional_usd") or 0.0))
+                    if qty <= 0.0:
+                        continue
+                    basis = cost_by_token.setdefault(token, {"qty": 0.0, "cost_usd": 0.0})
+                    side = str((tr or {}).get("side") or "").strip().lower()
+                    if side == "buy":
+                        basis["qty"] = float(basis.get("qty") or 0.0) + qty
+                        basis["cost_usd"] = float(basis.get("cost_usd") or 0.0) + notional
+                        continue
+                    close_qty = min(float(basis.get("qty") or 0.0), qty)
+                    avg_cost = float(basis.get("cost_usd") or 0.0) / max(float(basis.get("qty") or 0.0), 1e-12)
+                    basis["qty"] = max(0.0, float(basis.get("qty") or 0.0) - close_qty)
+                    basis["cost_usd"] = max(0.0, float(basis.get("cost_usd") or 0.0) - (avg_cost * close_qty))
+            for token, basis in list(cost_by_token.items()):
+                qty = max(0.0, float((basis or {}).get("qty") or 0.0))
+                cost_usd = max(0.0, float((basis or {}).get("cost_usd") or 0.0))
+                if qty <= 0.0 or cost_usd <= 0.0:
                     continue
                 basis_map[token] = {
                     "token_address": token,
-                    "symbol": symbol,
-                    "entry_price_usd": float(price),
-                    "seeded_qty": float(qty),
-                    "seeded_value_usd": float(value),
-                    "seeded_ts": int(now_ts),
-                    "source": "first_seen_wallet",
+                    "entry_price_usd": float(cost_usd / max(qty, 1e-12)),
+                    "remaining_qty": float(qty),
+                    "remaining_cost_usd": float(cost_usd),
+                    "updated_ts": int(now_ts),
+                    "source": "live_trade_rebuild",
                 }
+            for model_id in MEME_MODEL_IDS:
+                run = self._get_market_run(runs, "meme", model_id)
+                for pos in list((run.get("meme_positions") or {}).values()):
+                    if str((pos or {}).get("mode") or "").strip().lower() != "live":
+                        continue
+                    if str((pos or {}).get("reason") or "").strip().lower() == "live_wallet_sync_seed":
+                        continue
+                    token = str((pos or {}).get("token_address") or "").strip()
+                    avg_price = max(0.0, float((pos or {}).get("avg_price_usd") or 0.0))
+                    qty = max(0.0, float((pos or {}).get("qty") or 0.0))
+                    if not token or avg_price <= 0.0 or qty <= 0.0:
+                        continue
+                    basis_map[token] = {
+                        "token_address": token,
+                        "symbol": str((pos or {}).get("symbol") or ""),
+                        "entry_price_usd": float(avg_price),
+                        "remaining_qty": float(qty),
+                        "remaining_cost_usd": float(avg_price * qty),
+                        "updated_ts": int(now_ts),
+                        "source": "live_position",
+                    }
             runs["_live_meme_basis"] = basis_map
 
     def _live_target_meme_model(self) -> str:
@@ -4966,7 +8156,7 @@ class TradingEngine:
                 wallet_map[token] = dict(row or {})
 
             existing_live_tokens: set[str] = set()
-            for model_id in MODEL_IDS:
+            for model_id in MEME_MODEL_IDS:
                 run = self._get_market_run(runs, "meme", model_id)
                 pos_map = dict(run.get("meme_positions") or {})
                 changed = False
@@ -4975,6 +8165,14 @@ class TradingEngine:
                         continue
                     token = str((pos or {}).get("token_address") or "").strip()
                     if not token:
+                        continue
+                    basis_row = dict(basis_map.get(token) or {})
+                    if (
+                        str((pos or {}).get("reason") or "").strip().lower() == "live_wallet_sync_seed"
+                        and float(basis_row.get("entry_price_usd") or 0.0) <= 0.0
+                    ):
+                        pos_map.pop(pos_key, None)
+                        changed = True
                         continue
                     existing_live_tokens.add(token)
                     w = wallet_map.get(token)
@@ -5018,14 +8216,21 @@ class TradingEngine:
                 basis_row = dict(basis_map.get(token) or {})
                 avg_price = max(0.0, float(basis_row.get("entry_price_usd") or 0.0))
                 if avg_price <= 0.0:
-                    avg_price = price
+                    continue
                 sl_pct, tp_pct = self._compute_risk_profile(target_model, "meme", 0.50)
+                strategy_id = "THEME"
                 strategy = "swing" if str(target_model) == "B" else "scalp"
+                if strategy != "swing":
+                    tp_pct = float(self._meme_score_target_tp_pct(0.50))
+                else:
+                    tp_pct = _clamp(tp_pct, 0.10, 0.20)
                 hold_until_ts = 0
                 trailing_stop_pct = 0.0
                 if strategy == "swing":
                     hold_until_ts = int(now_ts + (int(self.settings.meme_swing_hold_days) * 86400))
                     trailing_stop_pct = float(self.settings.meme_swing_trailing_stop_pct)
+                partial_tp_pct = float(max(0.01, self.settings.meme_partial_take_profit_pct))
+                partial_tp_sell_ratio = float(_clamp(self.settings.meme_partial_take_profit_sell_ratio, 0.01, 1.0))
                 live_key = f"live:{token}"
                 target_positions[live_key] = {
                     "token_address": token,
@@ -5037,6 +8242,10 @@ class TradingEngine:
                     "grade": "D",
                     "tp_pct": float(tp_pct),
                     "sl_pct": float(sl_pct),
+                    "partial_tp_pct": float(partial_tp_pct),
+                    "partial_tp_sell_ratio": float(partial_tp_sell_ratio),
+                    "partial_tp_done": False,
+                    "engine_strategy_id": str(strategy_id),
                     "strategy": strategy,
                     "hold_until_ts": int(hold_until_ts),
                     "trailing_stop_pct": float(trailing_stop_pct),
@@ -5108,12 +8317,18 @@ class TradingEngine:
         is_live_market = bool(allow_live_for_model and mode_text in {"auto", "live"})
         if mode_text == "live" and not allow_live_for_model:
             return
+        allowed_strategy_ids = set(
+            self._configured_meme_strategy_ids(
+                self.settings.live_meme_strategy_ids if is_live_market else self.settings.meme_strategy_ids,
+                fallback_all=True,
+            )
+        )
         live_wallet_budget_usd: float | None = None
         live_sol_price_usd = 0.0
         live_open_block_map = dict(run.get("live_open_block_until") or {})
         if is_live_market:
-            if not self.solana_trader.enabled:
-                err = self.solana_trader.init_error or "solana_trader_not_enabled"
+            if not (self.solana_trader.enabled or self.pumpportal_trader.enabled):
+                err = self.solana_trader.init_error or self.pumpportal_trader.init_error or "solana_trader_not_enabled"
                 with self._lock:
                     self.state.memecoin_error = f"live_meme_setup_failed:{err}"
                 self._emit_runtime_error(
@@ -5151,7 +8366,37 @@ class TradingEngine:
                         pruned_live_block[str(token_key)] = row
                 live_open_block_map = pruned_live_block
                 run["live_open_block_until"] = pruned_live_block
-        for signal in signals:
+        ordered_signals = list(signals or [])
+        ordered_signals.sort(
+            key=lambda s: (
+                0
+                if str(s.get("strategy_id") or "").upper() == "SNIPER"
+                else (1 if str(s.get("strategy_id") or "").upper() == "THEME" else 2),
+                float(-((dict(s.get("features") or {})).get("sniper_signal_fit") or 0.0))
+                if str(s.get("strategy_id") or "").upper() == "SNIPER"
+                else (
+                    self._theme_launch_priority_tuple(
+                        s["token"],
+                        float(s.get("score") or 0.0),
+                    )[0]
+                    if str(s.get("strategy_id") or "").upper() == "THEME" and isinstance(s.get("token"), TokenSnapshot)
+                    else 99.0
+                ),
+                float(-((dict(s.get("features") or {})).get("sniper_social_burst") or 0.0))
+                if str(s.get("strategy_id") or "").upper() == "SNIPER"
+                else (
+                    self._theme_launch_priority_tuple(
+                        s["token"],
+                        float(s.get("score") or 0.0),
+                    )[1]
+                    if str(s.get("strategy_id") or "").upper() == "THEME" and isinstance(s.get("token"), TokenSnapshot)
+                    else 99.0
+                ),
+                float(-(float(s.get("score") or 0.0))),
+                float(-(float(getattr(s.get("token"), "volume_5m_usd", 0.0) or 0.0))),
+            )
+        )
+        for signal in ordered_signals:
             token: TokenSnapshot = signal["token"]
             token_address = token.token_address
             if opened >= max_open_cycle:
@@ -5201,36 +8446,72 @@ class TradingEngine:
                 _skip("fallback_disabled", token.symbol)
                 continue
             if self._grade_rank(grade) > min_entry_rank:
-                # C(밈 단타 모멘텀)는 데모/실전 모두 D 미만 진입 금지.
-                if model_id == "C":
-                    _skip("grade_below_d_for_c", token.symbol)
-                    continue
-                # A/B는 데모 fallback에 한해 완화 허용.
-                if not is_demo_fallback:
-                    _skip("grade_below_model_min", token.symbol)
-                    continue
+                _skip("grade_below_entry_floor", token.symbol)
+                continue
             features = dict(signal.get("features") or {})
             if not self._meme_quality_gate_for_entry(model_id, features):
                 _skip("quality_gate_failed", token.symbol)
                 continue
+            strategy_id = str(
+                signal.get("strategy_id")
+                or self._meme_strategy_id_from_signal_context(
+                    snap=token,
+                    features=features,
+                    reason=reason_text,
+                    current_strategy_id=self._meme_strategy_id_for_model(model_id),
+                )
+            ).upper().strip() or "THEME"
+            if allowed_strategy_ids and strategy_id not in allowed_strategy_ids:
+                _skip("strategy_disabled", token.symbol)
+                continue
+            if strategy_id == "THEME":
+                theme_gate_ok = self._theme_launch_entry_ok(token, features)
+                theme_live_override = bool(
+                    is_live_market
+                    and "pumpfun" in reason_text.lower()
+                    and not is_demo_fallback
+                    and float(features.get("theme_launch_ready") or 0.0) > 0.0
+                    and float(score_now) >= max(0.70, min_score)
+                )
+                if not theme_gate_ok and not theme_live_override:
+                    _skip("theme_launch_gate_failed", token.symbol)
+                    continue
+            elif strategy_id == "SNIPER":
+                if not self._sniper_entry_ok(token, features):
+                    _skip("sniper_gate_failed", token.symbol)
+                    continue
             sym = token.symbol.upper()
             sym_key = f"{'live' if is_live_market else 'paper'}:{sym}"
+            reentry_map = dict(run.get("meme_reentry_after_ts") or {})
+            reentry_after_ts = int(reentry_map.get(sym_key) or 0)
+            if reentry_after_ts > 0 and now < reentry_after_ts:
+                _skip("sl_reentry_wait", token.symbol)
+                continue
             last_ts = int((run.get("last_signal_ts") or {}).get(sym_key, 0))
             if (now - last_ts) < cooldown:
-                _skip("signal_cooldown", token.symbol)
-                continue
+                allow_c_fast_reentry = bool(
+                    str(model_id).upper() == "C" and reentry_after_ts > 0 and now >= reentry_after_ts
+                )
+                if not allow_c_fast_reentry:
+                    _skip("signal_cooldown", token.symbol)
+                    continue
 
             run_cash = float(run.get("meme_cash_usd") or 0.0)
             cash = float(live_wallet_budget_usd or 0.0) if is_live_market else run_cash
-            order_pct = self._demo_order_pct_for_entry("meme", score_now, min_score)
-            order_pct *= _clamp(float(loss_guard.get("order_mul") or 1.0), 0.20, 1.0)
-            order_pct = _clamp(order_pct, 0.01, 0.95)
-            order_usd = min(cash, max(5.0, cash * order_pct))
+            reference_sol_price_usd = float(live_sol_price_usd or 0.0) if is_live_market else float(self._live_sol_price_usd() or 0.0)
+            if not is_live_market and reference_sol_price_usd <= 0.0:
+                reference_sol_price_usd = 100.0
+            target_entry_sol = self._meme_strategy_entry_sol(strategy_id)
+            order_usd_target = float(target_entry_sol * max(reference_sol_price_usd, 0.0))
+            order_usd = min(cash, max(5.0, order_usd_target))
             if order_usd < 5.0:
                 _skip("order_usd_too_small", token.symbol)
                 continue
+            order_pct = _clamp(order_usd / max(cash, 1e-9), 0.0, 1.0)
             live_signature = ""
             live_slippage_bps = 0
+            live_accounting: dict[str, Any] = {}
+            execution_venue = "paper"
             is_live_entry = bool(is_live_market)
             qty = order_usd / max(0.0000001, float(token.price_usd))
             if is_live_entry:
@@ -5239,27 +8520,39 @@ class TradingEngine:
                         self.state.memecoin_error = "live_meme_open_failed:sol_price_unavailable"
                     _skip("sol_price_unavailable", token.symbol)
                     continue
-                before_row = self._wallet_asset_row(token_address)
-                before_qty = float(before_row.get("qty") or 0.0)
+                before_snapshot = self._capture_live_wallet_snapshot(token_address)
                 order_sol = order_usd / max(1e-9, live_sol_price_usd)
                 try:
-                    slippage_try = 280 if model_id == "A" else (320 if model_id == "B" else 380)
-                    swap_result = self.solana_trader.swap_sol_to_token(
-                        token_address,
-                        amount_sol=order_sol,
-                        slippage_bps=slippage_try,
+                    swap_result, execution_venue = self._live_meme_buy(
+                        token=token,
+                        strategy_id=strategy_id,
+                        order_sol=order_sol,
+                        model_id=model_id,
+                        features=features,
                     )
                     live_signature = str(swap_result.get("signature") or "")
-                    live_slippage_bps = int(swap_result.get("slippage_bps") or slippage_try)
-                    in_raw = int(swap_result.get("in_amount_raw") or 0)
-                    if in_raw > 0:
-                        order_usd = max(5.0, (float(in_raw) / 1_000_000_000.0) * live_sol_price_usd)
+                    self._mark_pending_live_trade_signature(live_signature, now)
+                    live_slippage_bps = int(
+                        swap_result.get("slippage_bps")
+                        or round(float(swap_result.get("slippage_pct") or 0.0) * 100.0)
+                        or 0
+                    )
                     self._sync_wallet(int(time.time()), force=True)
-                    after_row = self._wallet_asset_row(token_address)
-                    after_qty = float(after_row.get("qty") or 0.0)
-                    delta_qty = max(0.0, after_qty - before_qty)
-                    if delta_qty > 0.0:
-                        qty = delta_qty
+                    live_accounting = self._apply_live_swap_accounting(
+                        token_address=token_address,
+                        swap_signature=live_signature,
+                        before_snapshot=before_snapshot,
+                        now_ts=int(now),
+                        side="buy",
+                        fallback_sol_price_usd=float(live_sol_price_usd),
+                    )
+                    actual_qty = max(0.0, float(live_accounting.get("received_qty") or 0.0))
+                    actual_spent_usd = max(0.0, float(live_accounting.get("spent_usd") or 0.0))
+                    actual_avg_usd = max(0.0, float(live_accounting.get("avg_price_usd") or 0.0))
+                    if actual_spent_usd > 0.0:
+                        order_usd = float(actual_spent_usd)
+                    if actual_qty > 0.0:
+                        qty = float(actual_qty)
                     elif float(token.price_usd) > 0.0:
                         qty = order_usd / float(token.price_usd)
                     if qty <= 0.0:
@@ -5319,15 +8612,16 @@ class TradingEngine:
             strategy = self._meme_strategy_for_model(model_id, grade, features)
             if is_demo_fallback and model_id in {"A", "B"}:
                 strategy = "swing"
+            if str(strategy).lower() != "swing":
+                tp_pct = float(self._meme_score_target_tp_pct(score_now))
             swing = strategy == "swing"
             hold_until_ts = 0
             trailing_stop_pct = 0.0
             if swing:
-                target_pct = max(tp_pct, float(self.settings.meme_swing_target_multiple) - 1.0)
                 if model_id == "B":
-                    tp_pct = _clamp(target_pct, 0.40, 2999.0)
+                    tp_pct = _clamp(tp_pct, 0.10, 0.20)
                 else:
-                    tp_pct = _clamp(target_pct, 0.25, 99.0)
+                    tp_pct = _clamp(tp_pct, 0.10, 0.20)
                 hold_days = int(self.settings.meme_swing_hold_days)
                 if model_id == "B":
                     hold_days = max(14, hold_days)
@@ -5349,16 +8643,23 @@ class TradingEngine:
                     sl_pct = _clamp(max(sl_pct, 0.16), 0.06, 0.60)
 
             position_key = f"live:{token_address}" if is_live_entry else token_address
+            entry_avg_price_usd = float(live_accounting.get("avg_price_usd") or token.price_usd)
+            partial_tp_pct = float(max(0.01, self.settings.meme_partial_take_profit_pct))
+            partial_tp_sell_ratio = float(_clamp(self.settings.meme_partial_take_profit_sell_ratio, 0.01, 1.0))
             run.setdefault("meme_positions", {})[position_key] = {
                 "token_address": token_address,
                 "symbol": token.symbol,
                 "qty": qty,
-                "avg_price_usd": float(token.price_usd),
+                "avg_price_usd": float(entry_avg_price_usd),
                 "opened_at": now,
                 "entry_score": float(signal["score"]),
                 "grade": grade,
                 "tp_pct": tp_pct,
                 "sl_pct": sl_pct,
+                "partial_tp_pct": float(partial_tp_pct),
+                "partial_tp_sell_ratio": float(partial_tp_sell_ratio),
+                "partial_tp_done": False,
+                "engine_strategy_id": str(strategy_id),
                 "strategy": strategy,
                 "hold_until_ts": hold_until_ts,
                 "trailing_stop_pct": trailing_stop_pct,
@@ -5372,14 +8673,24 @@ class TradingEngine:
                 "last_wallet_check_ts": int(now),
                 "hold_ext_count": 0,
                 "mode": "live" if is_live_entry else "paper",
+                "execution_venue": str(execution_venue or ("live" if is_live_entry else "paper")),
                 "live_signature": live_signature,
                 "live_slippage_bps": int(live_slippage_bps),
+                "entry_notional_usd": float(order_usd),
+                "entry_fee_usd": float(live_accounting.get("fee_usd") or 0.0),
+                "entry_before_sol_lamports": int(live_accounting.get("before_sol_lamports") or 0),
+                "entry_after_sol_lamports": int(live_accounting.get("after_sol_lamports") or 0),
+                "entry_before_token_raw": int(live_accounting.get("before_token_raw") or 0),
+                "entry_after_token_raw": int(live_accounting.get("after_token_raw") or 0),
             }
             if not is_live_entry:
                 run["meme_cash_usd"] = max(0.0, run_cash - order_usd)
             if live_wallet_budget_usd is not None:
                 live_wallet_budget_usd = max(0.0, live_wallet_budget_usd - order_usd)
             run.setdefault("last_signal_ts", {})[sym_key] = now
+            if sym_key in reentry_map:
+                reentry_map.pop(sym_key, None)
+                run["meme_reentry_after_ts"] = reentry_map
             run.setdefault("trades", []).append(
                 {
                     "ts": now,
@@ -5388,17 +8699,26 @@ class TradingEngine:
                     "symbol": token.symbol,
                     "token_address": token_address,
                     "qty": qty,
-                    "price_usd": float(token.price_usd),
+                    "price_usd": float(entry_avg_price_usd),
                     "notional_usd": order_usd,
                     "order_pct": float(order_pct),
-                    "pnl_usd": 0.0,
-                    "pnl_pct": 0.0,
+                    "pnl_usd": None,
+                    "pnl_pct": None,
                     "reason": (
-                        f"{strategy}|alloc={order_pct*100:.1f}%|{reason_text}"
+                        f"{strategy_id}|{strategy}|{target_entry_sol:.2f}SOL|{order_usd:.2f}USD|{reason_text}"
                         + (f"|live_tx={live_signature}" if live_signature else "")
                     ),
                     "model_id": model_id,
+                    "strategy_id": str(strategy_id),
                     "mode": "live" if is_live_entry else "paper",
+                    "realized_pnl_usd": None,
+                    "realized_pnl_pct": None,
+                    "network_fee_usd": float(live_accounting.get("fee_usd") or 0.0),
+                    "before_sol_lamports": int(live_accounting.get("before_sol_lamports") or 0),
+                    "after_sol_lamports": int(live_accounting.get("after_sol_lamports") or 0),
+                    "before_token_raw": int(live_accounting.get("before_token_raw") or 0),
+                    "after_token_raw": int(live_accounting.get("after_token_raw") or 0),
+                    "realized": False,
                 }
             )
             self._record_last_entry_alloc(run, "meme", token.symbol, order_pct, score_now, now)
@@ -5410,8 +8730,9 @@ class TradingEngine:
                     "trade",
                     f"[{self._display_model_name('A', 'meme')}] {token.symbol} 진입",
                     (
-                        f"{order_usd:.2f} USD | 배분 {order_pct*100:.1f}% | {strategy} | {signal.get('grade','G')} | score={float(signal['score']):.2f} | "
-                        f"TP {tp_pct*100:.1f}% / SL {sl_pct*100:.1f}% | {signal['reason']}"
+                        f"{order_usd:.2f} USD ({target_entry_sol:.2f} SOL 기준) | 배분 {order_pct*100:.1f}% | {strategy_id} | {strategy} | "
+                        f"{signal.get('grade','G')} | score={float(signal['score']):.2f} | "
+                        f"+{partial_tp_pct*100:.0f}%시 {partial_tp_sell_ratio*100:.0f}% 매도 / SL {sl_pct*100:.1f}% | {signal['reason']}"
                     ),
                     send_telegram=True,
                 )
@@ -5430,13 +8751,13 @@ class TradingEngine:
             benign_skip_reasons = {
                 "already_in_position",
                 "live_retry_cooldown",
+                "sl_reentry_wait",
                 "signal_cooldown",
                 "score_below_threshold",
                 "fallback_score_low",
                 "fallback_disabled",
                 "live_demo_fallback_blocked",
-                "grade_below_d_for_c",
-                "grade_below_model_min",
+                "grade_below_entry_floor",
                 "quality_gate_failed",
                 "order_usd_too_small",
             }
@@ -5615,7 +8936,7 @@ class TradingEngine:
         held_symbols: set[str] = set()
         held_anchor_prices: dict[str, float] = {}
         with self._lock:
-            for model_id in MODEL_IDS:
+            for model_id in CRYPTO_MODEL_IDS:
                 run = self.state.model_runs.get(self._market_run_key("crypto", model_id))
                 if not isinstance(run, dict):
                     continue
@@ -5759,10 +9080,10 @@ class TradingEngine:
         return prices
 
     def _macro_rank_window(self) -> tuple[int, int]:
-        rank_min_cfg = int(getattr(self.settings, "macro_rank_min", 10) or 10)
+        rank_min_cfg = int(getattr(self.settings, "macro_rank_min", 50) or 50)
         rank_max_cfg = int(getattr(self.settings, "macro_rank_max", 300) or 300)
-        rank_min = max(10, min(300, rank_min_cfg))
-        rank_max = max(10, min(300, rank_max_cfg))
+        rank_min = max(1, min(300, rank_min_cfg))
+        rank_max = max(1, min(300, rank_max_cfg))
         if rank_max < rank_min:
             rank_min, rank_max = rank_max, rank_min
         return (rank_min, rank_max)
@@ -6002,6 +9323,12 @@ class TradingEngine:
             if overheat >= 0.62 and ret_1d >= 0.22 and trend_stack < 0.34:
                 return True
             return False
+        if model_id == "D":
+            if ret_15m >= 0.030 and ret_1h >= 0.070 and pullback < 0.14:
+                return True
+            if overheat >= 0.36 and ret_1d >= 0.18:
+                return True
+            return False
         return bool(overheat >= 0.55 and ret_15m >= 0.030)
 
     def _crypto_score_profile(self, model_id: str, symbol: str, trend_bundle: dict[str, Any]) -> dict[str, Any]:
@@ -6026,6 +9353,10 @@ class TradingEngine:
         feats["cci_rebound"] = _clamp(float(feats.get("cci_rebound") or 0.0), 0.0, 1.0)
         feats["overheat_penalty"] = _clamp(float(feats.get("overheat_penalty") or 0.0), 0.0, 1.0)
         allowed = self._crypto_symbol_allowed_for_model(model_id, symbol)
+        feature_rank = int(feats.get("market_cap_rank") or 0)
+        rank_min, rank_max_global = self._macro_rank_window()
+        if feature_rank > 0 and (feature_rank < rank_min or feature_rank > rank_max_global):
+            allowed = False
         threshold_raw = self._bybit_entry_threshold(model_id)
         abs_chg24 = abs(float(feats.get("chg24h") or 0.0))
         chase_block = self._crypto_overheat_chase_block(model_id, feats)
@@ -6101,38 +9432,70 @@ class TradingEngine:
             score_lo, score_hi, gate_penalty = -0.220, 0.220, 0.026
             chase_penalty = 0.028
             gate_reason = "눌림/반등 + 중기추세 유지 + 과열추격 차단 조건"
-        else:
-            strategy = "C-AggressiveMomentum"
+        elif model_id == "C":
+            strategy = "C-Swing10"
             gate_ok = bool(
                 allowed
-                and feats["edge_5m"] >= 0.02
-                and feats["edge_15m"] >= 0.06
-                and feats["edge_1h"] >= 0.08
-                and feats["trend_stack"] >= 0.18
-                and feats["breakout_strength"] >= 0.42
-                and feats["social_heat"] >= 0.14
-                and feats["atr_pct"] <= 0.14
-                and abs_chg24 <= 0.84
+                and feats["edge_15m"] >= -0.08
+                and feats["edge_1h"] >= 0.02
+                and feats["edge_4h"] >= 0.04
+                and feats["edge_1d"] >= -0.06
+                and feats["trend_stack"] >= 0.12
+                and feats["social_heat"] >= 0.06
+                and feats["atr_pct"] <= 0.10
+                and abs_chg24 <= 0.38
                 and not chase_block
             )
             score = (
-                (0.042 * feats["edge_5m"])
-                + (0.050 * feats["edge_15m"])
-                + (0.060 * feats["edge_1h"])
-                + (0.038 * feats["edge_4h"])
-                + (0.016 * feats["edge_1d"])
-                + (0.058 * feats["breakout_strength"])
+                (0.012 * feats["edge_5m"])
+                + (0.026 * feats["edge_15m"])
+                + (0.040 * feats["edge_1h"])
+                + (0.056 * feats["edge_4h"])
+                + (0.048 * feats["edge_1d"])
                 + (0.028 * feats["ema_edge"])
-                + (0.030 * feats["social_heat"])
+                + (0.020 * feats["quality_score"])
                 + (0.036 * feats["trend_stack"])
-                + (0.010 * feats["quality_score"])
-                - (0.024 * feats["atr_penalty"])
-                - (0.014 * feats["noise_penalty"])
-                - (0.032 * feats["overheat_penalty"])
+                + (0.018 * feats["social_heat"])
+                + (0.018 * feats["pullback_from_high"])
+                - (0.020 * feats["atr_penalty"])
+                - (0.012 * feats["noise_penalty"])
+                - (0.030 * feats["overheat_penalty"])
             )
-            score_lo, score_hi, gate_penalty = -0.240, 0.240, 0.022
-            chase_penalty = 0.022
-            gate_reason = "5m/15m 가속 + 1h 모멘텀 + 브레이크아웃 + 과열추격 차단"
+            score_lo, score_hi, gate_penalty = -0.200, 0.220, 0.022
+            chase_penalty = 0.018
+            gate_reason = "15m/1h/4h/1d 스택 + 하루 10회 제한 스윙 조건"
+        else:
+            strategy = "D-Conviction1"
+            gate_ok = bool(
+                allowed
+                and feats["edge_1h"] >= 0.04
+                and feats["edge_4h"] >= 0.10
+                and feats["edge_1d"] >= 0.08
+                and feats["trend_stack"] >= 0.20
+                and feats["quality_score"] >= 0.58
+                and feats["social_heat"] >= 0.04
+                and feats["atr_pct"] <= 0.09
+                and abs_chg24 <= 0.30
+                and not chase_block
+            )
+            score = (
+                (0.010 * feats["edge_5m"])
+                + (0.022 * feats["edge_15m"])
+                + (0.044 * feats["edge_1h"])
+                + (0.064 * feats["edge_4h"])
+                + (0.070 * feats["edge_1d"])
+                + (0.034 * feats["ema_edge"])
+                + (0.028 * feats["quality_score"])
+                + (0.040 * feats["trend_stack"])
+                + (0.012 * feats["social_heat"])
+                + (0.014 * feats["breakout_strength"])
+                - (0.018 * feats["atr_penalty"])
+                - (0.010 * feats["noise_penalty"])
+                - (0.026 * feats["overheat_penalty"])
+            )
+            score_lo, score_hi, gate_penalty = -0.180, 0.200, 0.028
+            chase_penalty = 0.020
+            gate_reason = "4h/1d 추세 확정 + 단일 포지션 집중 조건"
         if chase_block:
             score -= float(chase_penalty)
         score = _clamp(score, score_lo, score_hi)
@@ -6145,7 +9508,8 @@ class TradingEngine:
         bayes_cfg = {
             "A": {"prior_logit": -0.55, "evidence_scale": 6.0},
             "B": {"prior_logit": -0.62, "evidence_scale": 6.5},
-            "C": {"prior_logit": -0.70, "evidence_scale": 7.0},
+            "C": {"prior_logit": -0.58, "evidence_scale": 6.1},
+            "D": {"prior_logit": -0.50, "evidence_scale": 5.7},
         }.get(model_id, {"prior_logit": -0.60, "evidence_scale": 6.4})
         prior_logit = float(bayes_cfg["prior_logit"])
         evidence_scale = float(bayes_cfg["evidence_scale"])
@@ -6326,23 +9690,30 @@ class TradingEngine:
     def _crypto_model_risk_profile(model_id: str) -> dict[str, float]:
         if model_id == "A":
             return {
-                "lev_min": 5.0,
-                "lev_max": 8.0,
+                "lev_min": 8.0,
+                "lev_max": 12.0,
                 "order_pct_mul": 0.24,
                 "hard_roe_cut": -0.08,
             }
         if model_id == "B":
             return {
-                "lev_min": 6.0,
-                "lev_max": 12.0,
-                "order_pct_mul": 0.28,
-                "hard_roe_cut": -0.11,
+                "lev_min": 11.0,
+                "lev_max": 18.0,
+                "order_pct_mul": 0.30,
+                "hard_roe_cut": -0.12,
+            }
+        if model_id == "C":
+            return {
+                "lev_min": 7.0,
+                "lev_max": 11.0,
+                "order_pct_mul": 0.20,
+                "hard_roe_cut": -0.09,
             }
         return {
             "lev_min": 8.0,
-            "lev_max": 15.0,
-            "order_pct_mul": 0.26,
-            "hard_roe_cut": -0.13,
+            "lev_max": 13.0,
+            "order_pct_mul": 1.00,
+            "hard_roe_cut": -0.10,
         }
 
     def _compute_crypto_leverage(self, model_id: str, score: float, threshold: float, volatility: float) -> float:
@@ -6362,9 +9733,11 @@ class TradingEngine:
         if model_id == "A":
             model_bias = -0.34
         elif model_id == "B":
-            model_bias = -0.24
+            model_bias = -0.08
         elif model_id == "C":
-            model_bias = -0.10
+            model_bias = -0.18
+        elif model_id == "D":
+            model_bias = -0.30
         confidence = _clamp((0.70 * score_norm) + (0.30 * (1.0 - vol_norm)) + model_bias, 0.0, 1.0)
         lev = lev_min + ((lev_max - lev_min) * confidence)
         return round(_clamp(lev, lev_min, lev_max), 2)
@@ -6451,6 +9824,7 @@ class TradingEngine:
                     "score": score,
                     "score_raw": score_raw,
                     "price_usd": p,
+                    "market_cap_rank": int(indicators.get("market_cap_rank") or 0),
                     "entry_threshold": float(effective_threshold),
                     "entry_threshold_raw": float(threshold_raw),
                     "above_threshold": bool(score > effective_threshold),
@@ -6500,9 +9874,11 @@ class TradingEngine:
         if model_id == "A":
             model_scale = 0.72
         elif model_id == "B":
-            model_scale = 0.84
+            model_scale = 1.06
         elif model_id == "C":
-            model_scale = 1.02
+            model_scale = 0.88
+        elif model_id == "D":
+            model_scale = 0.76
         denom = max(1, len(out) - 1)
         for idx, row in enumerate(out):
             vol = _clamp(float(row.get("volatility") or 0.0), 0.0, 1.0)
@@ -6645,6 +10021,17 @@ class TradingEngine:
         max_positions = max(1, int(self.settings.bybit_max_positions))
         if len(positions) >= max_positions:
             return
+        if model_id == "C":
+            today_key = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
+            todays_buys = sum(
+                1
+                for tr in list(run.get("trades") or [])
+                if str((tr or {}).get("source") or "").lower() == "crypto_demo"
+                and str((tr or {}).get("side") or "").lower() == "buy"
+                and datetime.fromtimestamp(int((tr or {}).get("ts") or 0), tz=timezone.utc).strftime("%Y-%m-%d") == today_key
+            )
+            if todays_buys >= 10:
+                return
 
         ranked: list[tuple[str, float]] = []
         leverage_by_symbol: dict[str, float] = {}
@@ -6719,9 +10106,9 @@ class TradingEngine:
             if cash < min_order:
                 break
             order_pct = self._demo_order_pct_for_entry("crypto", score, entry_threshold)
-            order_pct *= _clamp(float(loss_guard.get("order_mul") or 1.0), 0.20, 1.0)
             order_pct = _clamp(order_pct, 0.01, 0.95)
-            order_usd = min(cash, max(min_order, cash * order_pct))
+            target_order_usd = self._crypto_target_order_usd(run, prices)
+            order_usd = min(cash, max(min_order, target_order_usd))
             if order_usd < min_order:
                 continue
             price = float(prices.get(symbol) or 0.0)
@@ -6852,18 +10239,27 @@ class TradingEngine:
     def _market_trade_stats(self, run: dict[str, Any], market: str, mode_filter: str = "paper") -> dict[str, float]:
         source_name = "memecoin" if market == "meme" else "crypto_demo"
         trades = list(run.get("trades") or [])
-        sells = [
-            t
-            for t in trades
-            if str(t.get("side") or "").lower() == "sell"
-            and str(t.get("source") or "").lower() == source_name
-            and (
-                (mode_filter == "live" and self._is_live_trade_row(t))
-                or (mode_filter != "live" and not self._is_live_trade_row(t))
-            )
-        ]
-        realized = sum(float(t.get("pnl_usd") or 0.0) for t in sells)
-        wins = sum(1 for t in sells if float(t.get("pnl_usd") or 0.0) > 0.0)
+        sells: list[dict[str, Any]] = []
+        for t in trades:
+            if str(t.get("side") or "").lower() != "sell":
+                continue
+            if str(t.get("source") or "").lower() != source_name:
+                continue
+            if mode_filter == "live":
+                if not self._is_live_trade_row(t):
+                    continue
+                if market == "meme" and not self._live_trade_is_realized(t):
+                    continue
+            else:
+                if self._is_live_trade_row(t):
+                    continue
+            sells.append(t)
+        if mode_filter == "live" and market == "meme":
+            realized_values = [float(self._live_trade_realized_pnl_usd(t) or 0.0) for t in sells]
+        else:
+            realized_values = [float(t.get("pnl_usd") or 0.0) for t in sells]
+        realized = sum(realized_values)
+        wins = sum(1 for pnl in realized_values if float(pnl) > 0.0)
         closed = len(sells)
         win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
         return {
@@ -6956,7 +10352,7 @@ class TradingEngine:
         with self._lock:
             table = list(self.state.daily_pnl or [])
             runs = dict(self.state.model_runs or {})
-        for model_id in MODEL_IDS:
+        for model_id in self._all_model_ids():
             meme_run = self._get_market_run(runs, "meme", model_id)
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             run = self._compose_model_run_from_market(runs, model_id)
@@ -7016,6 +10412,8 @@ class TradingEngine:
                 self.state.wallet_assets = rows
                 self.state.last_wallet_sync_ts = now
             self._refresh_live_meme_basis(rows, now)
+            self._detect_and_apply_external_live_flows(now)
+            self._reconcile_live_meme_trade_history(now)
             self._sync_live_seed_if_idle(now)
         except Exception as exc:  # noqa: BLE001
             with self._lock:
@@ -7054,12 +10452,13 @@ class TradingEngine:
             return
         if not self._acquire_telegram_poll_lock(now):
             self._last_telegram_poll = now
-            self._emit_runtime_error(
+            self._append_runtime_event_only(
                 "core:telegram_poll_lock",
-                "텔레그램 폴링 잠금 대기",
-                "다른 프로세스가 동일 봇 토큰으로 polling 중입니다. 단일 인스턴스만 실행하세요.",
-                level="warn",
-                cooldown_seconds=300,
+                level="info",
+                status="skip",
+                error="telegram_poll_lock_wait",
+                detail="poll lock held; silent backoff",
+                title="텔레그램 폴링 잠금 대기",
             )
             return
         self._last_telegram_poll = now
@@ -7076,12 +10475,13 @@ class TradingEngine:
             low = err_text.lower()
             if "409" in low or "conflict" in low:
                 self.telegram.delete_webhook(drop_pending_updates=False)
-                self._emit_runtime_error(
+                self._append_runtime_event_only(
                     "core:telegram_poll",
-                    "텔레그램 폴링 충돌",
-                    f"{err_text} | 다른 인스턴스의 getUpdates 중복 실행 여부를 확인하세요.",
                     level="warn",
-                    cooldown_seconds=600,
+                    status="skip",
+                    error=err_text,
+                    detail="telegram getUpdates conflict; webhook cleared and backoff applied",
+                    title="텔레그램 폴링 충돌",
                 )
                 self._last_telegram_poll = int(now) + 5
                 return
@@ -7140,28 +10540,25 @@ class TradingEngine:
         if cmd in {"/start", "/help"}:
             return (
                 "명령어 상세 도움말\n"
-                "[1) 상태/손익]\n"
-                "/status - 전체 상태(밈3 + 크립토3 분리)\n"
-                "/status_meme - 밈 모델 상태만 요약\n"
-                "/status_crypto - 크립토 모델 상태만 요약\n"
-                "/pnl - 모델별 손익(밈3 + 크립토3 분리)\n"
-                "/pnl_meme - 밈 모델 손익만\n"
-                "/pnl_crypto - 크립토 모델 손익만\n"
+                "[1) 모델]\n"
+                "/models - 현재 구조 요약(밈 단일 엔진 / 크립토 4모델)\n"
+                "/status_meme - 밈 단일 엔진 상태\n"
+                "/status_crypto - 크립토 4모델 상태\n"
+                "/pnl - 데모 손익 요약(밈 엔진 + 크립토 4모델)\n"
+                "/pnl_meme - 밈 엔진 손익만\n"
+                "/pnl_crypto - 크립토 4모델 손익만\n"
                 "\n"
-                "[2) 포지션/자산]\n"
-                "/positions - 전체 포지션(DEMO/LIVE 분리)\n"
-                "/position - /positions 동일(별칭)\n"
-                "/positions_meme - 밈 포지션만\n"
-                "/positions_crypto - 크립토 포지션만\n"
+                "[2) 데모/실전 포지션]\n"
+                "/positions - 실전 자산/관리포지션 요약\n"
+                "/position - /positions 동일(실전 요약)\n"
+                "/positions_meme - 밈 엔진 포지션/최근 체결\n"
+                "/positions_crypto - 크립토 4모델 포지션\n"
                 "/meme_balance - 팬텀 지갑 자산\n"
                 "/bybit_balance - 거래소 자산\n"
                 "\n"
-                "[3) 모델 선택/튜닝/소스]\n"
-                "/models - 자동매매에 사용 중인 모델 확인\n"
-                "/set_models meme A,B,C - 밈 자동매매 모델 설정\n"
-                "/set_models crypto A,B,C - 크립토 자동매매 모델 설정\n"
-                "/set_live_models meme C - 밈 실전 체결 모델 설정\n"
-                "/set_live_models crypto A,B,C - 크립토 실전 체결 모델 설정\n"
+                "[3) 설정/튜닝/소스]\n"
+                "/set_models crypto A,B,C,D - 데모 크립토 모델 설정\n"
+                "/set_live_models crypto A,B,C,D - 실전 크립토 모델 설정\n"
                 "/live_markets - 실전 밈/크립토 ON/OFF 상태\n"
                 "/set_live_market <meme|crypto> <on|off> - 실전 시장별 ON/OFF\n"
                 f"/tune_status - 자동튜닝 상태({self._autotune_interval_label()} 주기, 크립토 모델)\n"
@@ -7183,17 +10580,18 @@ class TradingEngine:
         if cmd == "/chatid":
             return f"현재 chat_id: {chat_id}"
         if cmd == "/models":
-            meme_ids = ",".join(self._autotrade_model_ids("meme"))
-            crypto_ids = ",".join(self._autotrade_model_ids("crypto"))
-            live_meme_ids = ",".join(self._live_model_ids("meme"))
-            live_crypto_ids = ",".join(self._live_model_ids("crypto"))
+            meme_text = "단일 엔진(THEME_SNIPER 메인 / NARRATIVE 서브)"
+            crypto_ids = ",".join(f"{mid}:{self._market_model_name('crypto', mid)}" for mid in self._autotrade_model_ids("crypto"))
+            live_meme_ids = "단일 엔진"
+            live_crypto_ids = ",".join(f"{mid}:{self._market_model_name('crypto', mid)}" for mid in self._live_model_ids("crypto"))
             return (
                 "모델 설정\n"
-                f"- 데모 밈: {meme_ids}\n"
+                f"- 데모 밈: {meme_text}\n"
+                f"  · THEME 0.10 SOL | SNIPER 0.20 SOL | NARRATIVE 0.20 SOL | +100%시 50% 매도\n"
                 f"- 데모 크립토: {crypto_ids}\n"
                 f"- 실전 밈: {live_meme_ids}\n"
                 f"- 실전 크립토: {live_crypto_ids}\n"
-                "예시: /set_models meme A,B,C | /set_live_models meme C"
+                "예시: /set_models crypto A,B,C,D | /set_live_models crypto A,D"
             )
         if cmd == "/live_markets":
             return (
@@ -7219,36 +10617,38 @@ class TradingEngine:
             return f"실전 시장 설정 변경 완료: 밈={'ON' if applied['meme'] else 'OFF'} | 크립토={'ON' if applied['crypto'] else 'OFF'}"
         if cmd == "/set_models":
             if len(chunks) < 3:
-                return "사용법: /set_models <meme|crypto> <A,B,C>\n예: /set_models meme C"
+                return "사용법: /set_models <meme|crypto> <ids>\n예: /set_models crypto A,B,C,D"
             market = str(chunks[1] or "").strip().lower()
             if market not in {"meme", "crypto"}:
                 return "market은 meme 또는 crypto만 허용됩니다."
-            parsed = self._parse_model_id_csv(",".join(chunks[2:]), fallback_all=False)
+            if market == "meme":
+                return "밈은 단일 엔진 고정입니다. THEME_SNIPER 메인 / NARRATIVE 서브 구조라 별도 ID 설정을 받지 않습니다."
+            allowed_ids = self._market_model_ids(market)
+            parsed = self._parse_model_id_csv(",".join(chunks[2:]), fallback_all=False, allowed_ids=allowed_ids)
             if not parsed:
-                return "모델은 A,B,C 중 하나 이상 입력하세요."
+                return f"모델은 {','.join(allowed_ids)} 중 하나 이상 입력하세요."
             key = "MEME_AUTOTRADE_MODELS" if market == "meme" else "CRYPTO_AUTOTRADE_MODELS"
             save_runtime_overrides(self.settings, {key: ",".join(parsed)})
             self._reload_settings()
-            return (
-                f"{'밈' if market == 'meme' else '크립토'} 자동매매 모델이 "
-                f"{','.join(self._autotrade_model_ids(market))} 로 설정되었습니다."
-            )
+            selected = ", ".join(f"{mid}:{self._market_model_name(market, mid)}" for mid in self._autotrade_model_ids(market))
+            return f"{'밈' if market == 'meme' else '크립토'} 자동매매 모델이 {selected} 로 설정되었습니다."
         if cmd == "/set_live_models":
             if len(chunks) < 3:
-                return "사용법: /set_live_models <meme|crypto> <A,B,C>\n예: /set_live_models meme C"
+                return "사용법: /set_live_models <meme|crypto> <ids>\n예: /set_live_models crypto A,B,C,D"
             market = str(chunks[1] or "").strip().lower()
             if market not in {"meme", "crypto"}:
                 return "market은 meme 또는 crypto만 허용됩니다."
-            parsed = self._parse_model_id_csv(",".join(chunks[2:]), fallback_all=False)
+            if market == "meme":
+                return "밈 실전은 단일 엔진 ON/OFF만 사용합니다. 세부 브리지는 내부 처리라 텔레그램에서 직접 설정하지 않습니다."
+            allowed_ids = self._market_model_ids(market)
+            parsed = self._parse_model_id_csv(",".join(chunks[2:]), fallback_all=False, allowed_ids=allowed_ids)
             if not parsed:
-                return "모델은 A,B,C 중 하나 이상 입력하세요."
+                return f"모델은 {','.join(allowed_ids)} 중 하나 이상 입력하세요."
             key = "LIVE_MEME_MODELS" if market == "meme" else "LIVE_CRYPTO_MODELS"
             save_runtime_overrides(self.settings, {key: ",".join(parsed)})
             self._reload_settings()
-            return (
-                f"{'밈' if market == 'meme' else '크립토'} 실전 모델이 "
-                f"{','.join(self._live_model_ids(market))} 로 설정되었습니다."
-            )
+            selected = ", ".join(f"{mid}:{self._market_model_name(market, mid)}" for mid in self._live_model_ids(market))
+            return f"{'밈' if market == 'meme' else '크립토'} 실전 모델이 {selected} 로 설정되었습니다."
         if cmd == "/errors":
             with self._lock:
                 memecoin_error = str(self.state.memecoin_error or "")
@@ -7282,7 +10682,7 @@ class TradingEngine:
             runs = _read_runs()
             now_ts = int(time.time())
             lines = [f"자동튜닝 상태 (크립토, {self._autotune_interval_label()} 주기)"]
-            for model_id in MODEL_IDS:
+            for model_id in CRYPTO_MODEL_IDS:
                 run = self._get_market_run(runs, "crypto", model_id)
                 tune = self._read_model_runtime_tune_from_run(run or {}, model_id, now_ts)
                 remain = max(0, int(tune.get("next_eval_ts") or 0) - now_ts)
@@ -7305,9 +10705,33 @@ class TradingEngine:
         if cmd in {"/status_meme", "/status_crypto"}:
             runs = _read_runs()
             market = "meme" if cmd == "/status_meme" else "crypto"
-            lines = [f"{'밈' if market == 'meme' else '크립토'} 모델 상태"]
+            if market == "meme":
+                engine = self._aggregate_meme_engine_state(runs, mode_filter="paper")
+                top_signal = dict(engine.get("top_signal") or {})
+                seed_usd = float(engine.get("seed_usd") or 0.0)
+                total_pnl_usd = float(engine.get("aggregate_total_pnl_usd") or engine.get("total_pnl_usd") or 0.0)
+                total_roi_pct = (total_pnl_usd / seed_usd * 100.0) if seed_usd > 0.0 else 0.0
+                lines = [
+                    "데모 밈 단일 엔진 상태",
+                    "- 구조: THEME_SNIPER 메인 / NARRATIVE 서브",
+                    "- 진입: THEME 0.10 SOL | SNIPER 0.20 SOL | NARRATIVE 0.20 SOL",
+                    "- 청산: +100%시 50% 매도, 나머지 러너 유지",
+                    f"- 시드 {seed_usd:.2f} | 총수익률 {total_roi_pct:+.2f}% ({total_pnl_usd:+.2f})",
+                    f"- 오픈 {int(engine.get('open_positions') or 0)} | 청산 {int(engine.get('closed_trades') or 0)} | 승률 {float(engine.get('aggregate_win_rate') or engine.get('win_rate') or 0.0):.1f}%",
+                ]
+                if top_signal:
+                    lines.append(
+                        f"- 상위 신호: {str(top_signal.get('symbol') or '-')} | "
+                        f"{str(top_signal.get('strategy_id') or '-')} | "
+                        f"{str(top_signal.get('grade') or '-')} {float(top_signal.get('score') or 0.0):.4f}"
+                    )
+                alloc_map = dict(engine.get("recent_allocations") or {})
+                if alloc_map:
+                    lines.append("- 최근 진입: " + " | ".join(f"{k} {v}" for k, v in alloc_map.items()))
+                return "\n".join(lines)
+            lines = ["데모 크립토 4모델 상태"]
             ranked_rows: list[tuple[str, dict[str, Any]]] = []
-            for model_id in MODEL_IDS:
+            for model_id in self._market_model_ids(market):
                 run = self._get_market_run(runs, market, model_id)
                 mm = self._model_metrics_market(model_id, run, market)
                 ranked_rows.append((model_id, mm))
@@ -7322,9 +10746,22 @@ class TradingEngine:
         if cmd in {"/pnl_meme", "/pnl_crypto"}:
             runs = _read_runs()
             market = "meme" if cmd == "/pnl_meme" else "crypto"
-            lines = [f"{'밈' if market == 'meme' else '크립토'} 모델 손익"]
+            if market == "meme":
+                engine = self._aggregate_meme_engine_state(runs, mode_filter="paper")
+                seed_usd = float(engine.get("seed_usd") or 0.0)
+                total_pnl_usd = float(engine.get("aggregate_total_pnl_usd") or engine.get("total_pnl_usd") or 0.0)
+                total_roi_pct = (total_pnl_usd / seed_usd * 100.0) if seed_usd > 0.0 else 0.0
+                return (
+                    "데모 밈 엔진 손익\n"
+                    f"- 시드: {seed_usd:.2f}\n"
+                    f"- 실현손익: {float(engine.get('realized_pnl_usd') or 0.0):+.2f}\n"
+                    f"- 평가손익: {float(engine.get('unrealized_pnl_usd') or 0.0):+.2f}\n"
+                    f"- 총수익률: {total_roi_pct:+.2f}% ({total_pnl_usd:+.2f})\n"
+                    f"- 오픈: {int(engine.get('open_positions') or 0)} | 청산: {int(engine.get('closed_trades') or 0)} | 승률: {float(engine.get('aggregate_win_rate') or engine.get('win_rate') or 0.0):.1f}%"
+                )
+            lines = ["데모 크립토 4모델 손익"]
             ranked_rows = []
-            for model_id in MODEL_IDS:
+            for model_id in self._market_model_ids(market):
                 mm = self._model_metrics_market(model_id, self._get_market_run(runs, market, model_id), market)
                 ranked_rows.append((model_id, mm))
             ranked_rows.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
@@ -7337,8 +10774,41 @@ class TradingEngine:
         if cmd in {"/positions_meme", "/positions_crypto"}:
             runs = _read_runs()
             market = "meme" if cmd == "/positions_meme" else "crypto"
-            lines = [f"{'밈' if market == 'meme' else '크립토'} 포지션"]
-            for model_id in MODEL_IDS:
+            if market == "meme":
+                engine = self._aggregate_meme_engine_state(runs, mode_filter="paper")
+                lines = ["데모 밈 엔진 포지션 / 최근 체결", "- 구조: THEME_SNIPER 메인 / NARRATIVE 서브"]
+                pos_rows = list(engine.get("positions") or [])
+                if not pos_rows:
+                    lines.append("[현재 포지션]")
+                    lines.append("- 없음")
+                else:
+                    lines.append("[현재 포지션]")
+                    for pos in pos_rows[:20]:
+                        lines.append(
+                            f"- {str(pos.get('strategy_id') or '-')} | {pos.get('symbol') or '-'} | "
+                            f"평가 ${float(pos.get('value_usd') or 0.0):.2f} | "
+                            f"수익률 {float(pos.get('pnl_pct') or 0.0):+.2f}% ({float(pos.get('pnl_usd') or 0.0):+.2f}) | "
+                            f"{str(pos.get('exit_rule_text') or '-')}"
+                        )
+                trade_rows = list(engine.get("trades") or [])
+                lines.append("")
+                lines.append("[최근 체결]")
+                if not trade_rows:
+                    lines.append("- 없음")
+                else:
+                    for tr in trade_rows[:15]:
+                        if tr.get("pnl_usd") is None:
+                            pnl_text = "-"
+                        else:
+                            pnl_text = f"{float(tr.get('pnl_pct') or 0.0) * 100.0:+.2f}% ({float(tr.get('pnl_usd') or 0.0):+.2f})"
+                        lines.append(
+                            f"- {datetime.fromtimestamp(int(tr.get('ts') or 0), tz=timezone.utc).astimezone().strftime('%m-%d %H:%M')} | "
+                            f"{str(tr.get('strategy_id') or '-')} | {str(tr.get('side') or '-')} {str(tr.get('symbol') or '-')}"
+                            f" ${float(tr.get('notional_usd') or 0.0):.2f} | 수익률 {pnl_text}"
+                        )
+                return "\n".join(lines)
+            lines = ["데모 크립토 4모델 포지션"]
+            for model_id in self._market_model_ids(market):
                 run = self._get_market_run(runs, market, model_id)
                 lines.append(f"[{_market_name(market, model_id)}]")
                 if market == "meme":
@@ -7446,61 +10916,60 @@ class TradingEngine:
                 f"backup={result.get('backup_path') or '-'}"
             )
         if cmd == "/status":
-            meme_models = ",".join(self._autotrade_model_ids("meme"))
-            crypto_models = ",".join(self._autotrade_model_ids("crypto"))
-            live_meme_models = ",".join(self._live_model_ids("meme"))
-            live_crypto_models = ",".join(self._live_model_ids("crypto"))
-            live_meme_text = (
-                live_meme_models if bool(self.settings.live_enable_meme) and live_meme_models else "OFF (시장 비활성)"
-            )
-            live_crypto_text = (
-                live_crypto_models
-                if bool(self.settings.live_enable_crypto) and live_crypto_models
-                else "OFF (시장 비활성)"
-            )
-            lines = [
-                f"상태: {'실행중' if self.running else '정지'}",
-                f"모드: {self.settings.trade_mode}",
-                f"자동매매: {'ON' if self.settings.enable_autotrade else 'OFF'}",
-                f"실전 시장(밈/크립토): {'ON' if self.settings.live_enable_meme else 'OFF'} / {'ON' if self.settings.live_enable_crypto else 'OFF'}",
-                f"최소 유지 SOL(거래 제외): {float(self.settings.solana_reserve_sol):.4f} SOL",
-                f"체결알림: {'ON' if self.settings.telegram_trade_alerts_enabled else 'OFF'}",
-                f"주기리포트: {'ON' if self.settings.telegram_report_enabled else 'OFF'} ({int(self.settings.telegram_report_interval_seconds)}s)",
-                f"초기화잠금: {'해제' if self.settings.allow_demo_reset else '설정'}",
-                f"데모 모델(밈): {meme_models}",
-                f"데모 모델(크립토): {crypto_models}",
-                f"실전 모델(밈): {live_meme_text}",
-                f"실전 모델(크립토): {live_crypto_text}",
-                "",
-                "[밈 모델 순위]",
-            ]
             runs = _read_runs()
-            ranked_meme: list[tuple[str, dict[str, Any]]] = []
-            for model_id in MODEL_IDS:
-                meme_run = self._get_market_run(runs, "meme", model_id)
-                mm = self._model_metrics_market(model_id, meme_run, "meme")
-                ranked_meme.append((model_id, mm))
-            ranked_meme.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
-            for rank, (model_id, mm) in enumerate(ranked_meme, start=1):
-                lines.append(
-                    f"#{rank} {_market_name('meme', model_id)}: equity={float(mm['equity_usd']):.2f}, "
-                    f"pnl={float(mm['total_pnl_usd']):+.2f}, realized={float(mm['realized_pnl_usd']):+.2f}, "
-                    f"open={int(mm['open_positions'])}, win={float(mm['win_rate']):.1f}%"
+            def _sgn(v: float) -> str:
+                return f"{float(v):+.2f}"
+
+            def _sgn_pct(v: float) -> str:
+                return f"{float(v):+.2f}%"
+
+            def _fmt_ts(unix_ts: int) -> str:
+                t = int(unix_ts or 0)
+                if t <= 0:
+                    return "-"
+                try:
+                    return datetime.fromtimestamp(t, tz=timezone.utc).astimezone().strftime("%m-%d %H:%M")
+                except Exception:
+                    return "-"
+
+            with self._lock:
+                wallet_assets = list(self.state.wallet_assets or [])
+                bybit_assets = list(self.state.bybit_assets or [])
+                bybit_positions = list(self.state.bybit_positions or [])
+                live_equity = self._live_equity_usd_from_assets(wallet_assets, bybit_assets)
+                perf = self._live_performance_view_locked(live_equity_usd=live_equity)
+                min_wallet_asset_usd = float(self.settings.min_wallet_asset_usd or 1.0)
+            live_meme_models = "단일 엔진(THEME_SNIPER 메인 / NARRATIVE 서브)"
+            live_crypto_models = ", ".join(
+                f"{mid}:{self._market_model_name('crypto', mid)}" for mid in self._live_model_ids("crypto")
+            )
+            live_meme_text = live_meme_models if bool(self.settings.live_enable_meme) else "OFF"
+            live_crypto_text = (
+                live_crypto_models if (bool(self.settings.live_enable_crypto) and live_crypto_models) else (
+                    "ON(미설정)" if bool(self.settings.live_enable_crypto) else "OFF"
                 )
-            lines.append("")
-            lines.append("[크립토 모델 순위]")
-            ranked_crypto: list[tuple[str, dict[str, Any]]] = []
-            for model_id in MODEL_IDS:
-                crypto_run = self._get_market_run(runs, "crypto", model_id)
-                cm = self._model_metrics_market(model_id, crypto_run, "crypto")
-                ranked_crypto.append((model_id, cm))
-            ranked_crypto.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
-            for rank, (model_id, cm) in enumerate(ranked_crypto, start=1):
+            )
+            wallet_asset_count = sum(1 for row in wallet_assets if float((row or {}).get("value_usd") or 0.0) >= min_wallet_asset_usd)
+            managed_meme_count = 0
+            for model_id in MEME_MODEL_IDS:
+                managed_meme_count += len(self._build_meme_positions_view(self._get_market_run(runs, "meme", model_id), mode_filter="live"))
+            lines = [
+                "실전 상태",
+                f"- 상태: {'실행중' if self.running else '정지'} | 모드: {str(self.settings.trade_mode or 'paper').upper()} | 실전실행: {'ON' if self.settings.enable_live_execution else 'OFF'}",
+                f"- 실전 시장: 밈 {'ON' if self.settings.live_enable_meme else 'OFF'} | 크립토 {'ON' if self.settings.live_enable_crypto else 'OFF'}",
+                f"- 실전 모델: 밈 {live_meme_text} | 크립토 {live_crypto_text}",
+                f"- 현재 실전 평가금액: ${live_equity:.2f}",
+                f"- 성과 기준자산: ${float(perf.get('live_perf_anchor_usd') or 0.0):.2f}",
+                f"- 순입출금 보정: {_sgn(float(perf.get('live_net_flow_usd') or 0.0))} USD",
+                f"- 보정 손익: {_sgn(float(perf.get('live_perf_pnl_usd') or 0.0))} ({_sgn_pct(float(perf.get('live_perf_roi_pct') or 0.0))})",
+                f"- 기준시각: {_fmt_ts(int(perf.get('live_perf_anchor_ts') or 0))}",
+            ]
+            if bool(self.settings.live_enable_meme):
                 lines.append(
-                    f"#{rank} {_market_name('crypto', model_id)}: equity={float(cm['equity_usd']):.2f}, "
-                    f"pnl={float(cm['total_pnl_usd']):+.2f}, realized={float(cm['realized_pnl_usd']):+.2f}, "
-                    f"open={int(cm['open_positions'])}, win={float(cm['win_rate']):.1f}%"
+                    f"- 팬텀 자산(USD {min_wallet_asset_usd:.0f}+): {wallet_asset_count}개 | 실전 MEME 관리포지션: {managed_meme_count}개"
                 )
+            if bool(self.settings.live_enable_crypto):
+                lines.append(f"- 거래소 자산: {len(bybit_assets)}개 | 실전 CRYPTO 포지션: {len(bybit_positions)}개")
             return "\n".join(lines)
         if cmd == "/meme_balance":
             with self._lock:
@@ -7525,99 +10994,123 @@ class TradingEngine:
             return "\n".join(lines)
         if cmd == "/positions":
             runs = _read_runs()
-            lines = ["포지션 요약 (DEMO / LIVE)"]
-            lines.append("[DEMO 밈 모델]")
-            for model_id in MODEL_IDS:
-                meme_run = self._get_market_run(runs, "meme", model_id)
-                meme_positions = [
-                    p
-                    for p in list((meme_run.get("meme_positions") or {}).values())
-                    if str((p or {}).get("mode") or "").strip().lower() != "live"
+            def _sgn(v: float) -> str:
+                return f"{float(v):+.2f}"
+
+            def _sgn_pct(v: float) -> str:
+                return f"{float(v):+.2f}%"
+
+            def _fmt_qty(v: float) -> str:
+                text = f"{float(v):,.6f}".rstrip("0").rstrip(".")
+                return text or "0"
+
+            with self._lock:
+                wallet_assets = list(self.state.wallet_assets or [])
+                bybit_assets = list(self.state.bybit_assets or [])
+                live_crypto_rows = list(self.state.bybit_positions or [])
+                live_equity = self._live_equity_usd_from_assets(wallet_assets, bybit_assets)
+                perf = self._live_performance_view_locked(live_equity_usd=live_equity)
+                min_wallet_asset_usd = float(self.settings.min_wallet_asset_usd or 1.0)
+            live_meme_models = "단일 엔진(THEME_SNIPER 메인 / NARRATIVE 서브)" if bool(self.settings.live_enable_meme) else "OFF"
+            live_crypto_models = (
+                ", ".join(f"{mid}:{self._market_model_name('crypto', mid)}" for mid in self._live_model_ids("crypto"))
+                if bool(self.settings.live_enable_crypto)
+                else "OFF"
+            )
+            lines = [
+                "실전 자산 / 포지션",
+                f"- 현재 실전 평가금액: ${live_equity:.2f}",
+                f"- 성과 기준자산: ${float(perf.get('live_perf_anchor_usd') or 0.0):.2f}",
+                f"- 순입출금 보정: {_sgn(float(perf.get('live_net_flow_usd') or 0.0))} USD",
+                f"- 보정 손익: {_sgn(float(perf.get('live_perf_pnl_usd') or 0.0))} ({_sgn_pct(float(perf.get('live_perf_roi_pct') or 0.0))})",
+                f"- 실전 모델: 밈 {live_meme_models or 'ON(미설정)'} | 크립토 {live_crypto_models or 'ON(미설정)'}",
+            ]
+
+            if bool(self.settings.live_enable_meme):
+                wallet_rows = [
+                    row for row in wallet_assets
+                    if float((row or {}).get("value_usd") or 0.0) >= min_wallet_asset_usd
                 ]
-                lines.append(f"[{_market_name('meme', model_id)}]")
-                if meme_positions:
-                    for pos in meme_positions[:15]:
-                        current = self._resolve_price(str(pos.get("token_address") or ""))
-                        avg = float(pos.get("avg_price_usd") or 0.0)
-                        pnl_pct = 0.0 if avg <= 0 else ((current - avg) / avg) * 100.0
+                wallet_rows.sort(key=lambda row: float((row or {}).get("value_usd") or 0.0), reverse=True)
+                lines.append("")
+                lines.append(f"[LIVE 팬텀 자산 USD {min_wallet_asset_usd:.0f}+]")
+                if wallet_rows:
+                    for row in wallet_rows[:12]:
                         lines.append(
-                            f"  - {pos.get('symbol')} ({str(pos.get('strategy') or 'scalp')}): {pnl_pct:+.2f}%"
+                            f"- {str(row.get('symbol') or '-').upper()}: ${float(row.get('value_usd') or 0.0):.2f} | "
+                            f"수량 {_fmt_qty(float(row.get('qty') or 0.0))} | 현재가 ${float(row.get('price_usd') or 0.0):.8f}"
                         )
                 else:
-                    lines.append("  - 없음")
-            lines.append("")
-            lines.append("[DEMO 크립토 모델]")
-            for model_id in MODEL_IDS:
-                crypto_run = self._get_market_run(runs, "crypto", model_id)
-                bybit_positions = list((crypto_run.get("bybit_positions") or {}).values())
-                lines.append(f"[{_market_name('crypto', model_id)}]")
-                if bybit_positions:
-                    for pos in bybit_positions[:15]:
-                        sym = str(pos.get("symbol") or "")
-                        current = float(self._crypto_current_price(pos))
-                        avg = float(pos.get("avg_price_usd") or 0.0)
-                        pnl_pct = 0.0 if avg <= 0 else ((current - avg) / avg) * 100.0
-                        lines.append(f"  - {sym}: {pnl_pct:+.4f}%")
+                    lines.append("- 없음")
+
+                managed_meme_rows: list[dict[str, Any]] = []
+                for model_id in MEME_MODEL_IDS:
+                    meme_run = self._get_market_run(runs, "meme", model_id)
+                    for row in self._build_meme_positions_view(meme_run, mode_filter="live"):
+                        item = dict(row or {})
+                        item["model_name"] = self._meme_strategy_id_for_model(model_id)
+                        managed_meme_rows.append(item)
+                managed_meme_rows.sort(key=lambda row: float((row or {}).get("value_usd") or 0.0), reverse=True)
+                lines.append("")
+                lines.append("[LIVE MEME 관리포지션]")
+                if managed_meme_rows:
+                    for row in managed_meme_rows[:15]:
+                        lines.append(
+                            f"- {row.get('model_name')}: {row.get('symbol') or '-'} | 평가 ${float(row.get('value_usd') or 0.0):.2f} | "
+                            f"수익률 {_sgn_pct(float(row.get('pnl_pct') or 0.0))} ({_sgn(float(row.get('pnl_usd') or 0.0))}) | "
+                            f"{str(row.get('exit_rule_text') or '-')}"
+                        )
                 else:
-                    lines.append("  - 없음")
-            lines.append("")
-            lines.append("[LIVE 밈]")
-            live_meme_count = 0
-            for model_id in MODEL_IDS:
-                meme_run = self._get_market_run(runs, "meme", model_id)
-                live_rows = [
-                    p
-                    for p in list((meme_run.get("meme_positions") or {}).values())
-                    if str((p or {}).get("mode") or "").strip().lower() == "live"
-                ]
-                if not live_rows:
-                    continue
-                lines.append(f"[{_market_name('meme', model_id)}]")
-                for pos in live_rows[:20]:
-                    live_meme_count += 1
-                    current = self._resolve_price(str(pos.get("token_address") or ""))
-                    avg = float(pos.get("avg_price_usd") or 0.0)
-                    pnl_pct = 0.0 if avg <= 0 else ((current - avg) / avg) * 100.0
-                    lines.append(f"  - {pos.get('symbol')}: {pnl_pct:+.2f}%")
-            if live_meme_count == 0:
-                lines.append("  - 없음")
-            lines.append("")
-            lines.append("[LIVE 크립토]")
-            with self._lock:
-                live_crypto_rows = list(self.state.bybit_positions or [])
-            if live_crypto_rows:
-                for row in live_crypto_rows[:20]:
-                    symbol = str(row.get("symbol") or "-")
-                    upnl = float(
-                        row.get("unrealisedPnl")
-                        or row.get("unrealised_pnl")
-                        or row.get("unrealizedPnl")
-                        or row.get("unrealized_pnl")
-                        or 0.0
-                    )
-                    side = str(row.get("side") or "-")
-                    lines.append(f"  - {symbol} ({side}): UPNL {upnl:+.2f}")
+                    lines.append("- 없음")
             else:
-                lines.append("  - 없음")
+                lines.append("")
+                lines.append("[LIVE 밈]")
+                lines.append("- OFF")
+
+            if bool(self.settings.live_enable_crypto):
+                lines.append("")
+                lines.append("[LIVE CRYPTO 포지션]")
+                if live_crypto_rows:
+                    for row in live_crypto_rows[:15]:
+                        symbol = str(row.get("symbol") or "-")
+                        side = str(row.get("side") or "-")
+                        upnl = float(
+                            row.get("unrealisedPnl")
+                            or row.get("unrealised_pnl")
+                            or row.get("unrealizedPnl")
+                            or row.get("unrealized_pnl")
+                            or 0.0
+                        )
+                        lines.append(f"- {symbol} ({side}): UPNL {_sgn(upnl)}")
+                else:
+                    lines.append("- 없음")
+            else:
+                lines.append("")
+                lines.append("[LIVE 크립토]")
+                lines.append("- OFF")
+
+            lines.append("")
+            lines.append("데모 상세는 /positions_meme, /positions_crypto 를 사용하세요.")
             return "\n".join(lines)
         if cmd == "/pnl":
             runs = _read_runs()
-            lines = ["모델별 손익 요약"]
-            lines.append("[밈 모델 순위]")
-            ranked_meme = []
-            for model_id in MODEL_IDS:
-                mm = self._model_metrics_market(model_id, self._get_market_run(runs, "meme", model_id), "meme")
-                ranked_meme.append((model_id, mm))
-            ranked_meme.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
-            for rank, (model_id, mm) in enumerate(ranked_meme, start=1):
-                lines.append(
-                    f"#{rank} {_market_name('meme', model_id)}: total={float(mm['total_pnl_usd']):+.2f}, "
-                    f"realized={float(mm['realized_pnl_usd']):+.2f}, unrealized={float(mm['unrealized_pnl_usd']):+.2f}"
-                )
+            lines = ["데모 손익 요약"]
+            meme_engine = self._aggregate_meme_engine_state(runs, mode_filter="paper")
+            lines.append("[밈 엔진]")
+            lines.append(
+                f"- 실현 {float(meme_engine.get('realized_pnl_usd') or 0.0):+.2f} | "
+                f"평가 {float(meme_engine.get('unrealized_pnl_usd') or 0.0):+.2f} | "
+                f"총손익 {float(meme_engine.get('total_pnl_usd') or 0.0):+.2f}"
+            )
+            lines.append(
+                f"- 오픈 {int(meme_engine.get('open_positions') or 0)} | "
+                f"청산 {int(meme_engine.get('closed_trades') or 0)} | "
+                f"승률 {float(meme_engine.get('win_rate') or 0.0):.1f}%"
+            )
             lines.append("")
-            lines.append("[크립토 모델 순위]")
+            lines.append("[크립토 4모델 순위]")
             ranked_crypto = []
-            for model_id in MODEL_IDS:
+            for model_id in CRYPTO_MODEL_IDS:
                 cm = self._model_metrics_market(model_id, self._get_market_run(runs, "crypto", model_id), "crypto")
                 ranked_crypto.append((model_id, cm))
             ranked_crypto.sort(key=lambda row: (float((row[1] or {}).get("total_pnl_usd") or 0.0), float((row[1] or {}).get("win_rate") or 0.0)), reverse=True)
@@ -7661,6 +11154,15 @@ class TradingEngine:
             qty = float(pos.get("qty") or 0.0)
             pnl_usd = (current - avg) * qty if current > 0 else 0.0
             pnl_pct = 0.0 if avg <= 0 else ((current - avg) / avg) * 100.0
+            entry_features = dict(pos.get("entry_features") or {})
+            derived_strategy_id = self._meme_strategy_id_from_signal_context(
+                features=entry_features,
+                reason=str(pos.get("reason") or ""),
+                current_strategy_id=str(
+                    pos.get("engine_strategy_id")
+                    or self._meme_strategy_id_for_model(str(pos.get("model_id") or "A"))
+                ),
+            )
             out.append(
                 {
                     "symbol": str(pos.get("symbol") or ""),
@@ -7675,6 +11177,11 @@ class TradingEngine:
                     "pnl_pct": pnl_pct,
                     "tp_pct": float(pos.get("tp_pct") or self.settings.take_profit_pct),
                     "sl_pct": float(pos.get("sl_pct") or self.settings.stop_loss_pct),
+                    "partial_tp_pct": float(pos.get("partial_tp_pct") or self.settings.meme_partial_take_profit_pct),
+                    "partial_tp_sell_ratio": float(pos.get("partial_tp_sell_ratio") or self.settings.meme_partial_take_profit_sell_ratio),
+                    "partial_tp_done": bool(pos.get("partial_tp_done")),
+                    "engine_strategy_id": str(derived_strategy_id),
+                    "exit_rule_text": self._meme_exit_rule_text(pos),
                     "hold_until_ts": int(pos.get("hold_until_ts") or 0),
                     "opened_at": int(pos.get("opened_at") or 0),
                     "reason": str(pos.get("reason") or ""),
@@ -7682,6 +11189,39 @@ class TradingEngine:
             )
         out.sort(key=lambda r: float(r.get("value_usd") or 0.0), reverse=True)
         return out
+
+    def _enrich_meme_score_row(self, row: dict[str, Any], model_id_hint: str = "") -> dict[str, Any]:
+        item = dict(row or {})
+        model_id = str(item.get("model_id") or model_id_hint or "C").upper().strip() or "C"
+        if str(item.get("score_low_reason") or "").strip() and str(item.get("score_hold_hint") or "").strip():
+            return item
+        features = dict(item.get("features") or {})
+        if features:
+            diagnostics = self._meme_score_diagnostics(
+                model_id,
+                features,
+                float(item.get("score") or 0.0),
+                str(item.get("grade") or "G"),
+                strategy=str(item.get("strategy") or ""),
+            )
+            item["score_low_reason"] = str(diagnostics.get("low_reason") or "")
+            item["score_hold_hint"] = str(diagnostics.get("hold_hint") or "")
+            item["score_hold_target_grade"] = str(diagnostics.get("hold_target_grade") or "")
+            item["score_hold_target_score"] = float(diagnostics.get("hold_target_score") or 0.0)
+            item["score_hold_gap"] = float(diagnostics.get("hold_gap") or 0.0)
+            return item
+        hold_grade = self._meme_hold_target_grade(model_id, str(item.get("strategy") or ""))
+        hold_score = float(self._meme_grade_min_score(hold_grade))
+        score_now = float(item.get("score") or 0.0)
+        if not str(item.get("score_low_reason") or "").strip():
+            item["score_low_reason"] = str(item.get("reason") or "점수 세부 원인 데이터 없음")
+        if not str(item.get("score_hold_hint") or "").strip():
+            gap = max(0.0, hold_score - score_now)
+            item["score_hold_hint"] = f"홀딩권장 {hold_grade}({hold_score:.2f})까지 +{gap:.2f}"
+        item["score_hold_target_grade"] = str(item.get("score_hold_target_grade") or hold_grade)
+        item["score_hold_target_score"] = float(item.get("score_hold_target_score") or hold_score)
+        item["score_hold_gap"] = float(item.get("score_hold_gap") or max(0.0, hold_score - score_now))
+        return item
 
     def _build_crypto_positions_view(self, run: dict[str, Any]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -7720,33 +11260,41 @@ class TradingEngine:
             "A": {
                 "name": MODEL_SPECS["A"]["name"],
                 "meme": "도그리 밈 선별모델: Solscan 지갑패턴(스마트월렛/분산/홀더리스크) 품질게이트를 통과한 밈만 진입하는 신뢰형 전략입니다.",
-                "crypto": "크립토 안정 추세모델: 품질/저변동 + 1h/4h/1d 추세 정합을 통과한 종목만 진입하는 방어형 전략입니다.",
+                "crypto": "크립토 단타모델: 5m/15m/1h 정합과 저변동 조건을 통과한 종목만 짧게 치는 단타 전략입니다.",
                 "strengths_meme": "강점: 지갑패턴이 불량한 종목을 초기에 걸러내 손절 연속을 줄이는 데 유리합니다.",
-                "strengths_crypto": "강점: 과열/고변동 회피가 강하고 승률 안정화에 유리합니다.",
+                "strengths_crypto": "강점: 과열/고변동 회피가 강하고 회전율 대비 안정성이 높습니다.",
                 "autotune": f"자동튜닝({interval_label}): PNL 악화 구간에서만 품질형 방어 튜닝을 적용합니다. 목표는 승률 안정화입니다.",
             },
             "B": {
                 "name": MODEL_SPECS["B"]["name"],
                 "meme": "밈 장기홀딩 예측모델: Solscan 지갑패턴 검증 통과 + 장기 보유(기본 14일, 연장 가능) 중심 전략입니다.",
-                "crypto": "크립토 흐름 추종모델: 눌림목 + 소셜 흐름 + 중기 추세 유지를 결합한 밸런스 전략입니다.",
+                "crypto": "크립토 공격형 단타모델: 빠른 가속/브레이크아웃 구간을 강하게 추종하는 공격형 인트라데이 전략입니다.",
                 "strengths_meme": "강점: 초기 손절 난사를 줄이고, 지갑 리스크 재점검 기반으로 홀딩 지속 여부를 판단합니다.",
-                "strengths_crypto": "강점: 상승 추세의 눌림 재진입 구간 포착에 강합니다.",
+                "strengths_crypto": "강점: 급가속 구간에서 수익 기울기를 크게 가져가기 좋습니다.",
                 "autotune": f"자동튜닝({interval_label}): PNL 악화 구간에서만 흐름형 방어 튜닝을 적용합니다. 성과 구간에서는 파라미터를 유지합니다.",
             },
             "C": {
                 "name": MODEL_SPECS["C"]["name"],
                 "meme": "밈 단타 모멘텀모델: 단타 전용으로 빠른 체결흐름/모멘텀을 반영해 짧게 회전하는 전략입니다.",
-                "crypto": "동그리 크립토 모멘텀모델: 5m/15m 가속 + 브레이크아웃 + 소셜히트를 크게 반영하는 공격형 전략입니다.",
+                "crypto": "크립토 스윙10 모델: 15m/1h/4h/1D 정합을 바탕으로 하루 최대 10회만 진입하는 스윙 전략입니다.",
                 "strengths_meme": "강점: 짧은 시간대의 회전 매매 대응이 빠릅니다.",
-                "strengths_crypto": "강점: 빠른 모멘텀 구간 진입에 유리합니다. 대신 변동성 리스크가 큽니다.",
-                "autotune": f"자동튜닝({interval_label}): PNL 악화 구간에서만 공격형 리스크오프 튜닝을 적용합니다.",
+                "strengths_crypto": "강점: 과도한 과열 추격을 줄이면서 추세 지속 구간을 노리기 좋습니다.",
+                "autotune": f"자동튜닝({interval_label}): PNL 악화 구간에서만 스윙형 리스크오프 튜닝을 적용합니다.",
+            },
+            "D": {
+                "name": MODEL_SPECS["D"]["name"],
+                "meme": "밈 엔진 전용 모델이 아니므로 사용하지 않습니다.",
+                "crypto": "크립토 단일포지션 모델: 4h/1D 추세가 맞는 종목 한 개에 시드를 집중하는 컨빅션 전략입니다.",
+                "strengths_meme": "-",
+                "strengths_crypto": "강점: 종목 수를 줄이고 확신도 높은 한 포지션에 집중할 수 있습니다.",
+                "autotune": f"자동튜닝({interval_label}): PNL 악화 구간에서만 컨빅션형 보수 튜닝을 적용합니다.",
             },
         }
 
     def _model_profile_snapshot(self) -> dict[str, dict[str, Any]]:
         rank_to_grade = {0: "S", 1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 6: "F", 7: "G"}
         out: dict[str, dict[str, Any]] = {}
-        for model_id in MODEL_IDS:
+        for model_id in self._all_model_ids():
             tune_defaults = dict(MODEL_RUNTIME_TUNE_DEFAULTS.get(model_id) or MODEL_RUNTIME_TUNE_DEFAULTS["B"])
             tune_clamps = self._model_tune_clamps(model_id)
             gate_prof = dict(CRYPTO_MODEL_GATE_DEFAULTS.get(model_id) or CRYPTO_MODEL_GATE_DEFAULTS["B"])
@@ -8023,13 +11571,13 @@ class TradingEngine:
                 }
             )
 
-        model_runs = [self._model_metrics(mid, self._compose_model_run_from_market(runs, mid)) for mid in MODEL_IDS]
+        model_runs = [self._model_metrics(mid, self._compose_model_run_from_market(runs, mid)) for mid in self._all_model_ids()]
         meme_model_runs = [
             self._model_metrics_market(mid, self._get_market_run(runs, "meme", mid), "meme", mode_filter="paper")
-            for mid in MODEL_IDS
+            for mid in MEME_MODEL_IDS
         ]
         crypto_model_runs = [
-            self._model_metrics_market(mid, self._get_market_run(runs, "crypto", mid), "crypto") for mid in MODEL_IDS
+            self._model_metrics_market(mid, self._get_market_run(runs, "crypto", mid), "crypto") for mid in CRYPTO_MODEL_IDS
         ]
         meme_model_rankings = sorted(
             [
@@ -8097,11 +11645,11 @@ class TradingEngine:
         ]
         model_recommendations = [
             {"id": mid, "name": MODEL_SPECS[mid]["name"], "description": MODEL_SPECS[mid]["description"]}
-            for mid in MODEL_IDS
+            for mid in self._all_model_ids()
         ]
         meme_model_recommendations = [
             {"id": mid, "name": self._market_model_name("meme", mid), "description": self._market_model_spec("meme", mid)["description"]}
-            for mid in MODEL_IDS
+            for mid in MEME_MODEL_IDS
         ]
         crypto_model_recommendations = [
             {
@@ -8109,12 +11657,27 @@ class TradingEngine:
                 "name": self._market_model_name("crypto", mid),
                 "description": self._market_model_spec("crypto", mid)["description"],
             }
-            for mid in MODEL_IDS
+            for mid in CRYPTO_MODEL_IDS
         ]
         model_methods = self._model_method_explanations()
         model_profiles = self._model_profile_snapshot()
+        meme_strategy_registry = self._meme_strategy_registry()
+        for row in meme_strategy_registry:
+            try:
+                row["entry_sol"] = float(self._meme_strategy_entry_sol(str(row.get("id") or "")))
+            except Exception:
+                row["entry_sol"] = 0.0
+        crypto_strategy_registry = [
+            {"id": sid, "name": spec["name"], "description": spec["description"]}
+            for sid, spec in CRYPTO_STRATEGY_SPECS.items()
+        ]
+        meme_discovery_state = self.meme_discovery.dashboard_payload()
+        meme_strategy_bridge = {
+            strategy_id: str((MEME_STRATEGY_SPECS.get(strategy_id) or {}).get("bridge_model_id") or "")
+            for strategy_id in MEME_STRATEGY_IDS
+        }
         model_views: dict[str, Any] = {}
-        for model_id in MODEL_IDS:
+        for model_id in self._all_model_ids():
             meme_run = self._get_market_run(runs, "meme", model_id)
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             model_meme_trades = [
@@ -8133,6 +11696,17 @@ class TradingEngine:
             model_crypto_positions = self._build_crypto_positions_view(crypto_run)
             model_meme_daily = [row for row in meme_daily_pnl if str(row.get("model_id") or "") == model_id]
             model_crypto_daily = [row for row in crypto_daily_pnl if str(row.get("model_id") or "") == model_id]
+            model_meme_signals: list[dict[str, Any]] = []
+            for row in list(meme_run.get("latest_signals") or [])[-30:]:
+                item = self._enrich_meme_score_row(dict(row or {}), model_id)
+                strategy_id = self._meme_strategy_id_from_signal_context(
+                    features=dict(item.get("features") or {}),
+                    reason=str(item.get("reason") or ""),
+                    current_strategy_id=str(item.get("strategy_id") or self._meme_strategy_id_for_model(model_id)),
+                )
+                item["strategy_id"] = str(strategy_id)
+                item["strategy_name"] = str(self._meme_strategy_name(strategy_id))
+                model_meme_signals.append(item)
             model_views[model_id] = {
                 "model_id": model_id,
                 "model_name": MODEL_SPECS.get(model_id, {}).get("name", model_id),
@@ -8143,7 +11717,7 @@ class TradingEngine:
                 "meme": {
                     "model_name": self._market_model_name("meme", model_id),
                     "summary": self._model_metrics_market(model_id, meme_run, "meme", mode_filter="paper"),
-                    "signals": list(meme_run.get("latest_signals") or [])[-30:],
+                    "signals": model_meme_signals,
                     "positions": model_meme_positions,
                     "trades": model_meme_trades,
                     "daily_pnl": model_meme_daily,
@@ -8158,7 +11732,7 @@ class TradingEngine:
                 },
             }
         model_autotune: dict[str, Any] = {}
-        for model_id in MODEL_IDS:
+        for model_id in CRYPTO_MODEL_IDS:
             run = self._get_market_run(runs, "crypto", model_id)
             model_autotune[model_id] = self._read_model_runtime_tune_from_run(run or {}, model_id, now_ts)
         b_autotune = dict(model_autotune.get("B") or {})
@@ -8202,8 +11776,7 @@ class TradingEngine:
             out: list[dict[str, Any]] = []
             for row in list(rows or []):
                 meta = dict((row or {}).get("meta") or {})
-                sym = str(meta.get("top_symbol") or "").upper().strip()
-                if sym and sym in MEME_TREND_EXCLUDED_SYMBOLS:
+                if not self._meme_trend_brief_entries(meta):
                     continue
                 out.append(dict(row or {}))
             return out
@@ -8230,11 +11803,15 @@ class TradingEngine:
             model_tune_variant_rank = list(self._feedback_cache.get("model_tune_variant_rank") or [])
         else:
             try:
-                runtime_feedback_recent = list(self.runtime_feedback.recent_events(limit=60))
+                runtime_feedback_recent = [
+                    row
+                    for row in list(self.runtime_feedback.recent_events(limit=120))
+                    if str((row or {}).get("source") or "") not in {"core:telegram_poll_lock", "core:telegram_poll"}
+                ]
                 trend_brief_meme = _filter_meme_brief(
-                    list(self.runtime_feedback.recent_events(limit=60, source="trend_brief_meme"))
+                    list(self.runtime_feedback.recent_events(limit=240, source="trend_brief_meme"))
                 )
-                trend_brief_crypto = list(self.runtime_feedback.recent_events(limit=60, source="trend_brief_crypto"))
+                trend_brief_crypto = list(self.runtime_feedback.recent_events(limit=240, source="trend_brief_crypto"))
                 trend_db_stats = dict(self.runtime_feedback.trend_stats() or {})
                 meme_trend_30m_db = list(
                     self.runtime_feedback.trend_bucket_series("meme", lookback_seconds=60 * 60 * 24, bucket_seconds=1800)
@@ -8370,11 +11947,52 @@ class TradingEngine:
                 "model_tune_variant_rank": list(model_tune_variant_rank),
             }
             self._feedback_cache_ts = float(time.time())
+
+        meme_trend_30m_db = self._meme_trend_brief_bucket_series(
+            trend_brief_meme,
+            int(now_ts),
+            lookback_seconds=60 * 60 * 24,
+            bucket_seconds=1800,
+        )
+        meme_trend_rank_db = self._meme_trend_brief_rank(
+            trend_brief_meme,
+            int(now_ts),
+            lookback_seconds=60 * 60 * 24,
+            limit=120,
+            feed_rows=new_meme_feed,
+        )
+        meme_trend_share_24h = self._meme_trend_brief_distribution(
+            trend_brief_meme,
+            int(now_ts),
+            lookback_seconds=60 * 60 * 24,
+            top_n=8,
+        )
+        meme_trend_hourly_db = self._meme_trend_brief_period_summary(
+            trend_brief_meme,
+            int(now_ts),
+            bucket_seconds=60 * 60,
+            lookback_seconds=60 * 60 * 24,
+            limit=24,
+        )
+        meme_trend_daily_db = self._meme_trend_brief_period_summary(
+            trend_brief_meme,
+            int(now_ts),
+            bucket_seconds=60 * 60 * 24,
+            lookback_seconds=60 * 60 * 24 * 14,
+            limit=14,
+        )
+        meme_trend_weekly_db = self._meme_trend_brief_period_summary(
+            trend_brief_meme,
+            int(now_ts),
+            bucket_seconds=60 * 60 * 24 * 7,
+            lookback_seconds=60 * 60 * 24 * 84,
+            limit=12,
+        )
         min_wallet_asset_usd = float(self.settings.min_wallet_asset_usd or 1.0)
         live_meme_watch_tokens = self._live_meme_watch_tokens()
         live_basis_map = dict(runs.get("_live_meme_basis") or {})
         live_cost_basis: dict[str, dict[str, float]] = {}
-        for model_id in MODEL_IDS:
+        for model_id in MEME_MODEL_IDS:
             meme_run = self._get_market_run(runs, "meme", model_id)
             rows = list(meme_run.get("trades") or [])
             rows.sort(key=lambda r: int((r or {}).get("ts") or 0))
@@ -8459,10 +12077,14 @@ class TradingEngine:
                 }
             )
         live_meme_positions.sort(key=lambda row: float(row.get("value_usd") or 0.0), reverse=True)
+        live_meme_watchlist = [
+            self._enrich_meme_score_row(dict(row or {}), str((row or {}).get("model_id") or "C"))
+            for row in self._build_live_meme_watch_rows(int(now_ts), limit=180)
+        ]
         live_managed_meme_positions: list[dict[str, Any]] = []
         live_meme_trades: list[dict[str, Any]] = []
         live_trade_logs: list[dict[str, Any]] = []
-        for model_id in MODEL_IDS:
+        for model_id in MEME_MODEL_IDS:
             meme_run = self._get_market_run(runs, "meme", model_id)
             for row in self._build_meme_positions_view(meme_run, mode_filter="live"):
                 item = dict(row or {})
@@ -8474,6 +12096,11 @@ class TradingEngine:
                     continue
                 if str((tr or {}).get("source") or "").strip().lower() != "memecoin":
                     continue
+                if str((tr or {}).get("side") or "").strip().lower() == "sell" and not self._live_trade_is_realized(tr):
+                    continue
+                realized = self._live_trade_is_realized(tr)
+                realized_pnl_usd = self._live_trade_realized_pnl_usd(tr)
+                realized_pnl_pct = self._live_trade_realized_pnl_pct(tr)
                 trade_row = {
                     "market": "meme",
                     "source": "memecoin",
@@ -8485,13 +12112,17 @@ class TradingEngine:
                     "token_address": str((tr or {}).get("token_address") or ""),
                     "price_usd": float((tr or {}).get("price_usd") or 0.0),
                     "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
-                    "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0),
-                    "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0) * 100.0,
+                    "pnl_usd": float(realized_pnl_usd) if realized_pnl_usd is not None else None,
+                    "pnl_pct": (float(realized_pnl_pct) * 100.0) if realized_pnl_pct is not None else None,
+                    "realized": bool(realized),
+                    "realized_pnl_usd": float(realized_pnl_usd) if realized_pnl_usd is not None else None,
+                    "realized_pnl_pct": (float(realized_pnl_pct) * 100.0) if realized_pnl_pct is not None else None,
+                    "network_fee_usd": self._optional_float((tr or {}).get("network_fee_usd")),
                     "reason": str((tr or {}).get("reason") or ""),
                 }
                 live_meme_trades.append(dict(trade_row))
                 live_trade_logs.append(dict(trade_row))
-        for model_id in MODEL_IDS:
+        for model_id in CRYPTO_MODEL_IDS:
             crypto_run = self._get_market_run(runs, "crypto", model_id)
             for tr in list(crypto_run.get("trades") or []):
                 if not self._is_live_trade_row(tr):
@@ -8515,6 +12146,27 @@ class TradingEngine:
                         "reason": str((tr or {}).get("reason") or ""),
                     }
                 )
+        live_seen_tokens = {str((row or {}).get("token_address") or "").strip() for row in live_meme_positions}
+        for row in list(live_managed_meme_positions or []):
+            token_address = str((row or {}).get("token_address") or "").strip()
+            if not token_address or token_address in live_seen_tokens:
+                continue
+            live_seen_tokens.add(token_address)
+            live_meme_positions.append(
+                {
+                    "symbol": str((row or {}).get("symbol") or ""),
+                    "name": str((row or {}).get("symbol") or ""),
+                    "token_address": token_address,
+                    "qty": float((row or {}).get("qty") or 0.0),
+                    "price_usd": float((row or {}).get("current_price_usd") or (row or {}).get("avg_price_usd") or 0.0),
+                    "value_usd": float((row or {}).get("value_usd") or 0.0),
+                    "entry_price_usd": float((row or {}).get("avg_price_usd") or 0.0),
+                    "cost_basis_usd": float((row or {}).get("avg_price_usd") or 0.0) * float((row or {}).get("qty") or 0.0),
+                    "pnl_usd": float((row or {}).get("pnl_usd") or 0.0),
+                    "pnl_pct": float((row or {}).get("pnl_pct") or 0.0),
+                }
+            )
+        live_meme_positions.sort(key=lambda row: float(row.get("value_usd") or 0.0), reverse=True)
         live_managed_meme_positions.sort(key=lambda row: float(row.get("value_usd") or 0.0), reverse=True)
         live_meme_trades.sort(key=lambda row: int(row.get("ts") or 0), reverse=True)
         if len(live_meme_trades) > 600:
@@ -8537,14 +12189,14 @@ class TradingEngine:
             sum(float((row or {}).get("pnl_usd") or 0.0) for row in live_managed_meme_positions)
         )
         live_equity_usd = self._live_equity_usd_from_assets(wallet_assets, bybit_assets)
-        live_seed_usd = float(live_seed_saved) if float(live_seed_saved) > 0.0 else float(live_equity_usd)
-        live_pnl_usd = float(live_equity_usd - live_seed_usd)
         live_perf_anchor_usd = float(live_perf_anchor_saved) if float(live_perf_anchor_saved) > 0.0 else float(live_equity_usd)
         live_perf_anchor_ts = int(live_perf_anchor_ts_saved) if int(live_perf_anchor_ts_saved) > 0 else int(now_ts)
+        live_seed_usd = float(live_seed_saved) if float(live_seed_saved) > 0.0 else float(live_perf_anchor_usd)
         live_net_flow_usd = float(live_net_flow_saved)
         live_adjusted_equity_usd = float(live_equity_usd - live_net_flow_usd)
         live_perf_pnl_usd = float(live_adjusted_equity_usd - live_perf_anchor_usd)
         live_perf_roi_pct = float((live_perf_pnl_usd / max(live_perf_anchor_usd, 1e-9)) * 100.0) if live_perf_anchor_usd > 0.0 else 0.0
+        live_pnl_usd = float(live_perf_pnl_usd)
         sol_budget = self._solana_trade_budget()
         rebuild_watch_map = dict(runs.get("_model_rebuild_watch") or {})
         rebuild_watch_rows: list[dict[str, Any]] = []
@@ -8558,10 +12210,13 @@ class TradingEngine:
             key=lambda r: (int(r.get("last_breach_ts") or 0), float(r.get("latest_drawdown_ratio") or 0.0)),
             reverse=True,
         )
+        openai_review_state = self.openai_advisor.dashboard_payload(now_ts)
+        openai_review_preview = self._openai_candidate_preview(model_views)
 
         return {
             "server_time": now_ts,
             "running": self.running,
+            "mode": str(self.settings.trade_mode or "paper"),
             "settings": settings_public,
             "errors": {"memecoin": memecoin_error, "bybit": bybit_error},
             "demo_enable_bybit": self.settings.demo_enable_bybit,
@@ -8642,8 +12297,16 @@ class TradingEngine:
             "model_recommendations": model_recommendations,
             "meme_model_recommendations": meme_model_recommendations,
             "crypto_model_recommendations": crypto_model_recommendations,
-            "meme_model_labels": {mid: self._market_model_name("meme", mid) for mid in MODEL_IDS},
-            "crypto_model_labels": {mid: self._market_model_name("crypto", mid) for mid in MODEL_IDS},
+            "meme_engine_spec": dict(MEME_ENGINE_SPEC),
+            "meme_strategy_registry": meme_strategy_registry,
+            "crypto_strategy_registry": crypto_strategy_registry,
+            "meme_strategy_bridge": meme_strategy_bridge,
+            "meme_strategy_labels": {sid: self._meme_strategy_name(sid) for sid in MEME_STRATEGY_IDS},
+            "meme_discovery": meme_discovery_state,
+            "openai_review": openai_review_state,
+            "openai_review_preview": openai_review_preview,
+            "meme_model_labels": {mid: self._market_model_name("meme", mid) for mid in MEME_MODEL_IDS},
+            "crypto_model_labels": {mid: self._market_model_name("crypto", mid) for mid in CRYPTO_MODEL_IDS},
             "daily_pnl": daily_pnl,
             "meme_daily_pnl": meme_daily_pnl,
             "crypto_daily_pnl": crypto_daily_pnl,
@@ -8655,6 +12318,7 @@ class TradingEngine:
             "bybit_live_positions": bybit_live_positions,
             "crypto_live_positions": bybit_live_positions,
             "live_meme_positions": live_meme_positions,
+            "live_meme_watchlist": live_meme_watchlist,
             "live_managed_meme_positions": live_managed_meme_positions,
             "live_meme_trades": live_meme_trades,
             "live_trade_logs": live_trade_logs,

@@ -16,9 +16,12 @@ TREND_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 2
 TREND_SOURCE_HISTORY_MAX_ROWS = 1_000_000
 MODEL_TUNE_HISTORY_MAX_ROWS = 2_000_000
 MODEL_TUNE_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 2
+MEME_SCORE_HISTORY_MAX_ROWS = 4_000_000
+MEME_SCORE_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
 RUNTIME_FEEDBACK_PRUNE_INTERVAL_SECONDS = 300
 TREND_HISTORY_PRUNE_INTERVAL_SECONDS = 600
 MODEL_TUNE_PRUNE_INTERVAL_SECONDS = 900
+MEME_SCORE_HISTORY_PRUNE_INTERVAL_SECONDS = 600
 
 
 class RuntimeFeedbackStore:
@@ -28,6 +31,7 @@ class RuntimeFeedbackStore:
         self._last_event_prune_ts = 0
         self._last_trend_prune_ts = 0
         self._last_tune_prune_ts = 0
+        self._last_meme_score_prune_ts = 0
         path = Path(self.db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
@@ -165,6 +169,40 @@ class RuntimeFeedbackStore:
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_model_tune_history_variant "
                     "ON model_tune_history(variant_id)"
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS meme_score_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts INTEGER NOT NULL,
+                        model_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        token_address TEXT NOT NULL,
+                        score REAL NOT NULL,
+                        grade TEXT NOT NULL,
+                        probability REAL NOT NULL,
+                        price_usd REAL NOT NULL,
+                        liquidity_usd REAL NOT NULL,
+                        volume_5m_usd REAL NOT NULL,
+                        market_cap_usd REAL NOT NULL,
+                        age_minutes REAL NOT NULL,
+                        reason TEXT,
+                        source TEXT NOT NULL
+                    )
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_meme_score_history_token_ts "
+                    "ON meme_score_history(token_address, ts DESC)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_meme_score_history_model_ts "
+                    "ON meme_score_history(model_id, ts DESC)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_meme_score_history_symbol_ts "
+                    "ON meme_score_history(symbol, ts DESC)"
                 )
 
     @staticmethod
@@ -453,6 +491,227 @@ class RuntimeFeedbackStore:
                 self._last_tune_prune_ts = int(ts)
         if do_prune:
             self.prune_model_tune(now_ts=ts)
+
+    def append_meme_score_points(
+        self,
+        model_id: str,
+        rows: list[dict[str, Any]],
+        *,
+        now_ts: int | None = None,
+        source: str = "cycle",
+    ) -> None:
+        mid = str(model_id or "").strip().upper() or "A"
+        src = str(source or "").strip() or "cycle"
+        ts = int(now_ts or int(time.time()))
+        payloads: list[tuple[Any, ...]] = []
+        for row in list(rows or []):
+            token_address = str((row or {}).get("token_address") or "").strip()
+            if not token_address:
+                continue
+            payloads.append(
+                (
+                    ts,
+                    mid,
+                    str((row or {}).get("symbol") or "").upper().strip(),
+                    str((row or {}).get("name") or "").strip(),
+                    token_address,
+                    float((row or {}).get("score") or 0.0),
+                    str((row or {}).get("grade") or "G").upper().strip() or "G",
+                    float((row or {}).get("probability") or 0.0),
+                    float((row or {}).get("price_usd") or 0.0),
+                    float((row or {}).get("liquidity_usd") or 0.0),
+                    float((row or {}).get("volume_5m_usd") or 0.0),
+                    float((row or {}).get("market_cap_usd") or 0.0),
+                    float((row or {}).get("age_minutes") or 0.0),
+                    str((row or {}).get("reason") or ""),
+                    src,
+                )
+            )
+        if not payloads:
+            return
+        with self._lock:
+            with self._connect() as conn:
+                conn.executemany(
+                    """
+                    INSERT INTO meme_score_history
+                    (ts, model_id, symbol, name, token_address, score, grade, probability,
+                     price_usd, liquidity_usd, volume_5m_usd, market_cap_usd, age_minutes, reason, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    payloads,
+                )
+        with self._lock:
+            do_prune = self._should_prune(
+                int(self._last_meme_score_prune_ts),
+                int(ts),
+                MEME_SCORE_HISTORY_PRUNE_INTERVAL_SECONDS,
+            )
+            if do_prune:
+                self._last_meme_score_prune_ts = int(ts)
+        if do_prune:
+            self.prune_meme_scores(now_ts=ts)
+
+    def prune_meme_scores(
+        self,
+        *,
+        now_ts: int | None = None,
+        max_rows: int = MEME_SCORE_HISTORY_MAX_ROWS,
+        max_age_seconds: int = MEME_SCORE_HISTORY_MAX_AGE_SECONDS,
+    ) -> None:
+        ts = int(now_ts or int(time.time()))
+        with self._lock:
+            with self._connect() as conn:
+                if int(max_age_seconds) > 0:
+                    cutoff = int(ts) - int(max_age_seconds)
+                    conn.execute("DELETE FROM meme_score_history WHERE ts < ?", (cutoff,))
+                if int(max_rows) > 0:
+                    row = conn.execute("SELECT COUNT(1) AS n FROM meme_score_history").fetchone()
+                    n = int(row["n"]) if isinstance(row, sqlite3.Row) and row is not None else int(row[0] if row else 0)
+                    if n > int(max_rows):
+                        drop = n - int(max_rows)
+                        conn.execute(
+                            """
+                            DELETE FROM meme_score_history
+                            WHERE id IN (
+                              SELECT id FROM meme_score_history
+                              ORDER BY id ASC
+                              LIMIT ?
+                            )
+                            """,
+                            (drop,),
+                        )
+
+    def meme_score_recent(
+        self,
+        token_address: str,
+        *,
+        limit: int = 240,
+        model_id: str = "",
+    ) -> list[dict[str, Any]]:
+        token = str(token_address or "").strip()
+        if not token:
+            return []
+        n = max(1, min(5000, int(limit)))
+        mid = str(model_id or "").strip().upper()
+        with self._lock:
+            with self._connect() as conn:
+                if mid:
+                    rows = conn.execute(
+                        """
+                        SELECT ts, model_id, symbol, name, token_address, score, grade, probability,
+                               price_usd, liquidity_usd, volume_5m_usd, market_cap_usd, age_minutes, reason, source
+                        FROM meme_score_history
+                        WHERE token_address = ? AND model_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (token, mid, n),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT ts, model_id, symbol, name, token_address, score, grade, probability,
+                               price_usd, liquidity_usd, volume_5m_usd, market_cap_usd, age_minutes, reason, source
+                        FROM meme_score_history
+                        WHERE token_address = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (token, n),
+                    ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            out.append(
+                {
+                    "ts": int(row["ts"] or 0),
+                    "model_id": str(row["model_id"] or ""),
+                    "symbol": str(row["symbol"] or ""),
+                    "name": str(row["name"] or ""),
+                    "token_address": str(row["token_address"] or ""),
+                    "score": float(row["score"] or 0.0),
+                    "grade": str(row["grade"] or "G"),
+                    "probability": float(row["probability"] or 0.0),
+                    "price_usd": float(row["price_usd"] or 0.0),
+                    "liquidity_usd": float(row["liquidity_usd"] or 0.0),
+                    "volume_5m_usd": float(row["volume_5m_usd"] or 0.0),
+                    "market_cap_usd": float(row["market_cap_usd"] or 0.0),
+                    "age_minutes": float(row["age_minutes"] or 0.0),
+                    "reason": str(row["reason"] or ""),
+                    "source": str(row["source"] or ""),
+                }
+            )
+        return out
+
+    def meme_score_watch_recent(
+        self,
+        *,
+        lookback_seconds: int = 60 * 30,
+        limit: int = 200,
+        model_id: str = "C",
+    ) -> list[dict[str, Any]]:
+        n = max(1, min(1000, int(limit)))
+        lb = max(60, int(lookback_seconds))
+        mid = str(model_id or "").strip().upper()
+        now_ts = int(time.time())
+        cutoff = int(now_ts - lb)
+        with self._lock:
+            with self._connect() as conn:
+                if mid:
+                    rows = conn.execute(
+                        """
+                        SELECT m.ts, m.model_id, m.symbol, m.name, m.token_address, m.score, m.grade, m.probability,
+                               m.price_usd, m.liquidity_usd, m.volume_5m_usd, m.market_cap_usd, m.age_minutes, m.reason, m.source
+                        FROM meme_score_history m
+                        JOIN (
+                          SELECT token_address, MAX(id) AS max_id
+                          FROM meme_score_history
+                          WHERE ts >= ? AND model_id = ?
+                          GROUP BY token_address
+                        ) x ON m.id = x.max_id
+                        ORDER BY m.score DESC, m.volume_5m_usd DESC, m.liquidity_usd DESC
+                        LIMIT ?
+                        """,
+                        (cutoff, mid, n),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT m.ts, m.model_id, m.symbol, m.name, m.token_address, m.score, m.grade, m.probability,
+                               m.price_usd, m.liquidity_usd, m.volume_5m_usd, m.market_cap_usd, m.age_minutes, m.reason, m.source
+                        FROM meme_score_history m
+                        JOIN (
+                          SELECT token_address, MAX(id) AS max_id
+                          FROM meme_score_history
+                          WHERE ts >= ?
+                          GROUP BY token_address
+                        ) x ON m.id = x.max_id
+                        ORDER BY m.score DESC, m.volume_5m_usd DESC, m.liquidity_usd DESC
+                        LIMIT ?
+                        """,
+                        (cutoff, n),
+                    ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            out.append(
+                {
+                    "ts": int(row["ts"] or 0),
+                    "model_id": str(row["model_id"] or ""),
+                    "symbol": str(row["symbol"] or ""),
+                    "name": str(row["name"] or ""),
+                    "token_address": str(row["token_address"] or ""),
+                    "score": float(row["score"] or 0.0),
+                    "grade": str(row["grade"] or "G"),
+                    "probability": float(row["probability"] or 0.0),
+                    "price_usd": float(row["price_usd"] or 0.0),
+                    "liquidity_usd": float(row["liquidity_usd"] or 0.0),
+                    "volume_5m_usd": float(row["volume_5m_usd"] or 0.0),
+                    "market_cap_usd": float(row["market_cap_usd"] or 0.0),
+                    "age_minutes": float(row["age_minutes"] or 0.0),
+                    "reason": str(row["reason"] or ""),
+                    "source": str(row["source"] or ""),
+                }
+            )
+        return out
 
     def prune_trend(
         self,

@@ -4,14 +4,21 @@ const VIEW = {
   market: "meme",
   model: "A",
   cryptoModel: "A",
+  demoMarket: "meme",
+  demoCryptoModel: "A",
   liveMarket: "meme",
-  workspace: "paper",
+  workspace: "models",
   data: null,
 };
 
-const MODEL_IDS = ["A", "B", "C"];
+const MEME_MODEL_IDS = ["A", "B", "C"];
+const CRYPTO_MODEL_IDS = ["A", "B", "C", "D"];
+const ALL_MODEL_IDS = ["A", "B", "C", "D"];
 const LIVE_MODEL_DIRTY = { meme: false, crypto: false };
 let LIVE_MARKET_DIRTY = false;
+const GRADE_SCORE = { S: 7, A: 6, B: 5, C: 4, D: 3, E: 2, F: 1, G: 0 };
+const MEME_STRATEGY_BY_MODEL = { A: "THEME", B: "NARRATIVE", C: "SNIPER" };
+const MEME_STRATEGY_ORDER = ["THEME", "SNIPER", "NARRATIVE"];
 
 const SECRET_KEYS = [
   "BYBIT_API_KEY",
@@ -23,6 +30,12 @@ const SECRET_KEYS = [
   "TELEGRAM_CHAT_ID",
   "GOOGLE_API_KEY",
   "SOLSCAN_API_KEY",
+  "HELIUS_API_KEY",
+  "HELIUS_RPC_URL",
+  "HELIUS_WS_URL",
+  "HELIUS_SENDER_URL",
+  "BIRDEYE_API_KEY",
+  "OPENAI_API_KEY",
   "BINANCE_API_KEY",
   "BINANCE_API_SECRET",
   "COINGECKO_API_KEY",
@@ -30,6 +43,7 @@ const SECRET_KEYS = [
 ];
 
 let SECRET_CACHE = null;
+let MEME_SCORE_LAST_TOKEN = "";
 
 function isMobileViewport() {
   return window.matchMedia("(max-width: 980px)").matches;
@@ -62,6 +76,17 @@ function fmtPct(value) {
   return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
 }
 
+function fmtSignedCount(value) {
+  const num = Math.trunc(Number(value || 0));
+  return `${num >= 0 ? "+" : ""}${num.toLocaleString("en-US")}`;
+}
+
+function gradeAtLeast(grade, floor) {
+  const g = String(grade || "").toUpperCase();
+  const f = String(floor || "").toUpperCase();
+  return Number(GRADE_SCORE[g] ?? -1) >= Number(GRADE_SCORE[f] ?? -1);
+}
+
 function fmtTs(unixSec) {
   const n = Number(unixSec || 0);
   if (!n) return "-";
@@ -79,6 +104,139 @@ function setText(id, value) {
 
 function sumBy(rows, key) {
   return (rows || []).reduce((acc, row) => acc + Number((row || {})[key] || 0), 0);
+}
+
+function cleanSymbol(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function modelRoi(row) {
+  const seed = Number((row || {}).seed_usd || 0);
+  const eq = Number((row || {}).equity_usd || 0);
+  if (seed <= 0) return 0;
+  return ((eq - seed) / seed) * 100;
+}
+
+function sortModelRankingRows(rows) {
+  return [...(rows || [])].sort((a, b) => {
+    const pnlDiff = Number(b.total_pnl_usd || 0) - Number(a.total_pnl_usd || 0);
+    if (Math.abs(pnlDiff) > 1e-9) return pnlDiff;
+    return Number(b.win_rate || 0) - Number(a.win_rate || 0);
+  });
+}
+
+function memeBriefRecentRows(data, lookbackSeconds = 60 * 60 * 24) {
+  const nowTs = Number(data?.server_time || Math.floor(Date.now() / 1000));
+  const cutoff = nowTs - Math.max(600, Number(lookbackSeconds || 0));
+  return (data?.trend_brief_meme || []).filter((row) => Number(row?.ts || 0) >= cutoff);
+}
+
+function memeBriefWeightedEntries(meta = {}) {
+  const topSymbol = cleanSymbol(meta.top_symbol);
+  const topHits = Math.max(1, Number(meta.top_hits || 1));
+  const out = [];
+  const seen = new Set();
+  if (topSymbol) {
+    out.push({ symbol: topSymbol, hits: topHits });
+    seen.add(topSymbol);
+  }
+  const list = Array.isArray(meta.top_symbols) ? meta.top_symbols : [];
+  list.forEach((raw) => {
+    const sym = cleanSymbol(raw);
+    if (!sym || seen.has(sym)) return;
+    out.push({ symbol: sym, hits: 1 });
+    seen.add(sym);
+  });
+  return out;
+}
+
+function briefBucketLabel(ts, bucketSeconds) {
+  const d = new Date(Number(ts || 0) * 1000);
+  if (!Number.isFinite(d.getTime())) return "-";
+  if (bucketSeconds >= 86400 * 7) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  if (bucketSeconds >= 86400) return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:00`;
+}
+
+function buildMemeBriefDistribution(data, lookbackSeconds = 60 * 60 * 24, topN = 8) {
+  const rows = memeBriefRecentRows(data, lookbackSeconds);
+  const agg = new Map();
+  rows.forEach((row) => {
+    const meta = row?.meta || {};
+    memeBriefWeightedEntries(meta).forEach((item) => {
+      agg.set(item.symbol, Number(agg.get(item.symbol) || 0) + Number(item.hits || 0));
+    });
+  });
+  const ordered = Array.from(agg.entries())
+    .map(([symbol, hits]) => ({ symbol, hits: Number(hits || 0) }))
+    .filter((row) => row.hits > 0)
+    .sort((a, b) => b.hits - a.hits);
+  if (!ordered.length) return [];
+  const totalHits = ordered.reduce((acc, row) => acc + Number(row.hits || 0), 0);
+  const kept = ordered.slice(0, Math.max(3, Math.min(20, Number(topN || 8))));
+  const etcHits = ordered.slice(kept.length).reduce((acc, row) => acc + Number(row.hits || 0), 0);
+  const out = kept.map((row) => ({
+    symbol: row.symbol,
+    hits: row.hits,
+    share_pct: totalHits > 0 ? (row.hits / totalHits) * 100 : 0,
+    total_hits: totalHits,
+  }));
+  if (etcHits > 0) {
+    out.push({
+      symbol: "ETC",
+      hits: etcHits,
+      share_pct: totalHits > 0 ? (etcHits / totalHits) * 100 : 0,
+      total_hits: totalHits,
+    });
+  }
+  return out;
+}
+
+function buildMemeBriefBucketSeries(data, lookbackSeconds = 60 * 60 * 24, bucketSeconds = 1800) {
+  const rows = memeBriefRecentRows(data, lookbackSeconds);
+  const nowTs = Number(data?.server_time || Math.floor(Date.now() / 1000));
+  const startTs = nowTs - Math.max(bucketSeconds, Number(lookbackSeconds || 0));
+  const bucket = Math.max(300, Number(bucketSeconds || 1800));
+  const slots = new Map();
+  const bucketStart = Math.floor(startTs / bucket) * bucket;
+  const bucketEnd = Math.floor(nowTs / bucket) * bucket;
+  for (let ts = bucketStart; ts <= bucketEnd; ts += bucket) {
+    slots.set(ts, { hits: 0, symbolHits: new Map() });
+  }
+  rows.forEach((row) => {
+    const ts = Number(row?.ts || 0);
+    const slotTs = Math.floor(ts / bucket) * bucket;
+    const slot = slots.get(slotTs);
+    if (!slot) return;
+    memeBriefWeightedEntries(row?.meta || {}).forEach((item) => {
+      slot.hits += Number(item.hits || 0);
+      slot.symbolHits.set(item.symbol, Number(slot.symbolHits.get(item.symbol) || 0) + Number(item.hits || 0));
+    });
+  });
+  return Array.from(slots.entries()).map(([ts, slot]) => {
+    const sorted = Array.from(slot.symbolHits.entries()).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+    const top = sorted[0] || ["-", 0];
+    return {
+      ts,
+      label: briefBucketLabel(ts, bucket),
+      hits: Number(slot.hits || 0),
+      top_symbol: String(top[0] || "-"),
+      top_hits: Number(top[1] || 0),
+    };
+  });
+}
+
+function buildMemeBriefPeriodSummary(data, bucketSeconds, lookbackSeconds, limit = 24) {
+  const series = buildMemeBriefBucketSeries(data, lookbackSeconds, bucketSeconds);
+  const picked = series.filter((row) => Number(row.hits || 0) > 0).slice(-Math.max(1, Number(limit || 1)));
+  return picked.map((row) => ({
+    ts: Number(row.ts || 0),
+    label: row.label || "-",
+    total_hits: Number(row.hits || 0),
+    top_symbol: row.top_symbol || "-",
+    top_hits: Number(row.top_hits || 0),
+    breakdown_text: row.top_symbol ? `${row.top_symbol} ${row.top_hits}` : "-",
+  }));
 }
 
 function workspaceSnapshot(data, workspace) {
@@ -130,21 +288,18 @@ function workspaceSnapshot(data, workspace) {
       winrateText: `순입출금 보정 ${liveNetFlow >= 0 ? "+" : "-"}${fmtUsd(Math.abs(liveNetFlow)).replace("$", "")} USD`,
     };
   }
-  if (workspace === "paper") {
-    const memeRows = [...(data.meme_model_rankings || data.meme_model_runs || [])];
+  if (workspace === "models") {
+    const memeEngine = aggregateMemeEngineData(data);
     const cryptoRows = [...(data.crypto_model_rankings || data.crypto_model_runs || [])];
-    const memeTop = memeRows.length ? memeRows[0] : null;
     const cryptoTop = cryptoRows.length ? cryptoRows[0] : null;
-    const modelCount = memeRows.length + cryptoRows.length;
-    const seedPerModel = Number((memeRows[0] || cryptoRows[0] || {}).seed_usd || data.demo_seed_usdt || 1000);
+    const modelCount = 1 + cryptoRows.length;
+    const seedPerModel = Number((cryptoRows[0] || {}).seed_usd || data.demo_seed_usdt || 1000);
     const roi = (row) => {
       const seed = Number((row || {}).seed_usd || 0);
       if (seed <= 0) return 0;
       return ((Number((row || {}).equity_usd || 0) - seed) / seed) * 100;
     };
-    const memeTopText = memeTop
-      ? `${memeTop.model_id || "-"} ${fmtPct(roi(memeTop))}`
-      : "데이터 없음";
+    const memeTopText = `${memeEngine.summary.primary_mode || "THEME_SNIPER"} | ${memeEngine.summary.top_signal_grade || "-"} ${Number(memeEngine.summary.top_signal_score || 0).toFixed(4)}`;
     const cryptoTopText = cryptoTop
       ? `${cryptoTop.model_id || "-"} ${fmtPct(roi(cryptoTop))}`
       : "데이터 없음";
@@ -155,17 +310,43 @@ function workspaceSnapshot(data, workspace) {
       seedText: `${fmtUsd(seedPerModel)} (모델당)`,
       equityUsd: 0,
       pnlUsd: 0,
-      equityText: `밈 1위: ${memeTopText}`,
-      pnlText: `크립토 1위: ${cryptoTopText}`,
+      equityText: `밈 엔진 ${memeTopText}`,
+      pnlText: `크립토 ${cryptoTopText}`,
       winrateText: `활성 모델 ${modelCount}개`,
     };
   }
+  if (workspace === "paper") {
+    const demoMarket = VIEW.demoMarket === "crypto" ? "crypto" : "meme";
+    const memeEngine = aggregateMemeEngineData(data);
+    const cryptoRows = sortModelRankingRows(data.crypto_model_rankings || data.crypto_model_runs || []);
+    const topCrypto = cryptoRows[0] || null;
+    const openCount = demoMarket === "meme"
+      ? Number(memeEngine.summary.open_positions || 0)
+      : cryptoRows.reduce((acc, row) => acc + Number(row.open_positions || 0), 0);
+    const cycleTs = Number(data.last_cycle_ts || 0);
+    const runningText = isRunning ? "RUNNING(PAPER)" : "STANDBY(PAPER)";
+    return {
+      runningText: `${runningText} | Auto:${s.enable_autotrade ? "ON" : "OFF"} | ResetLock:${s.allow_demo_reset ? "OFF" : "ON"}`,
+      modeText: "PAPER",
+      seedText: `${Number(data.demo_seed_usdt || 1000).toFixed(0)} USDT`,
+      equityUsd: 0,
+      pnlUsd: 0,
+      equityText: cycleTs ? fmtTs(cycleTs) : "-",
+      pnlText: `${openCount}개`,
+      winrateText: demoMarket === "meme"
+        ? `${memeEngine.summary.primary_mode || "THEME"} 메인`
+        : `활성 모델 ${cryptoRows.length}개`,
+    };
+  }
+  const runningText = isRunning && modeActual === "PAPER" ? "RUNNING(PAPER)" : "STANDBY(PAPER)";
   return {
-    runningText: `${isRunning ? "RUNNING" : "STOPPED"} | Auto:${s.enable_autotrade ? "ON" : "OFF"} | ResetLock:${s.allow_demo_reset ? "OFF" : "ON"}`,
-    modeText: modeActual,
+    runningText: `${runningText} | Auto:${s.enable_autotrade ? "ON" : "OFF"} | ResetLock:${s.allow_demo_reset ? "OFF" : "ON"}`,
+    modeText: "PAPER",
     seedText: `${Number(data.demo_seed_usdt || 1000).toFixed(0)} USDT`,
     equityUsd: Number(metrics.total_equity_usd || 0),
     pnlUsd: Number(metrics.total_pnl_usd || 0),
+    equityText: fmtUsd(Number(metrics.total_equity_usd || 0)),
+    pnlText: fmtUsd(Number(metrics.total_pnl_usd || 0)),
     winrateText: `${Number(metrics.win_rate || 0).toFixed(1)}%`,
   };
 }
@@ -176,14 +357,115 @@ function marketModelName(data, market, modelId) {
   return table[modelId] || modelId;
 }
 
-function parseModelCsv(raw) {
+function parseModelCsv(raw, allowedIds = ALL_MODEL_IDS) {
   const tokens = String(raw || "")
     .replaceAll("|", ",")
     .replaceAll(" ", ",")
     .split(",")
     .map((v) => String(v || "").trim().toUpperCase())
-    .filter((v) => MODEL_IDS.includes(v));
+    .filter((v) => allowedIds.includes(v));
   return [...new Set(tokens)];
+}
+
+function aggregateMemeEngineData(data) {
+  const modelViews = data?.model_views || {};
+  const rankings = sortModelRankingRows(data?.meme_model_rankings || data?.meme_model_runs || []);
+  const registry = data?.meme_strategy_registry || [];
+  const strategyCards = registry.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    entrySol: Number(row.entry_sol || 0),
+    bridgeModelId: row.bridge_model_id,
+    role: row.id === "NARRATIVE" ? "서브" : "메인 신호",
+  }));
+
+  const signalMap = new Map();
+  const positions = [];
+  const trades = [];
+  let openCount = 0;
+  const seedUsd = sumBy(rankings, "seed_usd");
+  const equityUsd = sumBy(rankings, "equity_usd");
+  const totalPnlUsd = sumBy(rankings, "total_pnl_usd");
+  const realizedPnlUsd = sumBy(rankings, "realized_pnl_usd");
+  const unrealizedPnlUsd = sumBy(rankings, "unrealized_pnl_usd");
+  const closedTrades = sumBy(rankings, "closed_trades");
+  const weightedWins = rankings.reduce((acc, row) => {
+    const closed = Number(row.closed_trades || 0);
+    const winRate = Number(row.win_rate || 0);
+    return acc + (closed * winRate);
+  }, 0);
+  const totalRoiPct = seedUsd > 0 ? (totalPnlUsd / seedUsd) * 100 : 0;
+  const winRate = closedTrades > 0 ? (weightedWins / closedTrades) : 0;
+
+  MEME_MODEL_IDS.forEach((modelId) => {
+    const detail = modelViews?.[modelId]?.meme || {};
+    (detail.positions || []).forEach((row) => {
+      const strategyId = String(row.engine_strategy_id || row.strategy_id || MEME_STRATEGY_BY_MODEL[modelId] || "THEME").toUpperCase();
+      positions.push({
+        ...row,
+        engine_strategy: strategyId,
+        strategy_id: strategyId,
+        model_id: modelId,
+      });
+    });
+    (detail.trades || []).forEach((row) => {
+      const strategyId = String(row.strategy_id || row.engine_strategy_id || MEME_STRATEGY_BY_MODEL[modelId] || "THEME").toUpperCase();
+      trades.push({
+        ...row,
+        engine_strategy: strategyId,
+        strategy_id: strategyId,
+        model_id: modelId,
+      });
+    });
+    (detail.signals || []).forEach((row) => {
+      const key = String(row.token_address || row.symbol || "").toUpperCase();
+      if (!key) return;
+      const score = Number(row.score || 0);
+      const strategyId = String(row.strategy_id || row.engine_strategy_id || MEME_STRATEGY_BY_MODEL[modelId] || "THEME").toUpperCase();
+      const prev = signalMap.get(key);
+      if (!prev || score > Number(prev.score || 0)) {
+        signalMap.set(key, {
+          ...row,
+          engine_strategy: strategyId,
+          strategy_id: strategyId,
+          model_id: modelId,
+        });
+      }
+    });
+    openCount += Number((detail.positions || []).length || 0);
+  });
+
+  trades.sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0));
+  positions.sort((a, b) => Number(b.value_usd || 0) - Number(a.value_usd || 0));
+  const signals = Array.from(signalMap.values()).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const topSignal = signals[0] || {};
+  const topRanking = rankings[0] || {};
+
+  return {
+    strategyCards,
+    signals,
+    positions,
+    trades,
+    summary: {
+      seed_usd: seedUsd,
+      equity_usd: equityUsd,
+      total_pnl_usd: totalPnlUsd,
+      total_roi_pct: totalRoiPct,
+      open_positions: openCount,
+      realized_pnl_usd: realizedPnlUsd,
+      unrealized_pnl_usd: unrealizedPnlUsd,
+      closed_trades: closedTrades,
+      win_rate: winRate,
+      active_bridge: MEME_MODEL_IDS.length,
+      top_signal_score: Number(topSignal.score || 0),
+      top_signal_grade: topSignal.grade || "-",
+      theme_cluster_min_tokens: Number(data?.meme_discovery?.policy?.theme_cluster_min_tokens || 0),
+      primary_mode: String(data?.meme_discovery?.policy?.primary_mode || "THEME"),
+      trigger_modes: (data?.meme_discovery?.policy?.secondary_triggers || []).join(", "),
+      top_rank_label: topRanking ? `${topRanking.model_name || topRanking.model_id} ${fmtPct(modelRoi(topRanking))}` : "데이터 없음",
+    },
+  };
 }
 
 function renderTableBody(id, rowsHtml, colSpan = 8) {
@@ -209,6 +491,69 @@ async function postJson(url, body = {}) {
     throw new Error(msg);
   }
   return res.json();
+}
+
+function renderMemeScoreHistory(result) {
+  const rows = (result?.rows || []).slice(0, 300);
+  const html = rows.map((r) => {
+    const modelLabel = marketModelName(VIEW.data || {}, "meme", String(r.model_id || ""));
+    return `
+      <tr>
+        <td>${fmtTs(r.ts)}</td>
+        <td>${modelLabel}</td>
+        <td>${r.symbol || "-"}</td>
+        <td>${r.grade || "-"}</td>
+        <td>${Number(r.score || 0).toFixed(4)}</td>
+        <td>${Number(r.probability || 0).toFixed(4)}</td>
+        <td>${fmtUsdPrice(r.price_usd)}</td>
+        <td>${fmtUsd(r.liquidity_usd)}</td>
+        <td>${fmtUsd(r.volume_5m_usd)}</td>
+        <td class="wrap">${r.score_low_reason || r.reason || "-"}</td>
+        <td class="wrap">${r.score_hold_hint || "-"}</td>
+      </tr>
+    `;
+  }).join("");
+  renderTableBody("memeScoreLookupRows", html, 11);
+  const count = Number(result?.count || rows.length || 0);
+  const best = result?.best || {};
+  const lookup = result?.lookup || {};
+  let bestText = "";
+  if (count > 0) {
+    bestText = `기록 ${count}건 | 최고점 ${Number(best.score || 0).toFixed(4)} (${best.grade || "-"}, ${best.symbol || "-"})`;
+  } else if (lookup && lookup.found === false && lookup.error) {
+    bestText = `기록 없음 | 즉시평가 실패: ${lookup.error}`;
+  } else {
+    bestText = "기록 없음";
+  }
+  setText("memeScoreLookupMsg", bestText);
+}
+
+async function fetchMemeScoreHistory(tokenAddress) {
+  const token = String(tokenAddress || "").trim();
+  if (!token) {
+    setText("memeScoreLookupMsg", "토큰 주소를 입력하세요.");
+    renderTableBody("memeScoreLookupRows", "", 11);
+    return;
+  }
+  setText("memeScoreLookupMsg", "조회 중...");
+  try {
+    const url = `/api/meme-score-history?token_address=${encodeURIComponent(token)}&limit=240`;
+    const res = await fetch(url);
+    let payload = {};
+    try {
+      payload = await res.json();
+    } catch (e) {
+      payload = {};
+    }
+    if (!res.ok || payload.ok === false) {
+      throw new Error(payload.error || "meme score history fetch failed");
+    }
+    MEME_SCORE_LAST_TOKEN = token;
+    renderMemeScoreHistory(payload.result || {});
+  } catch (err) {
+    setText("memeScoreLookupMsg", `조회 실패: ${err?.message || String(err)}`);
+    renderTableBody("memeScoreLookupRows", "", 11);
+  }
 }
 
 function renderSecretSettings(secrets) {
@@ -350,10 +695,25 @@ function bindSecretControls() {
   });
 }
 
+function bindMemeScoreLookupControls() {
+  const input = document.getElementById("memeScoreTokenInput");
+  const btn = document.getElementById("btnMemeScoreLookup");
+  if (!input || !btn) return;
+  btn.addEventListener("click", async () => {
+    await fetchMemeScoreHistory(input.value);
+  });
+  input.addEventListener("keydown", async (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    await fetchMemeScoreHistory(input.value);
+  });
+}
+
 function selectedLiveModels(market) {
+  const allowed = market === "crypto" ? CRYPTO_MODEL_IDS : MEME_MODEL_IDS;
   return Array.from(document.querySelectorAll(`input[type="checkbox"][data-live-market="${market}"]:checked`))
     .map((el) => String(el.value || "").toUpperCase())
-    .filter((v) => MODEL_IDS.includes(v));
+    .filter((v) => allowed.includes(v));
 }
 
 function liveModelMsgId(market) {
@@ -454,19 +814,11 @@ function bindLivePerformanceControls() {
 }
 
 function bindTabs() {
-  document.querySelectorAll("#marketTabs [data-market]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      VIEW.market = btn.dataset.market || "meme";
-      updateModelTabLabels(VIEW.data || {});
-      renderDetailPane(VIEW.data || {});
-      setTabState();
-    });
-  });
   document.querySelectorAll("#modelTabs [data-model]").forEach((btn) => {
     btn.addEventListener("click", () => {
       VIEW.model = btn.dataset.model || "A";
       updateModelTabLabels(VIEW.data || {});
-      renderDetailPane(VIEW.data || {});
+      renderModelWorkspace(VIEW.data || {});
       setTabState();
     });
   });
@@ -500,24 +852,44 @@ function bindCryptoTrendTabs() {
   });
 }
 
+function bindModelCryptoTabs() {
+  document.querySelectorAll("#modelCryptoTabs [data-model]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      VIEW.cryptoModel = btn.dataset.model || "A";
+      updateModelCryptoTabLabels(VIEW.data || {});
+      renderModelWorkspace(VIEW.data || {});
+      setModelCryptoTabState();
+    });
+  });
+}
+
 function bindWorkspaceTabs() {
   document.querySelectorAll("[data-workspace]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       VIEW.workspace = btn.dataset.workspace || "paper";
       setWorkspaceState();
       closeMobileNav();
-      if (VIEW.workspace === "paper" || VIEW.workspace === "live") {
-        try {
-          const resp = await postJson("/api/control/mode", { mode: VIEW.workspace });
-          const appliedMode = String((resp || {}).mode || "").toLowerCase();
-          if (appliedMode && appliedMode !== VIEW.workspace) {
-            setText("errorBar", `모드 전환 제한: 요청=${VIEW.workspace.toUpperCase()} 적용=${appliedMode.toUpperCase()}`);
-          }
-          await refreshDashboard();
-        } catch (err) {
-          setText("errorBar", `모드 전환 실패: ${String(err?.message || err)}`);
-        }
-      }
+    });
+  });
+}
+
+function bindDemoTabs() {
+  document.querySelectorAll("#demoCryptoTabs [data-demo-model]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      VIEW.demoCryptoModel = btn.dataset.demoModel || "A";
+      updateDemoTabLabels(VIEW.data || {});
+      renderDemoModelBoard(VIEW.data || {});
+      setDemoTabState();
+    });
+  });
+}
+
+function bindDemoMarketTabs() {
+  document.querySelectorAll("#demoMarketTabs [data-demo-market]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      VIEW.demoMarket = String(btn.dataset.demoMarket || "meme").toLowerCase() === "crypto" ? "crypto" : "meme";
+      setDemoMarketTabState();
+      if (VIEW.data) renderOverallMetrics(VIEW.data);
     });
   });
 }
@@ -544,45 +916,62 @@ function setWorkspaceState() {
   if (VIEW.workspace === "settings") {
     loadSecretSettings(false);
   }
+  if (VIEW.workspace === "paper") {
+    setDemoMarketTabState();
+  }
   if (VIEW.workspace === "live") {
     setLiveMarketTabState();
   }
 }
 
 function setTabState() {
-  document.querySelectorAll("#marketTabs [data-market]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.market === VIEW.market);
-  });
   document.querySelectorAll("#modelTabs [data-model]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.model === VIEW.model);
   });
-  const marketSelect = document.getElementById("marketSelect");
-  const modelSelect = document.getElementById("modelSelect");
-  if (marketSelect) marketSelect.value = VIEW.market;
-  if (modelSelect) modelSelect.value = VIEW.model;
 }
 
 function updateModelTabLabels(data) {
   document.querySelectorAll("#modelTabs [data-model]").forEach((btn) => {
     const id = btn.dataset.model || "A";
-    const name = marketModelName(data || {}, VIEW.market, id);
+    const name = marketModelName(data || {}, "meme", id);
     btn.textContent = id;
     btn.title = name;
   });
-  const modelSelect = document.getElementById("modelSelect");
-  if (modelSelect) {
-    const options = MODEL_IDS.map((id) => {
-      const label = marketModelName(data || {}, VIEW.market, id);
-      return `<option value="${id}">${id} | ${label}</option>`;
-    }).join("");
-    modelSelect.innerHTML = options;
-    modelSelect.value = VIEW.model;
-  }
 }
 
 function setCryptoTabState() {
   document.querySelectorAll("#cryptoModelTabs [data-crypto-model]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.cryptoModel === VIEW.cryptoModel);
+  });
+}
+
+function setModelCryptoTabState() {
+  document.querySelectorAll("#modelCryptoTabs [data-model]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.model === VIEW.cryptoModel);
+  });
+}
+
+function setDemoTabState() {
+  document.querySelectorAll("#demoCryptoTabs [data-demo-model]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.demoModel === VIEW.demoCryptoModel);
+  });
+}
+
+function updateDemoTabLabels(data) {
+  document.querySelectorAll("#demoCryptoTabs [data-demo-model]").forEach((btn) => {
+    const id = btn.dataset.demoModel || "A";
+    btn.textContent = id;
+    btn.title = marketModelName(data || {}, "crypto", id);
+  });
+}
+
+function setDemoMarketTabState() {
+  document.querySelectorAll("#demoMarketTabs [data-demo-market]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.demoMarket === VIEW.demoMarket);
+  });
+  document.querySelectorAll("[data-demo-panel]").forEach((panel) => {
+    const scope = String(panel.dataset.demoPanel || "");
+    panel.classList.toggle("active", scope === VIEW.demoMarket);
   });
 }
 
@@ -595,6 +984,10 @@ function setLiveMarketTabState() {
     const active = scope === "common" || scope === VIEW.liveMarket;
     panel.classList.toggle("active", active);
   });
+  document.querySelectorAll("[data-live-control-scope]").forEach((box) => {
+    const scope = String(box.dataset.liveControlScope || "common");
+    box.classList.toggle("active", scope === "common" || scope === VIEW.liveMarket);
+  });
 }
 
 function updateCryptoModelTabLabels(data) {
@@ -605,26 +998,47 @@ function updateCryptoModelTabLabels(data) {
   });
 }
 
+function updateModelCryptoTabLabels(data) {
+  document.querySelectorAll("#modelCryptoTabs [data-model]").forEach((btn) => {
+    const id = btn.dataset.model || "A";
+    const labels = (data && data.crypto_model_labels) || {};
+    btn.textContent = labels[id] || id;
+    btn.title = labels[id] || id;
+  });
+}
+
 function renderOverallMetrics(data) {
   const settings = data.settings || {};
   const snap = workspaceSnapshot(data, VIEW.workspace);
+  const isModelWorkspace = VIEW.workspace === "models";
+  const isDemoWorkspace = VIEW.workspace === "paper";
   const seedLabel = document.getElementById("mSeedLabel");
   const equityLabel = document.getElementById("mEquityLabel");
   const pnlLabel = document.getElementById("mPnlLabel");
   const winrateLabel = document.getElementById("mWinrateLabel");
+  const isLiveWorkspace = VIEW.workspace === "live";
   if (seedLabel) {
-    seedLabel.textContent = VIEW.workspace === "live" ? "성과 기준자산" : "데모 시드(모델당)";
+    if (isLiveWorkspace) seedLabel.textContent = "성과 기준자산";
+    else if (isModelWorkspace) seedLabel.textContent = "데모 시드(모델당)";
+    else seedLabel.textContent = "데모 시드";
   }
   if (equityLabel) {
-    equityLabel.textContent = VIEW.workspace === "paper" ? "밈 최고 모델(ROI)" : "총 평가금액";
+    if (isModelWorkspace) equityLabel.textContent = "밈 엔진 핵심";
+    else if (isDemoWorkspace) equityLabel.textContent = "데모 마지막 사이클";
+    else equityLabel.textContent = "총 평가금액";
   }
   if (pnlLabel) {
-    pnlLabel.textContent = VIEW.workspace === "paper" ? "크립토 최고 모델(ROI)" : "보정 손익";
+    if (isModelWorkspace) pnlLabel.textContent = "크립토 최고 모델(ROI)";
+    else if (isLiveWorkspace) pnlLabel.textContent = "보정 손익";
+    else if (isDemoWorkspace) pnlLabel.textContent = "데모 오픈 포지션";
+    else pnlLabel.textContent = "총 손익";
   }
   if (winrateLabel) {
-    if (VIEW.workspace === "paper") {
+    if (isModelWorkspace) {
       winrateLabel.textContent = "활성 모델 수";
-    } else if (VIEW.workspace === "live") {
+    } else if (isDemoWorkspace) {
+      winrateLabel.textContent = "활성 모델 수";
+    } else if (isLiveWorkspace) {
       winrateLabel.textContent = "순입출금 보정";
     } else {
       winrateLabel.textContent = "통합 승률";
@@ -636,11 +1050,17 @@ function renderOverallMetrics(data) {
   );
   setText("mMode", snap.modeText);
   setText("mSeed", snap.seedText);
-  setText("mTotalEquity", snap.equityText || fmtUsd(snap.equityUsd));
-  setText("mTotalPnl", snap.pnlText || fmtUsd(snap.pnlUsd));
+  if (isDemoWorkspace) {
+    setText("mTotalEquity", snap.equityText || "-");
+    setText("mTotalPnl", snap.pnlText || "-");
+    setText("mWinrate", snap.winrateText || "-");
+  } else {
+    setText("mTotalEquity", snap.equityText || fmtUsd(snap.equityUsd));
+    setText("mTotalPnl", snap.pnlText || fmtUsd(snap.pnlUsd));
+    setText("mWinrate", snap.winrateText);
+  }
   const totalPnlEl = document.getElementById("mTotalPnl");
-  if (totalPnlEl) totalPnlEl.className = clsPn(snap.pnlUsd);
-  setText("mWinrate", snap.winrateText);
+  if (totalPnlEl) totalPnlEl.className = isLiveWorkspace || isModelWorkspace ? clsPn(snap.pnlUsd) : "";
 
   const autoBtn = document.getElementById("btnAuto");
   if (autoBtn) {
@@ -661,11 +1081,26 @@ function renderOverallMetrics(data) {
 
 function renderCycleStatus(data) {
   const cycleTs = Number(data.last_cycle_ts || 0);
-  const walletTs = Number(data.last_wallet_sync_ts || 0);
-  const bybitTs = Number(data.last_bybit_sync_ts || 0);
-  setText("commonLastCycle", cycleTs ? fmtTs(cycleTs) : "-");
-  setText("commonWalletSync", walletTs ? fmtTs(walletTs) : "-");
-  setText("commonBybitSync", bybitTs ? fmtTs(bybitTs) : "-");
+  const memeEngine = aggregateMemeEngineData(data);
+  const cryptoRows = sortModelRankingRows(data.crypto_model_rankings || data.crypto_model_runs || []);
+  const topCrypto = cryptoRows[0] || null;
+  const totalOpen = VIEW.demoMarket === "crypto"
+    ? cryptoRows.reduce((acc, row) => acc + Number(row.open_positions || 0), 0)
+    : Number(memeEngine.summary.open_positions || 0);
+  setText("demoCycleTs", cycleTs ? fmtTs(cycleTs) : "-");
+  setText("demoOpenTotal", `${totalOpen}개`);
+  setText(
+    "demoTopMeme",
+    VIEW.demoMarket === "meme"
+      ? `밈 엔진 | ${memeEngine.summary.top_rank_label || "데이터 없음"}`
+      : `밈 엔진 | ${memeEngine.summary.primary_mode || "THEME_SNIPER"}`
+  );
+  setText(
+    "demoTopCrypto",
+    VIEW.demoMarket === "crypto"
+      ? (topCrypto ? `${topCrypto.model_name || topCrypto.model_id} ${fmtPct(modelRoi(topCrypto))}` : "데이터 없음")
+      : "데모 크립토 탭에서 확인"
+  );
 }
 
 function renderModelCompare(rows, targetId) {
@@ -684,11 +1119,7 @@ function renderModelCompare(rows, targetId) {
 }
 
 function renderModelRanking(rows, targetId) {
-  const sorted = [...(rows || [])].sort((a, b) => {
-    const pnlDiff = Number(b.total_pnl_usd || 0) - Number(a.total_pnl_usd || 0);
-    if (Math.abs(pnlDiff) > 1e-9) return pnlDiff;
-    return Number(b.win_rate || 0) - Number(a.win_rate || 0);
-  });
+  const sorted = sortModelRankingRows(rows);
   const html = sorted.map((m, idx) => `
       <tr>
         <td>#${Number(m.rank || (idx + 1))}</td>
@@ -705,40 +1136,204 @@ function renderModelRanking(rows, targetId) {
 }
 
 function renderDemoModelBoard(data) {
-  const memeRows = data.meme_model_rankings || data.meme_model_runs || [];
-  const cryptoRows = data.crypto_model_rankings || data.crypto_model_runs || [];
-  const rowToHtml = (r) => {
-    const seed = Number(r.seed_usd || 0);
-    const eq = Number(r.equity_usd || 0);
-    const pnl = Number(r.total_pnl_usd || 0);
-    const roi = seed > 0 ? ((eq - seed) / seed) * 100 : 0;
-    return `
+  const memeEngine = aggregateMemeEngineData(data);
+  const cryptoRows = sortModelRankingRows(data.crypto_model_rankings || data.crypto_model_runs || []);
+  const modelViews = data.model_views || {};
+
+  const validCryptoIds = new Set(cryptoRows.map((row) => String(row.model_id || "").toUpperCase()).filter(Boolean));
+  if (!validCryptoIds.has(VIEW.demoCryptoModel)) VIEW.demoCryptoModel = String((cryptoRows[0] || {}).model_id || "A");
+
+  const renderRankCards = (targetId, rows) => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (!rows.length) {
+      el.innerHTML = `<div class="demo-rank-empty">데이터 없음</div>`;
+      return;
+    }
+    el.innerHTML = rows.map((r, idx) => {
+      const eq = Number(r.equity_usd || 0);
+      const pnl = Number(r.total_pnl_usd || 0);
+      const roi = modelRoi(r);
+      const win = Number(r.win_rate || 0);
+      const open = Number(r.open_positions || 0);
+      return `
+        <article class="demo-rank-card ${idx === 0 ? "is-top" : ""}">
+          <div class="demo-rank-card-head">
+            <span class="demo-rank-badge">#${Number(r.rank || (idx + 1))}</span>
+            <strong>${r.model_name || r.model_id}</strong>
+          </div>
+          <div class="demo-rank-main ${clsPn(pnl)}">
+            <span>${fmtPct(roi)}</span>
+            <em>${fmtUsd(pnl)}</em>
+          </div>
+          <div class="demo-rank-meta">
+            <span>평가 ${fmtUsd(eq)}</span>
+            <span>승률 ${win.toFixed(1)}%</span>
+            <span>오픈 ${open}</span>
+          </div>
+        </article>
+      `;
+    }).join("");
+  };
+
+  const memeRankEl = document.getElementById("demoMemeRankCards");
+  if (memeRankEl) {
+    const s = memeEngine.summary || {};
+    const topSignal = memeEngine.signals?.[0] || {};
+    memeRankEl.innerHTML = `
+      <article class="demo-rank-card is-top">
+        <div class="demo-rank-card-head">
+          <span class="demo-rank-badge">MAIN</span>
+          <strong>밈 단일 엔진</strong>
+        </div>
+        <div class="demo-rank-main ${clsPn(s.total_pnl_usd)}">
+          <span>${fmtPct(s.total_roi_pct || 0)}</span>
+          <em>${fmtUsd(s.total_pnl_usd || 0)}</em>
+          <em>${s.top_signal_grade || "-"} / ${(Number(s.top_signal_score || 0)).toFixed(4)}</em>
+        </div>
+        <div class="demo-rank-meta">
+          <span>오픈 ${Number(s.open_positions || 0)}</span>
+          <span>청산 ${Number(s.closed_trades || 0)}</span>
+          <span>메인 ${s.primary_mode || "THEME"}</span>
+        </div>
+        <div class="demo-rank-meta">
+          <span>트리거 ${s.trigger_modes || "-"}</span>
+          <span>클러스터 최소 ${Number(s.theme_cluster_min_tokens || 0)}</span>
+          <span>상위 ${topSignal.symbol || "-"}</span>
+        </div>
+      </article>
+    `;
+  }
+  renderRankCards("demoCryptoRankCards", cryptoRows);
+
+  const renderTradeRows = (targetId, trades) => {
+    const html = (trades || []).slice(-160).reverse().map((t) => `
       <tr>
-        <td>#${Number(r.rank || 0) > 0 ? Number(r.rank) : "-"}</td>
-        <td>${r.model_name || r.model_id}</td>
-        <td>${fmtUsd(seed)}</td>
-        <td>${fmtUsd(eq)}</td>
-        <td class="${clsPn(pnl)}">${fmtUsd(pnl)}</td>
-        <td class="${clsPn(roi)}">${fmtPct(roi)}</td>
-        <td>${Number(r.win_rate || 0).toFixed(1)}%</td>
-        <td>${Number(r.open_positions || 0)}</td>
+        <td>${fmtTs(t.ts)}</td>
+        <td>${t.side || "-"}</td>
+        <td>${t.symbol || "-"}</td>
+        <td>${fmtUsd(t.notional_usd)}</td>
+        <td class="${clsPn(t.pnl_usd)}">${t.pnl_usd == null ? "-" : `${fmtPct(Number(t.pnl_pct || 0) * 100)} <span class="muted">${fmtUsd(t.pnl_usd)}</span>`}</td>
+        <td class="wrap">${t.reason || "-"}</td>
       </tr>
+    `).join("");
+    renderTableBody(targetId, html, 6);
+  };
+
+  const renderFocusCards = (targetId, market, selectedId, rankingRow, summary, positionCount) => {
+    const row = rankingRow || {};
+    const sum = summary || {};
+    const modelName = row.model_name || marketModelName(data || {}, market, selectedId);
+    const seed = Number(row.seed_usd ?? sum.seed_usd ?? data.demo_seed_usdt ?? 0);
+    const equity = Number(row.equity_usd ?? sum.equity_usd ?? seed);
+    const pnl = Number(row.total_pnl_usd ?? sum.total_pnl_usd ?? 0);
+    const win = Number(row.win_rate ?? sum.win_rate ?? 0);
+    const open = Number(row.open_positions ?? positionCount ?? 0);
+    const roi = seed > 0 ? ((equity - seed) / seed) * 100 : 0;
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    el.innerHTML = `
+      <article class="card metric metric-primary"><h3>선택 모델</h3><p>${modelName}</p></article>
+      <article class="card metric"><h3>시드</h3><p>${fmtUsd(seed)}</p></article>
+      <article class="card metric"><h3>평가금액</h3><p>${fmtUsd(equity)}</p></article>
+      <article class="card metric"><h3>총 수익률</h3><p class="${clsPn(pnl)}">${fmtPct(roi)} <span class="muted">${fmtUsd(pnl)}</span></p></article>
+      <article class="card metric"><h3>승률 / 오픈</h3><p>${win.toFixed(1)}% / ${open}</p></article>
     `;
   };
-  const memeHtml = memeRows.map(rowToHtml).join("");
-  const cryptoHtml = cryptoRows.map(rowToHtml).join("");
-  renderTableBody("demoMemeRows", memeHtml, 8);
-  renderTableBody("demoCryptoRows", cryptoHtml, 8);
+
+  const selectedCryptoRow = cryptoRows.find((row) => String(row.model_id || "").toUpperCase() === VIEW.demoCryptoModel) || null;
+  const cryptoDetail = modelViews[VIEW.demoCryptoModel]?.crypto || {};
+  const memePositions = memeEngine.positions || [];
+  const cryptoPositions = cryptoDetail.positions || [];
+  const memeTrades = memeEngine.trades || [];
+  const cryptoTrades = cryptoDetail.trades || [];
+
+  const memeFocusEl = document.getElementById("demoMemeFocusCards");
+  if (memeFocusEl) {
+    const s = memeEngine.summary || {};
+    memeFocusEl.innerHTML = `
+      <article class="card metric metric-primary"><h3>메인 루프</h3><p>${s.primary_mode || "THEME"}</p></article>
+      <article class="card metric"><h3>트리거</h3><p>${s.trigger_modes || "-"}</p></article>
+      <article class="card metric"><h3>시드 / 평가금액</h3><p>${fmtUsd(s.seed_usd || 0)} / ${fmtUsd(s.equity_usd || 0)}</p></article>
+      <article class="card metric"><h3>총 수익률</h3><p class="${clsPn(s.total_pnl_usd || 0)}">${fmtPct(s.total_roi_pct || 0)} <span class="muted">${fmtUsd(s.total_pnl_usd || 0)}</span></p></article>
+      <article class="card metric"><h3>오픈 / 승률</h3><p>${Number(s.open_positions || 0)} / ${Number(s.win_rate || 0).toFixed(1)}%</p></article>
+      <article class="card metric"><h3>최근 최고 신호</h3><p>${s.top_signal_grade || "-"} / ${Number(s.top_signal_score || 0).toFixed(4)}</p></article>
+    `;
+  }
+  renderFocusCards(
+    "demoCryptoFocusCards",
+    "crypto",
+    VIEW.demoCryptoModel,
+    selectedCryptoRow,
+    cryptoDetail.summary,
+    cryptoPositions.length
+  );
+
+  const strategyChipEl = document.getElementById("demoMemeStrategyChips");
+  if (strategyChipEl) {
+    strategyChipEl.innerHTML = (memeEngine.strategyCards || []).map((row) => `
+      <span class="strategy-chip">
+        <strong>${row.id}</strong>
+        <em>${row.role || "-"}</em>
+        <span>${row.name || row.id}</span>
+        <small>${Number(row.entrySol || 0).toFixed(2)} SOL</small>
+      </span>
+    `).join("");
+  }
+
+  const memeHtml = memePositions.slice(0, 120).map((p) => {
+    const qty = Number(p.qty || 0);
+    const avg = Number(p.avg_price_usd || p.entry_price_usd || 0);
+    const current = Number(p.current_price_usd || p.price_usd || 0);
+    const valueRaw = Number(p.value_usd || 0);
+    const value = valueRaw > 0 ? valueRaw : (qty > 0 && current > 0 ? qty * current : 0);
+    const basis = qty > 0 && avg > 0 ? qty * avg : 0;
+    const pnlRaw = Number(p.pnl_usd || 0);
+    const pnl = Math.abs(pnlRaw) > 0 ? pnlRaw : (basis > 0 ? value - basis : 0);
+    const pnlPctRaw = Number(p.pnl_pct || 0);
+    const pnlPct = Math.abs(pnlPctRaw) > 0 ? pnlPctRaw : (basis > 0 ? (pnl / basis) * 100 : 0);
+    return `
+      <tr>
+        <td>${p.symbol || "-"}</td>
+        <td>${p.engine_strategy || p.strategy || "-"}</td>
+        <td>${p.grade || "-"}</td>
+        <td>${fmtUsd(value)}</td>
+        <td class="${clsPn(pnl)}">${fmtPct(pnlPct)} <span class="muted">${fmtUsd(pnl)}</span></td>
+        <td>${p.exit_rule_text || "-"}</td>
+        <td class="wrap">${p.reason || "-"}</td>
+      </tr>
+    `;
+  }).join("");
+  renderTableBody("demoMemePosRows", memeHtml, 7);
+
+  const cryptoHtml = cryptoPositions.slice(0, 120).map((p) => `
+      <tr>
+        <td>${p.symbol || "-"}</td>
+        <td>${p.side || "-"}</td>
+        <td>${Number(p.leverage || 1).toFixed(2)}x</td>
+        <td>${fmtUsd(p.position_value ?? p.positionValue)} / ${fmtUsd(p.margin_usd ?? p.marginUsd)}</td>
+        <td class="${clsPn(p.unrealised_pnl ?? p.unrealized_pnl)}">${fmtPct(p.roe_pct ?? p.roe)} <span class="muted">${fmtUsd(p.unrealised_pnl ?? p.unrealized_pnl)}</span></td>
+        <td>${(Number(p.tp_pct || 0) * 100).toFixed(1)}% / ${(Number(p.sl_pct || 0) * 100).toFixed(1)}%</td>
+        <td class="wrap">${p.reason || "-"}</td>
+      </tr>
+    `).join("");
+  renderTableBody("demoCryptoPosRows", cryptoHtml, 7);
+  renderTradeRows("demoMemeTradeRows", memeTrades);
+  renderTradeRows("demoCryptoTradeRows", cryptoTrades);
+
+  const memeDailyRows = buildDailyReturnRowsFromSnapshots(data?.meme_daily_pnl || [], Number(memeEngine.summary.seed_usd || 0));
+  const cryptoDailyRows = buildDailyReturnRowsFromSnapshots(cryptoDetail.daily_pnl || [], Number(selectedCryptoRow?.seed_usd || cryptoDetail.summary?.seed_usd || data.demo_seed_usdt || 0));
+  renderDailyReturnTable("demoMemeDailyRows", "demoMemeDailySummary", memeDailyRows);
+  renderDailyReturnTable("demoCryptoDailyRows", "demoCryptoDailySummary", cryptoDailyRows);
 }
 
 function renderTrend(data) {
-  const rows = (data.trend_top || [])
-    .slice(0, 30)
-    .map((row) => {
-      const cap = Number(row.market_cap_usd || 0);
-      return `<tr><td>${row.symbol}</td><td>${row.hits}</td><td>${cap > 0 ? fmtUsd(cap) : "-"}</td></tr>`;
-    })
-    .join("");
+  const feedCaps = new Map((data.new_meme_feed || []).map((row) => [cleanSymbol(row.symbol), Number(row.market_cap_usd || 0)]));
+  const sourceRows = buildMemeBriefDistribution(data, 60 * 60 * 24, 30);
+  const rows = sourceRows.map((row) => {
+    const cap = Number(feedCaps.get(cleanSymbol(row.symbol)) || 0);
+    return `<tr><td>${row.symbol}</td><td>${row.hits}</td><td>${cap > 0 ? fmtUsd(cap) : "-"}</td></tr>`;
+  }).join("");
   renderTableBody("trendTop", rows, 3);
 }
 
@@ -791,7 +1386,7 @@ function drawTrendChart14d(data) {
   const svg = document.getElementById("trendChart14d");
   const info = document.getElementById("trendChartStats");
   if (!svg) return;
-  const rows = (data.meme_trend_30m_db || data.trend_30m || []).slice(-48);
+  const rows = buildMemeBriefBucketSeries(data, 60 * 60 * 24, 1800).slice(-48);
   if (!rows.length) {
     svg.innerHTML = "";
     if (info) info.textContent = "30분 트렌드 데이터가 아직 없습니다.";
@@ -883,7 +1478,7 @@ function trendSourceHealth(data) {
 function renderTrendInsights(data) {
   const srcHealth = trendSourceHealth(data);
 
-  const memeSeries = (data.meme_trend_30m_db || data.trend_30m || []).slice(-48);
+  const memeSeries = buildMemeBriefBucketSeries(data, 60 * 60 * 24, 1800).slice(-48);
   const memeLast = memeSeries.length ? Number(memeSeries[memeSeries.length - 1].hits || 0) : 0;
   const memeAvg = memeSeries.length ? memeSeries.reduce((acc, r) => acc + Number(r.hits || 0), 0) / memeSeries.length : 0;
   const memeRatio = memeAvg > 0 ? memeLast / memeAvg : 0;
@@ -893,7 +1488,10 @@ function renderTrendInsights(data) {
   const memeSummary = String(memeMeta.summary || "데이터 축적 중입니다.");
   const memeAction = String(memeMeta.action_hint || "신호 기반으로 후보군을 선별하세요.");
   const memeTopSymbol = String(memeMeta.top_symbol || "-");
-  const memeGrowth = Number(memeMeta.total_growth_ratio ?? memeMeta.growth_ratio ?? 0);
+  const memeTopHits = Number(memeMeta.top_hits || 0);
+  const memeTopDelta = Number(memeMeta.top_hits_delta || 0);
+  const memeTotalHits = Number(memeMeta.total_hits_top20 || 0);
+  const memeTotalDelta = Number(memeMeta.total_hits_delta_top20 || 0);
   const memeBurst = Array.isArray(memeMeta.burst_symbols) && memeMeta.burst_symbols.length
     ? memeMeta.burst_symbols.slice(0, 5).join(", ")
     : "-";
@@ -919,7 +1517,7 @@ function renderTrendInsights(data) {
     [
       "버스트 심볼",
       memeBurst,
-      `선두 ${memeTopSymbol} | 상위20 변화율 ${fmtPct(memeGrowth * 100)}`,
+      `선두 ${memeTopSymbol} ${memeTopHits}건 (Δ${fmtSignedCount(memeTopDelta)}) | 상위20 ${memeTotalHits}건 (Δ${fmtSignedCount(memeTotalDelta)})`,
     ],
     [
       "신규/소형 밈 유입",
@@ -961,7 +1559,10 @@ function renderTrendInsights(data) {
   const cryptoSummary = String(cryptoMeta.summary || "데이터 축적 중입니다.");
   const cryptoAction = String(cryptoMeta.action_hint || "모델 임계값 이상 후보만 선별하세요.");
   const cryptoTopSymbol = String(cryptoMeta.top_symbol || "-");
-  const cryptoGrowth = Number(cryptoMeta.total_growth_ratio ?? cryptoMeta.growth_ratio ?? 0);
+  const cryptoTopHits = Number(cryptoMeta.top_hits || 0);
+  const cryptoTopDelta = Number(cryptoMeta.top_hits_delta || 0);
+  const cryptoTotalHits = Number(cryptoMeta.total_hits_top20 || 0);
+  const cryptoTotalDelta = Number(cryptoMeta.total_hits_delta_top20 || 0);
   const cryptoBurst = Array.isArray(cryptoMeta.burst_symbols) && cryptoMeta.burst_symbols.length
     ? cryptoMeta.burst_symbols.slice(0, 5).join(", ")
     : "-";
@@ -977,12 +1578,12 @@ function renderTrendInsights(data) {
     [
       "이슈 버스트 알트",
       cryptoBurst,
-      `선두 ${cryptoTopSymbol} | 상위20 변화율 ${fmtPct(cryptoGrowth * 100)}`,
+      `선두 ${cryptoTopSymbol} ${cryptoTopHits}건 (Δ${fmtSignedCount(cryptoTopDelta)}) | 상위20 ${cryptoTotalHits}건 (Δ${fmtSignedCount(cryptoTotalDelta)})`,
     ],
     [
       "시총 랭크대",
       cryptoRankBand,
-      `11~300위 핵심 후보 ${Number(cryptoMeta.mid_alt_count || 0)}개`,
+      `50~300위 핵심 후보 ${Number(cryptoMeta.mid_alt_count || 0)}개`,
     ],
     [
       "언급량 모멘텀",
@@ -1024,8 +1625,10 @@ function renderTrendBriefLogs(data) {
     const meta = row.meta || {};
     const signal = String(meta.signal || meta.theme || "-");
     const top = String(meta.top_symbol || "-");
-    const ratio = Number(meta.total_growth_ratio ?? meta.growth_ratio ?? 0);
-    const ratioText = Number.isFinite(ratio) ? fmtPct(ratio * 100) : "-";
+    const topHits = Number(meta.top_hits || 0);
+    const totalHits = Number(meta.total_hits_top20 || 0);
+    const totalDelta = Number(meta.total_hits_delta_top20 || 0);
+    const countText = `TOP ${topHits.toLocaleString("en-US")} | T20 ${totalHits.toLocaleString("en-US")} (Δ${fmtSignedCount(totalDelta)})`;
     const summary = String(meta.summary || row.detail || "-");
     const action = String(meta.action_hint || "");
     const summaryWithAction = action ? `${summary} / 액션: ${action}` : summary;
@@ -1034,7 +1637,7 @@ function renderTrendBriefLogs(data) {
         <td>${fmtTs(row.ts)}</td>
         <td>${signal}</td>
         <td>${top}</td>
-        <td class="${clsPn(ratio)}">${ratioText}</td>
+        <td class="${clsPn(totalDelta)}">${countText}</td>
         <td class="wrap">${summaryWithAction}</td>
       </tr>
     `;
@@ -1094,12 +1697,18 @@ function renderTrendPeriodTable(rowId, rows, limit) {
 }
 
 function renderTrendDistribution(data) {
-  renderTrendDonut("memeTrendDonut", "memeTrendDonutLegend", "memeTrendDonutStats", data.meme_trend_share_24h || [], "밈");
+  renderTrendDonut(
+    "memeTrendDonut",
+    "memeTrendDonutLegend",
+    "memeTrendDonutStats",
+    buildMemeBriefDistribution(data, 60 * 60 * 24, 8),
+    "밈"
+  );
   renderTrendDonut("cryptoTrendDonut", "cryptoTrendDonutLegend", "cryptoTrendDonutStats", data.crypto_trend_share_24h || [], "크립토");
 
-  renderTrendPeriodTable("memeTrendHourlyRows", data.meme_trend_hourly_db || [], 24);
-  renderTrendPeriodTable("memeTrendDailyRows", data.meme_trend_daily_db || [], 14);
-  renderTrendPeriodTable("memeTrendWeeklyRows", data.meme_trend_weekly_db || [], 12);
+  renderTrendPeriodTable("memeTrendHourlyRows", buildMemeBriefPeriodSummary(data, 3600, 60 * 60 * 24, 24), 24);
+  renderTrendPeriodTable("memeTrendDailyRows", buildMemeBriefPeriodSummary(data, 86400, 60 * 60 * 24 * 14, 14), 14);
+  renderTrendPeriodTable("memeTrendWeeklyRows", buildMemeBriefPeriodSummary(data, 86400 * 7, 60 * 60 * 24 * 84, 12), 12);
   renderTrendPeriodTable("cryptoTrendHourlyRows", data.crypto_trend_hourly_db || [], 24);
   renderTrendPeriodTable("cryptoTrendDailyRows", data.crypto_trend_daily_db || [], 14);
   renderTrendPeriodTable("cryptoTrendWeeklyRows", data.crypto_trend_weekly_db || [], 12);
@@ -1166,6 +1775,121 @@ function renderBybitAssets(data) {
   renderTableBody("bybitAssetRows", rows, 3);
 }
 
+function renderModelWorkspace(data) {
+  const modelViews = data.model_views || {};
+  const methods = data.model_methods || {};
+  const profiles = data.model_profiles || {};
+  const tuneMap = data.model_autotune || {};
+
+  const memeEngine = aggregateMemeEngineData(data);
+  const memeSignals = memeEngine.signals || [];
+  const memeSummary = memeEngine.summary || {};
+  const memeTop = memeSignals[0] || {};
+  setText("memeModelTitle", `밈 단일 엔진 | THEME_SNIPER 메인 / NARRATIVE 서브`);
+  setText(
+    "memeModelText",
+    `THEME_SNIPER 메인 모델은 신규 밈 launch-first 0.1 SOL과 소셜 버스트 0.2 SOL을 함께 점수화하고, ${memeSummary.trigger_modes || "NARRATIVE"}는 재점화형 서브 트리거로만 발화합니다.`
+  );
+  setText("memeModelStrengthText", `브리지 ${MEME_MODEL_IDS.join(", ")} | 테마 묶음 최소 ${Number(memeSummary.theme_cluster_min_tokens || 0)}개`);
+  setText("memeModelTuneText", `트리거 ${memeSummary.trigger_modes || "-"} | 신규 피드 ${(data.new_meme_feed || []).length}개`);
+  setText("memeModelParamText", `메인=${memeSummary.primary_mode || "THEME_SNIPER"} | 오픈=${Number(memeSummary.open_positions || 0)} | 실현=${fmtUsd(memeSummary.realized_pnl_usd || 0)}`);
+  setText("memeScoreTop", memeSignals.length ? `${Number(memeTop.score || 0).toFixed(4)} / ${memeTop.grade || "-"}` : "-");
+  setText("memeScoreCandidates", `${memeSignals.length}`);
+  setText("memeScoreGradeGate", `${memeSummary.primary_mode || "THEME_SNIPER"} 기준`);
+  setText("memeFeedCount", `${(data.new_meme_feed || []).length}`);
+  const strategyChipEl = document.getElementById("modelMemeStrategyChips");
+  if (strategyChipEl) {
+    strategyChipEl.innerHTML = (memeEngine.strategyCards || []).map((row) => `
+      <span class="strategy-chip">
+        <strong>${row.id}</strong>
+        <em>${row.role || "-"}</em>
+        <span>${row.name || row.id}</span>
+        <small>${
+          row.id === "THEME"
+            ? "THEME_SNIPER 메인 | 신규 런치 0.1 SOL | +100% 50% 매도"
+            : row.id === "SNIPER"
+              ? "THEME_SNIPER 메인 | X/커뮤니티 버스트 0.2 SOL"
+              : "서브 | 기존 코인 재점화 0.2 SOL"
+        }</small>
+      </span>
+    `).join("");
+  }
+
+  const renderMemeSignalRows = (rows) => rows.slice(0, 80).map((s) => `
+      <tr>
+        <td>${s.symbol || "-"}</td>
+        <td>${s.grade || "-"}</td>
+        <td>${Number(s.score || 0).toFixed(4)}</td>
+        <td>${Number(s.probability || 0).toFixed(4)}</td>
+        <td>${fmtUsdPrice(s.price_usd)}</td>
+        <td>${fmtUsd(s.liquidity_usd)}</td>
+        <td>${fmtUsd(s.volume_5m_usd)}</td>
+        <td class="wrap">${s.score_low_reason || s.reason || "-"}</td>
+        <td class="wrap">${s.score_hold_hint || "-"}</td>
+      </tr>
+    `).join("");
+  const themeSignals = memeSignals.filter((s) => String(s.strategy_id || s.engine_strategy || "THEME").toUpperCase() === "THEME");
+  const narrativeSignals = memeSignals.filter((s) => String(s.strategy_id || s.engine_strategy || "").toUpperCase() === "NARRATIVE");
+  const sniperSignals = memeSignals.filter((s) => String(s.strategy_id || s.engine_strategy || "").toUpperCase() === "SNIPER");
+  setText("memeThemeSignalCount", `${themeSignals.length}`);
+  setText("memeNarrativeSignalCount", `${narrativeSignals.length}`);
+  setText("memeSniperSignalCount", `${sniperSignals.length}`);
+  renderTableBody("memeThemeSignalRows", renderMemeSignalRows(themeSignals), 9);
+  renderTableBody("memeNarrativeSignalRows", renderMemeSignalRows(narrativeSignals), 9);
+  renderTableBody("memeSniperSignalRows", renderMemeSignalRows(sniperSignals), 9);
+
+  const cryptoView = modelViews[VIEW.cryptoModel]?.crypto || {};
+  const cryptoSignals = cryptoView.signals || [];
+  const cryptoMethod = methods[VIEW.cryptoModel] || {};
+  const cryptoProfile = profiles[VIEW.cryptoModel]?.crypto || {};
+  const cryptoTune = tuneMap[VIEW.cryptoModel] || {};
+  const cryptoTop = cryptoSignals[0] || {};
+  const cryptoCandidates = cryptoSignals.filter((s) => Number(s.score || 0) >= Number(s.entry_threshold || 0)).length;
+  setText("cryptoModelTitle", `${marketModelName(data, "crypto", VIEW.cryptoModel)} | 크립토 스코어링`);
+  setText("cryptoModelText", cryptoMethod.crypto || "-");
+  setText("cryptoModelStrengthText", cryptoMethod.strengths_crypto ? `강점: ${cryptoMethod.strengths_crypto}` : "-");
+  setText(
+    "cryptoModelTuneText",
+    cryptoTune.threshold !== undefined
+      ? `튜닝: TH ${Number(cryptoTune.threshold || 0).toFixed(4)} | TPx ${Number(cryptoTune.tp_mul || 0).toFixed(2)} | SLx ${Number(cryptoTune.sl_mul || 0).toFixed(2)}`
+      : "-"
+  );
+  const levRange = Array.isArray(cryptoProfile.leverage_range)
+    ? `${Number(cryptoProfile.leverage_range[0] || 0).toFixed(1)}~${Number(cryptoProfile.leverage_range[1] || 0).toFixed(1)}x`
+    : "-";
+  setText(
+    "cryptoModelParamText",
+    [
+      `rank_max=${cryptoProfile.rank_max ?? "-"}`,
+      `trend_min=${Number(cryptoProfile.trend_stack_min || 0).toFixed(2)}`,
+      `overheat_max=${Number(cryptoProfile.overheat_max || 0).toFixed(2)}`,
+      `lev=${levRange}`,
+    ].join(" | ")
+  );
+  setText("cryptoScoreTop", cryptoSignals.length ? Number(cryptoTop.score || 0).toFixed(4) : "-");
+  setText("cryptoScoreCandidates", `${cryptoCandidates}`);
+  setText("cryptoScoreThreshold", cryptoSignals.length ? Number(cryptoTop.entry_threshold || 0).toFixed(4) : "-");
+  setText("cryptoSignalCount", `${cryptoSignals.length}`);
+  const cryptoSignalHtml = cryptoSignals.slice(0, 120).map((s) => {
+    const score = Number(s.score || 0);
+    const threshold = Number(s.entry_threshold || 0);
+    const status = s.in_position ? "in-position" : (score >= threshold ? "entry-candidate" : "watch");
+    return `
+      <tr>
+        <td>${fmtTs(s.scored_at_ts || data.server_time || 0)}</td>
+        <td>${s.symbol || "-"}</td>
+        <td>${s.strategy || "-"}</td>
+        <td>${score.toFixed(4)}</td>
+        <td>${threshold.toFixed(4)}</td>
+        <td>${Number(s.leverage || 1).toFixed(2)}x</td>
+        <td>${fmtUsdPrice(s.price_usd)}</td>
+        <td>${status}</td>
+      </tr>
+    `;
+  }).join("");
+  renderTableBody("cryptoModelSignalRows", cryptoSignalHtml, 8);
+}
+
 function detectLiveTradeMarket(row) {
   const market = String((row || {}).market || "").toLowerCase();
   if (market === "meme" || market === "crypto") return market;
@@ -1180,8 +1904,11 @@ function buildLiveDailyCumulativeRows(rows) {
   const ordered = [...(rows || [])].sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
   ordered.forEach((row) => {
     if (String((row || {}).side || "").toLowerCase() !== "sell") return;
+    if ((row || {}).realized === false) return;
     const ts = Number((row || {}).ts || 0);
-    const pnl = Number((row || {}).pnl_usd || 0);
+    const pnlRaw = (row || {}).realized_pnl_usd ?? (row || {}).pnl_usd;
+    if (pnlRaw == null) return;
+    const pnl = Number(pnlRaw || 0);
     const dt = new Date(ts * 1000);
     if (!Number.isFinite(dt.getTime())) return;
     const dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
@@ -1197,6 +1924,68 @@ function buildLiveDailyCumulativeRows(rows) {
     row.cumulative_pnl_usd = Number(cumulative);
   });
   return out;
+}
+
+function aggregateDailySnapshotRows(rows) {
+  const dailyMap = new Map();
+  (rows || []).forEach((row) => {
+    const dateKey = String((row || {}).date || "").trim();
+    if (!dateKey) return;
+    const rec = dailyMap.get(dateKey) || {
+      date: dateKey,
+      equity_usd: 0,
+      total_pnl_usd: 0,
+      realized_pnl_usd: 0,
+      unrealized_pnl_usd: 0,
+      closed_trades: 0,
+    };
+    rec.equity_usd += Number((row || {}).equity_usd || 0);
+    rec.total_pnl_usd += Number((row || {}).total_pnl_usd || 0);
+    rec.realized_pnl_usd += Number((row || {}).realized_pnl_usd || 0);
+    rec.unrealized_pnl_usd += Number((row || {}).unrealized_pnl_usd || 0);
+    rec.closed_trades += Number((row || {}).closed_trades || 0);
+    dailyMap.set(dateKey, rec);
+  });
+  return Array.from(dailyMap.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+function buildDailyReturnRowsFromSnapshots(rows, seedUsd) {
+  const ordered = aggregateDailySnapshotRows(rows);
+  let prevTotal = 0;
+  return ordered.map((row) => {
+    const totalPnlUsd = Number(row.total_pnl_usd || 0);
+    const dailyPnlUsd = totalPnlUsd - prevTotal;
+    prevTotal = totalPnlUsd;
+    return {
+      date: row.date,
+      daily_pnl_usd: dailyPnlUsd,
+      daily_return_pct: seedUsd > 0 ? (dailyPnlUsd / seedUsd) * 100 : 0,
+      cumulative_pnl_usd: totalPnlUsd,
+      cumulative_return_pct: seedUsd > 0 ? (totalPnlUsd / seedUsd) * 100 : 0,
+      closed_trades: Number(row.closed_trades || 0),
+    };
+  });
+}
+
+function renderDailyReturnTable(rowsId, summaryId, rows) {
+  const html = (rows || []).slice(-120).reverse().map((row) => `
+      <tr>
+        <td>${row.date || "-"}</td>
+        <td class="${clsPn(row.daily_return_pct || 0)}">${fmtPct(row.daily_return_pct || 0)} <span class="muted">${fmtUsd(row.daily_pnl_usd || 0)}</span></td>
+        <td class="${clsPn(row.cumulative_return_pct || 0)}">${fmtPct(row.cumulative_return_pct || 0)} <span class="muted">${fmtUsd(row.cumulative_pnl_usd || 0)}</span></td>
+        <td>${Number(row.closed_trades || 0)}</td>
+      </tr>
+    `).join("");
+  renderTableBody(rowsId, html, 4);
+  const summaryEl = document.getElementById(summaryId);
+  if (!summaryEl) return;
+  if (!(rows || []).length) {
+    summaryEl.textContent = "데이터 없음";
+    return;
+  }
+  const first = rows[0] || {};
+  const last = rows[rows.length - 1] || {};
+  summaryEl.textContent = `최근 ${rows.length}일 | 누적 ${fmtPct(last.cumulative_return_pct || 0)} (${fmtUsd(last.cumulative_pnl_usd || 0)}) | 첫날 ${first.date || "-"}`;
 }
 
 function renderLiveSection(data) {
@@ -1236,8 +2025,6 @@ function renderLiveSection(data) {
     const value = Number(p.value_usd || 0);
     const pnl = Number(p.pnl_usd || 0);
     const pnlPct = Number(p.pnl_pct || 0);
-    const tp = Number(p.tp_pct || 0) * 100;
-    const sl = Number(p.sl_pct || 0) * 100;
     return `
       <tr>
         <td>${p.model_name || p.model_id || "-"}</td>
@@ -1246,8 +2033,8 @@ function renderLiveSection(data) {
         <td>${avg > 0 ? fmtUsdPrice(avg) : "-"}</td>
         <td>${cur > 0 ? fmtUsdPrice(cur) : "-"}</td>
         <td>${fmtUsd(value)}</td>
-        <td class="${clsPn(pnl)}">${fmtUsd(pnl)} (${fmtPct(pnlPct)})</td>
-        <td>TP ${tp.toFixed(1)}% / SL ${sl.toFixed(1)}%</td>
+        <td class="${clsPn(pnl)}">${fmtPct(pnlPct)} <span class="muted">${fmtUsd(pnl)}</span></td>
+        <td>${p.exit_rule_text || "-"}</td>
         <td class="wrap">${p.reason || "-"}</td>
       </tr>
     `;
@@ -1310,7 +2097,14 @@ function renderLiveSection(data) {
   const liveMemeTrades = allLiveTrades.filter((t) => detectLiveTradeMarket(t) === "meme");
   const liveCryptoTrades = allLiveTrades.filter((t) => detectLiveTradeMarket(t) === "crypto");
 
-  const tradeRow = (t) => `
+  const tradeRow = (t) => {
+    const realized = (t || {}).realized !== false && String((t || {}).side || "").toLowerCase() === "sell";
+    const pnlUsd = realized ? ((t || {}).realized_pnl_usd ?? (t || {}).pnl_usd) : null;
+    const pnlPct = realized ? ((t || {}).realized_pnl_pct ?? (t || {}).pnl_pct) : null;
+    const pnlCell = pnlUsd == null
+      ? "-"
+      : `${fmtUsd(pnlUsd)} (${fmtPct(pnlPct || 0)})`;
+    return `
       <tr>
         <td>${fmtTs(t.ts)}</td>
         <td>${String(detectLiveTradeMarket(t) || "-").toUpperCase()}</td>
@@ -1319,18 +2113,47 @@ function renderLiveSection(data) {
         <td>${t.symbol || "-"}</td>
         <td>${fmtUsdPrice(t.price_usd)}</td>
         <td>${fmtUsd(t.notional_usd)}</td>
-        <td class="${clsPn(t.pnl_usd)}">${fmtUsd(t.pnl_usd)} (${fmtPct(t.pnl_pct)})</td>
+        <td class="${pnlUsd == null ? "" : clsPn(pnlUsd)}">${pnlCell}</td>
         <td class="wrap">${t.reason || "-"}</td>
       </tr>
     `;
+  };
   renderTableBody("liveMemeTradeRows", liveMemeTrades.slice(0, 500).map(tradeRow).join(""), 9);
   renderTableBody("liveCryptoTradeRows", liveCryptoTrades.slice(0, 500).map(tradeRow).join(""), 9);
+
+  const watchRows = (data.live_meme_watchlist || []).slice(0, 300);
+  const watchRowHtml = watchRows.map((row) => {
+    const remainSec = Math.max(0, Number(row.watch_remaining_seconds || 0));
+    const remainMin = Math.ceil(remainSec / 60);
+    const score = Number(row.score || 0);
+    return `
+      <tr>
+        <td>${fmtTs(row.ts)}</td>
+        <td>${row.symbol || "-"}</td>
+        <td>${row.model_name || row.model_id || "-"}</td>
+        <td>${row.grade || "-"}</td>
+        <td>${score.toFixed(4)}</td>
+        <td>${Number(row.market_cap_usd || 0) > 0 ? fmtUsd(row.market_cap_usd) : "-"}</td>
+        <td>${Number(row.volume_5m_usd || 0) > 0 ? fmtUsd(row.volume_5m_usd) : "-"}</td>
+        <td>${Number(row.liquidity_usd || 0) > 0 ? fmtUsd(row.liquidity_usd) : "-"}</td>
+        <td>${remainMin}분</td>
+        <td class="wrap">${row.score_low_reason || row.reason || "-"}</td>
+        <td class="wrap">${row.score_hold_hint || "-"}</td>
+      </tr>
+    `;
+  }).join("");
+  renderTableBody("liveMemeWatchRows", watchRowHtml, 11);
 
   const runtimeRows = (data.runtime_feedback_recent || [])
     .filter((row) => {
       const src = String(row.source || "").toLowerCase();
       const lvl = String(row.level || "").toLowerCase();
+      const status = String(row.status || "").toLowerCase();
+      const detail = String(row.detail || row.error || "").toLowerCase();
       if (!["error", "warn", "warning", "info"].includes(lvl)) return false;
+      if (status === "skip") return false;
+      if (src.includes(":skip")) return false;
+      if (detail.includes("live_skip:")) return false;
       return src.startsWith("live:") || src === "core:memecoin" || src === "core:crypto";
     })
     .slice(0, 300);
@@ -1348,15 +2171,10 @@ function renderLiveSection(data) {
       </tr>
     `;
   };
-  const memeRuntimeRows = runtimeRows.filter((row) => {
-    const src = String(row.source || "").toLowerCase();
-    return src.includes("meme") || src.includes("memecoin") || src === "core:memecoin";
-  });
   const cryptoRuntimeRows = runtimeRows.filter((row) => {
     const src = String(row.source || "").toLowerCase();
     return src.includes("crypto") || src.includes("bybit") || src === "core:crypto";
   });
-  renderTableBody("liveMemeRuntimeRows", memeRuntimeRows.map(runtimeRowHtml).join(""), 5);
   renderTableBody("liveCryptoRuntimeRows", cryptoRuntimeRows.map(runtimeRowHtml).join(""), 5);
 
   const memeDaily = buildLiveDailyCumulativeRows(liveMemeTrades);
@@ -1387,11 +2205,14 @@ function renderLiveSection(data) {
   const cryptoRealized = cryptoDaily.reduce((acc, row) => acc + Number(row.realized_pnl_usd || 0), 0);
   const memeCum = memeDaily.length ? Number(memeDaily[memeDaily.length - 1].cumulative_pnl_usd || 0) : 0;
   const cryptoCum = cryptoDaily.length ? Number(cryptoDaily[cryptoDaily.length - 1].cumulative_pnl_usd || 0) : 0;
+  const memeOpenWalletPnl = (data.live_meme_positions || []).reduce((acc, row) => acc + Number(row.pnl_usd || 0), 0);
+  const memeExplained = Number(memeRealized + memeOpenWalletPnl);
+  const memeGap = Number(livePerfPnlUsd - memeExplained);
   setText(
     "liveMemePnlStats",
     memeDaily.length
-      ? `실현 합계 ${fmtUsd(memeRealized)} | 누적 ${fmtUsd(memeCum)} | 일수 ${memeDaily.length}`
-      : "실전 MEME 청산 이력이 아직 없습니다."
+      ? `청산 실현손익 ${fmtUsd(memeRealized)} | 현재보유 평가손익 ${fmtUsd(memeOpenWalletPnl)} | 실계좌 총성과 ${fmtUsd(livePerfPnlUsd)} | 잔여 차이 ${fmtUsd(memeGap)}`
+      : `실전 MEME 청산 이력이 아직 없습니다. | 현재보유 평가손익 ${fmtUsd(memeOpenWalletPnl)} | 계좌 총성과 ${fmtUsd(livePerfPnlUsd)}`
   );
   setText(
     "liveCryptoPnlStats",
@@ -1490,21 +2311,23 @@ function renderLiveMarketToggles(data) {
 
 function renderLiveModelSelectors(data) {
   const settings = data.settings || {};
-  const memeSelected = parseModelCsv(settings.live_meme_models || settings.meme_autotrade_models || "A,B,C");
-  const cryptoSelected = parseModelCsv(settings.live_crypto_models || settings.crypto_autotrade_models || "A,B,C");
-  MODEL_IDS.forEach((id) => {
+  const memeSelected = parseModelCsv(settings.live_meme_models || settings.meme_autotrade_models || "A,B,C", MEME_MODEL_IDS);
+  const cryptoSelected = parseModelCsv(settings.live_crypto_models || settings.crypto_autotrade_models || "A,B,C,D", CRYPTO_MODEL_IDS);
+  MEME_MODEL_IDS.forEach((id) => {
     setText(`liveLabelMeme${id}`, marketModelName(data, "meme", id));
+  });
+  CRYPTO_MODEL_IDS.forEach((id) => {
     setText(`liveLabelCrypto${id}`, marketModelName(data, "crypto", id));
   });
   if (!LIVE_MODEL_DIRTY.meme) {
-    MODEL_IDS.forEach((id) => {
+    MEME_MODEL_IDS.forEach((id) => {
       const m = document.querySelector(`input[type="checkbox"][data-live-market="meme"][value="${id}"]`);
       if (m) m.checked = memeSelected.includes(id);
     });
     setText("liveModelSaveMsgMeme", "현재 설정 반영됨");
   }
   if (!LIVE_MODEL_DIRTY.crypto) {
-    MODEL_IDS.forEach((id) => {
+    CRYPTO_MODEL_IDS.forEach((id) => {
       const c = document.querySelector(`input[type="checkbox"][data-live-market="crypto"][value="${id}"]`);
       if (c) c.checked = cryptoSelected.includes(id);
     });
@@ -1518,6 +2341,7 @@ function renderLiveModelSelectors(data) {
     const marketLabel = market === "meme" ? "밈" : "크립토";
     if (!liveEnabled) {
       rows.push({
+        marketKey: market,
         market: marketLabel,
         model: "-",
         config: "시장 OFF",
@@ -1526,6 +2350,7 @@ function renderLiveModelSelectors(data) {
     }
     if (!selectedIds.length) {
       rows.push({
+        marketKey: market,
         market: marketLabel,
         model: "-",
         config: "ON 상태인데 선택된 모델이 없습니다.",
@@ -1534,6 +2359,7 @@ function renderLiveModelSelectors(data) {
     }
     selectedIds.forEach((id) => {
       rows.push({
+        marketKey: market,
         market: marketLabel,
         model: marketModelName(data, market, id),
         config: `ON | ${liveModelConfigText(data, market, id)}`,
@@ -1542,8 +2368,8 @@ function renderLiveModelSelectors(data) {
   };
   pushRows("meme", memeSelected, memeLive);
   pushRows("crypto", cryptoSelected, cryptoLive);
-
-  const html = rows.map((r) => `
+  const visibleRows = rows.filter((r) => r.marketKey === VIEW.liveMarket || r.market === (VIEW.liveMarket === "meme" ? "밈" : "크립토"));
+  const html = visibleRows.map((r) => `
       <tr>
         <td>${r.market}</td>
         <td>${r.model}</td>
@@ -1555,14 +2381,14 @@ function renderLiveModelSelectors(data) {
 
 function renderSettings(data) {
   const s = data.settings || {};
-  const memeModelText = modelListText(data, "meme", parseModelCsv(s.meme_autotrade_models || "A,B,C"));
-  const cryptoModelText = modelListText(data, "crypto", parseModelCsv(s.crypto_autotrade_models || "A,B,C"));
+  const memeModelText = modelListText(data, "meme", parseModelCsv(s.meme_autotrade_models || "A,B,C", MEME_MODEL_IDS));
+  const cryptoModelText = modelListText(data, "crypto", parseModelCsv(s.crypto_autotrade_models || "A,B,C,D", CRYPTO_MODEL_IDS));
   const liveMemeModelText = s.live_enable_meme === false
     ? "OFF (시장 비활성)"
-    : modelListText(data, "meme", parseModelCsv(s.live_meme_models || s.meme_autotrade_models || "A,B,C"));
+    : modelListText(data, "meme", parseModelCsv(s.live_meme_models || s.meme_autotrade_models || "A,B,C", MEME_MODEL_IDS));
   const liveCryptoModelText = s.live_enable_crypto === false
     ? "OFF (시장 비활성)"
-    : modelListText(data, "crypto", parseModelCsv(s.live_crypto_models || s.crypto_autotrade_models || "A,B,C"));
+    : modelListText(data, "crypto", parseModelCsv(s.live_crypto_models || s.crypto_autotrade_models || "A,B,C,D", CRYPTO_MODEL_IDS));
   const rows = [
     ["TRADE_MODE", String(s.trade_mode || "-").toUpperCase(), "현재 거래 모드"],
     ["ENABLE_AUTOTRADE", s.enable_autotrade ? "ON" : "OFF", "자동매매 동작 여부"],
@@ -1579,6 +2405,12 @@ function renderSettings(data) {
     ["BYBIT_LEVERAGE_MIN/MAX", `${Number(s.bybit_leverage_min || 0).toFixed(2)} / ${Number(s.bybit_leverage_max || 0).toFixed(2)}`, "실전 레버리지 범위"],
     ["MEME_MAX_POSITIONS", Number(s.meme_max_positions || 0), "밈 최대 동시 포지션"],
     ["MEME_MIN_ENTRY_GRADE", String(s.meme_min_entry_grade || "-"), "밈 진입 최소 등급"],
+    ["OPENAI_REVIEW_ENABLED", s.openai_review_enabled ? "ON" : "OFF", "후보 재심사 + 내러티브 판정기 사용 여부"],
+    ["OPENAI_MODEL", String(s.openai_model || "-"), "OpenAI 후보 재심사 모델"],
+    ["OPENAI_MONTHLY_BUDGET_USD", fmtUsd(s.openai_monthly_budget_usd || 0), "월 예산 상한"],
+    ["OPENAI_DAILY_BUDGET_USD", fmtUsd(s.openai_daily_budget_usd || 0), "일 예산 상한"],
+    ["OPENAI_CANDIDATE_REVIEW_INTERVAL_SECONDS", `${Number(s.openai_candidate_review_interval_seconds || 0)}s`, "후보 재심사 호출 주기"],
+    ["OPENAI_CANDIDATE_TOP_N", Number(s.openai_candidate_top_n || 0), "재심사 대상 후보 수"],
     ["MODEL_AUTOTUNE_INTERVAL_HOURS", `${Number(s.model_autotune_interval_hours || 0)}h`, "모델 자동 튜닝 주기"],
     ["SCAN_INTERVAL_SECONDS", `${Number(s.scan_interval_seconds || 0)}s`, "엔진 스캔 주기"],
   ];
@@ -1730,9 +2562,22 @@ function renderAlerts(data) {
     e.memecoin ? `memecoin: ${e.memecoin}` : "",
     e.bybit ? `crypto: ${e.bybit}` : "",
   ].filter(Boolean).join(" | ");
-  document.getElementById("errorBar").textContent = errorText || "오류 없음";
+  const errorBar = document.getElementById("errorBar");
+  if (errorBar) errorBar.textContent = errorText || "오류 없음";
+  const errorBarCrypto = document.getElementById("errorBarCrypto");
+  if (errorBarCrypto) errorBarCrypto.textContent = errorText || "오류 없음";
 
-  const rows = (data.alerts || []).slice(-120).reverse().map((a) => `
+  const rows = (data.alerts || [])
+    .filter((a) => {
+      const title = String(a.title || "").toLowerCase();
+      return !title.includes("텔레그램 폴링 잠금 대기") && !title.includes("텔레그램 폴링 충돌");
+    });
+
+  const renderRows = (items, targetId) => {
+    const html = (items || [])
+      .slice(-120)
+      .reverse()
+      .map((a) => `
       <tr>
         <td>${fmtTs(a.ts)}</td>
         <td>${a.level || "-"}</td>
@@ -1740,7 +2585,17 @@ function renderAlerts(data) {
         <td class="wrap">${a.text || "-"}</td>
       </tr>
     `).join("");
-  renderTableBody("alertRows", rows, 4);
+    renderTableBody(targetId, html, 4);
+  };
+
+  const isCryptoAlert = (a) => {
+    const text = `${a.title || ""} ${a.text || ""}`.toLowerCase();
+    return text.includes("crypto") || text.includes("bybit") || text.includes("거래소") || text.includes("레버리지");
+  };
+  const cryptoRows = rows.filter(isCryptoAlert);
+  const memeRows = rows.filter((a) => !isCryptoAlert(a));
+  renderRows(memeRows, "alertRowsMeme");
+  renderRows(cryptoRows, "alertRowsCrypto");
 }
 
 function drawLineChart(svgId, pointsRaw, strokeColor, fillColor) {
@@ -1868,9 +2723,9 @@ function renderDetailPane(data) {
     document.getElementById("signalTitle").textContent = `${modelName} | meme signals`;
     document.getElementById("positionTitle").textContent = `${modelName} | meme positions`;
     document.getElementById("tradeTitle").textContent = `${modelName} | meme trades`;
-    document.getElementById("pnlTitle").textContent = `${modelName} | meme daily PNL`;
+    document.getElementById("pnlTitle").textContent = `${modelName} | meme daily return`;
     document.getElementById("detailSignalHead").innerHTML = "<tr><th>Symbol</th><th>Grade</th><th>Score</th><th>Prob</th><th>Price</th><th>Reason</th></tr>";
-    document.getElementById("detailPositionHead").innerHTML = "<tr><th>Symbol</th><th>Value</th><th>PNL</th><th>Strategy</th><th>TP/SL</th><th>Reason</th></tr>";
+    document.getElementById("detailPositionHead").innerHTML = "<tr><th>Symbol</th><th>Value</th><th>수익률</th><th>Strategy</th><th>청산 규칙</th><th>Reason</th></tr>";
     const sRows = signals.slice(0, 60).map((s) => `
         <tr>
           <td>${s.symbol || "-"}</td>
@@ -1886,9 +2741,9 @@ function renderDetailPane(data) {
         <tr>
           <td>${p.symbol || "-"} ${p.grade ? `(${p.grade})` : ""}</td>
           <td>${fmtUsd(p.value_usd)}</td>
-          <td class="${clsPn(p.pnl_usd)}">${fmtUsd(p.pnl_usd)} (${fmtPct(p.pnl_pct)})</td>
+          <td class="${clsPn(p.pnl_usd)}">${fmtPct(p.pnl_pct)} <span class="muted">${fmtUsd(p.pnl_usd)}</span></td>
           <td>${p.strategy || "-"}</td>
-          <td>${(Number(p.tp_pct || 0) * 100).toFixed(1)}% / ${(Number(p.sl_pct || 0) * 100).toFixed(1)}%</td>
+          <td>${p.exit_rule_text || "-"}</td>
           <td class="wrap">${p.reason || "-"}</td>
         </tr>
       `).join("");
@@ -1941,7 +2796,7 @@ function renderDetailPane(data) {
         <td>${t.side || "-"}</td>
         <td>${t.symbol || "-"}</td>
         <td>${fmtUsd(t.notional_usd)}</td>
-        <td class="${clsPn(t.pnl_usd)}">${fmtUsd(t.pnl_usd)}</td>
+        <td class="${clsPn(t.pnl_usd)}">${t.pnl_usd == null ? "-" : `${fmtPct(Number(t.pnl_pct || 0) * 100)} <span class="muted">${fmtUsd(t.pnl_usd)}</span>`}</td>
         <td class="wrap">${t.reason || "-"}</td>
       </tr>
     `).join("");
@@ -1972,18 +2827,7 @@ async function refreshDashboard() {
     VIEW.data = data;
     renderOverallMetrics(data);
     renderCycleStatus(data);
-    renderModelRanking(data.meme_model_rankings || data.meme_model_runs || [], "memeModelRows");
-    renderModelRanking(data.crypto_model_rankings || data.crypto_model_runs || [], "cryptoModelRows");
     renderDemoModelBoard(data);
-    renderTrend(data);
-    renderTrendSources(data);
-    renderTrendDatabase(data);
-    renderTrendInsights(data);
-    renderTrendBriefLogs(data);
-    renderTrendDistribution(data);
-    renderTuneHistory(data);
-    drawTrendChart14d(data);
-    renderCryptoTrend(data);
     renderMemeGrades(data);
     renderNewMemeFeed(data);
     renderWallet(data);
@@ -1992,16 +2836,20 @@ async function refreshDashboard() {
     renderSettings(data);
     renderLiveMarketToggles(data);
     renderLiveModelSelectors(data);
-    renderAllModelPositions(data);
     renderAlerts(data);
     updateModelTabLabels(data);
+    updateModelCryptoTabLabels(data);
     updateCryptoModelTabLabels(data);
-    renderDetailPane(data);
+    updateDemoTabLabels(data);
+    renderModelWorkspace(data);
     setTabState();
+    setModelCryptoTabState();
     setCryptoTabState();
+    setDemoTabState();
     setWorkspaceState();
   } catch (err) {
-    document.getElementById("errorBar").textContent = String(err);
+    const errorEl = document.getElementById("errorBar");
+    if (errorEl) errorEl.textContent = String(err);
   } finally {
     busy = false;
   }
@@ -2009,17 +2857,23 @@ async function refreshDashboard() {
 
 bindControls();
 bindSecretControls();
+bindMemeScoreLookupControls();
 bindLiveModelControls();
 bindLiveMarketControls();
 bindLivePerformanceControls();
 bindTabs();
-bindDetailSelectControls();
 bindCryptoTrendTabs();
+bindModelCryptoTabs();
+bindDemoTabs();
+bindDemoMarketTabs();
 bindLiveMarketTabs();
 bindWorkspaceTabs();
 initNavState();
 setTabState();
+setModelCryptoTabState();
 setCryptoTabState();
+setDemoTabState();
+setDemoMarketTabState();
 setLiveMarketTabState();
 setWorkspaceState();
 refreshDashboard();

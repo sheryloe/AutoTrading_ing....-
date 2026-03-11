@@ -84,6 +84,65 @@ SYMBOL_STOPWORDS = {
 SOLANA_WALLET_RE = re.compile(r"\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
 URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 DOMAIN_RE = re.compile(r"\b[a-z0-9\-]+\.(?:com|net|org|io|xyz|info|ai|gg)\b", re.IGNORECASE)
+EVM_CONTRACT_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
+X_FALLBACK_BLOCK_MARKERS = (
+    "rss reader not yet whitelisted",
+    "log in to x",
+    "sign in to x",
+    "create account",
+    "join x today",
+    "something went wrong",
+    "rate limit exceeded",
+)
+X_FALLBACK_STOPWORDS = SYMBOL_STOPWORDS | {
+    "HAVE",
+    "MORE",
+    "WAIT",
+    "UNDER",
+    "ASSETS",
+    "CEO",
+    "COINS",
+    "MANAGEMENT",
+    "INSANE",
+    "LMAO",
+    "POWER",
+    "BUILD",
+    "BALANCED",
+    "PERMISSION",
+    "SATURDAYVIBE",
+    "NFA",
+    "ATTRACT",
+    "MY",
+    "YOUR",
+    "OUR",
+    "THEY",
+    "THEM",
+    "WILL",
+    "WOULD",
+    "COULD",
+    "SHOULD",
+    "JUST",
+    "VERY",
+    "MUCH",
+    "ONLY",
+    "ALPHA",
+    "ENTRY",
+    "EXIT",
+    "THESIS",
+    "THREAD",
+    "QUOTE",
+    "ACCOUNT",
+    "PROFILE",
+    "FOLLOW",
+    "LIKES",
+    "LIKE",
+    "VIEW",
+    "VIEWS",
+    "IMAGE",
+    "VIDEO",
+    "SPACE",
+    "SPACES",
+}
 
 
 def extract_symbols(text: str) -> set[str]:
@@ -385,6 +444,7 @@ class TrendCollector:
     ) -> None:
         self.session = requests.Session()
         self.timeout_seconds = timeout_seconds
+        self.dex = DexScreenerClient(timeout_seconds=timeout_seconds)
         self.coingecko_api_key = str(coingecko_api_key or "").strip()
         self.solscan_api_key = str(solscan_api_key or "").strip()
         self.solana_rpc_url = str(solana_rpc_url or "").strip()
@@ -742,7 +802,7 @@ class TrendCollector:
     def _parse_feed_entries(self, xml_text: str, max_items: int) -> list[tuple[str, str]]:
         out: list[tuple[str, str]] = []
         try:
-            root = ET.fromstring(xml_text)
+            root = ET.fromstring(str(xml_text or "").lstrip())
         except Exception:
             return out
         nodes = list(root.findall(".//item"))
@@ -895,21 +955,19 @@ class TrendCollector:
             raise RuntimeError(f"trader_rss_unavailable:{reason[:180]}")
         return events
 
-    def _extract_symbols_from_x_markdown(
+    def _extract_x_post_snippets(
         self,
         markdown_text: str,
         *,
         max_posts: int = 8,
-        max_symbols: int = 12,
-    ) -> set[str]:
+    ) -> list[str]:
         text = str(markdown_text or "")
         if not text:
-            return set()
+            return []
         lines = [str(line or "").strip() for line in text.splitlines()]
         lines = [line for line in lines if line]
         if not lines:
-            return set()
-
+            return []
         snippets: list[str] = []
         buffer: list[str] = []
         in_posts = False
@@ -932,34 +990,132 @@ class TrendCollector:
                 buffer = []
                 if len(snippets) >= max(1, int(max_posts)):
                     break
-
         if not snippets:
             snippets = [" ".join(lines[:220])]
+        return snippets[: max(1, int(max_posts))]
 
-        symbols: list[str] = []
-        for snippet in snippets[: max(1, int(max_posts))]:
-            for m in re.findall(r"\$([A-Za-z][A-Za-z0-9]{1,11})", snippet):
-                sym = str(m or "").upper().strip()
-                if not sym or sym in SYMBOL_STOPWORDS:
-                    continue
-                symbols.append(sym)
-            if len(symbols) < max(1, int(max_symbols)):
-                for sym in extract_symbols(snippet):
-                    if sym in SYMBOL_STOPWORDS:
-                        continue
-                    symbols.append(sym)
-
-        dedup: list[str] = []
+    def _resolve_symbols_from_contract_addresses(
+        self,
+        addresses: list[str],
+        *,
+        max_symbols: int = 6,
+    ) -> list[str]:
+        ranked: list[str] = []
         seen: set[str] = set()
-        for sym in symbols:
-            key = str(sym or "").upper().strip()
-            if not key or key in seen:
+        for addr in addresses:
+            token = str(addr or "").strip()
+            if not token or token in seen:
                 continue
-            seen.add(key)
-            dedup.append(key)
-            if len(dedup) >= max(1, int(max_symbols)):
+            seen.add(token)
+            try:
+                if token.lower().startswith("0x"):
+                    pairs = self.dex.search_pairs(token)
+                    best = None
+                    for row in pairs:
+                        if not isinstance(row, dict):
+                            continue
+                        base = row.get("baseToken") if isinstance(row.get("baseToken"), dict) else {}
+                        if str((base or {}).get("address") or "").strip().lower() != token.lower():
+                            continue
+                        liq = float(((row.get("liquidity") or {}).get("usd")) or 0.0)
+                        if best is None or liq > float(((best.get("liquidity") or {}).get("usd")) or 0.0):
+                            best = row
+                    parsed = self.dex._parse_pair(best, source="dex_search") if best else None
+                else:
+                    parsed = self.dex.fetch_snapshot_for_token("solana", token)
+                sym = str(getattr(parsed, "symbol", "") or "").upper().strip()
+                if sym and sym not in X_FALLBACK_STOPWORDS:
+                    ranked.append(sym)
+            except Exception:
+                continue
+            if len(ranked) >= max(1, int(max_symbols)):
                 break
-        return set(dedup)
+        return ranked
+
+    def _extract_symbols_from_x_markdown(
+        self,
+        markdown_text: str,
+        *,
+        max_posts: int = 8,
+        max_symbols: int = 12,
+    ) -> set[str]:
+        text = str(markdown_text or "")
+        if not text:
+            return set()
+        lowered_all = text.lower()
+        if any(marker in lowered_all for marker in X_FALLBACK_BLOCK_MARKERS):
+            return set()
+        snippets = self._extract_x_post_snippets(text, max_posts=max_posts)
+        if not snippets:
+            return set()
+
+        explicit_counts: dict[str, int] = {}
+        repeated_counts: dict[str, int] = {}
+        repeated_snippet_hits: dict[str, int] = {}
+        contract_addresses: list[str] = []
+        for snippet in snippets[: max(1, int(max_posts))]:
+            clean = DOMAIN_RE.sub(" ", URL_RE.sub(" ", snippet))
+            for m in re.findall(r"\$([A-Za-z][A-Za-z0-9]{1,11})", clean):
+                sym = str(m or "").upper().strip()
+                if not sym or sym in X_FALLBACK_STOPWORDS:
+                    continue
+                explicit_counts[sym] = int(explicit_counts.get(sym, 0)) + 1
+
+            for addr in SOLANA_WALLET_RE.findall(clean):
+                token = str(addr or "").strip()
+                if len(token) >= 32:
+                    contract_addresses.append(token)
+            for addr in EVM_CONTRACT_RE.findall(clean):
+                token = str(addr or "").strip()
+                if token:
+                    contract_addresses.append(token)
+
+            local_seen: set[str] = set()
+            for sym in extract_symbols(clean):
+                key = str(sym or "").upper().strip()
+                if not key or key in X_FALLBACK_STOPWORDS:
+                    continue
+                repeated_counts[key] = int(repeated_counts.get(key, 0)) + 1
+                if key not in local_seen:
+                    repeated_snippet_hits[key] = int(repeated_snippet_hits.get(key, 0)) + 1
+                    local_seen.add(key)
+
+        ranked: list[str] = []
+        seen: set[str] = set()
+        for sym, _ in sorted(explicit_counts.items(), key=lambda item: (-int(item[1]), item[0])):
+            if sym in seen:
+                continue
+            seen.add(sym)
+            ranked.append(sym)
+            if len(ranked) >= max(1, int(max_symbols)):
+                break
+        if len(ranked) < max(1, int(max_symbols)):
+            for sym in self._resolve_symbols_from_contract_addresses(
+                contract_addresses,
+                max_symbols=max(1, int(max_symbols) - len(ranked)),
+            ):
+                if sym in seen or sym in X_FALLBACK_STOPWORDS:
+                    continue
+                seen.add(sym)
+                ranked.append(sym)
+                if len(ranked) >= max(1, int(max_symbols)):
+                    break
+        if len(ranked) < max(1, int(max_symbols)):
+            repeated_ranked = sorted(
+                repeated_counts.items(),
+                key=lambda item: (-int(repeated_snippet_hits.get(item[0], 0)), -int(item[1]), item[0]),
+            )
+            for sym, cnt in repeated_ranked:
+                if sym in seen or sym in X_FALLBACK_STOPWORDS:
+                    continue
+                distinct_posts = int(repeated_snippet_hits.get(sym, 0))
+                if distinct_posts < 2 and int(cnt) < 3:
+                    continue
+                seen.add(sym)
+                ranked.append(sym)
+                if len(ranked) >= max(1, int(max_symbols)):
+                    break
+        return set(ranked)
 
     def _fetch_trader_x_fallback_symbols(self, account: str, *, now_ts: int | None = None) -> set[str]:
         handle = str(account or "").strip().lstrip("@")
@@ -1024,6 +1180,61 @@ class TrendCollector:
                             ts=now_ts,
                         )
                     )
+        return events
+
+    def fetch_4chan_events(
+        self,
+        boards_csv: str,
+        max_threads_per_board: int = 12,
+    ) -> list[TrendEvent]:
+        events: list[TrendEvent] = []
+        boards = [str(b or "").strip().lower() for b in str(boards_csv or "").split(",") if str(b or "").strip()]
+        if not boards:
+            return events
+        now_ts = int(time.time())
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; AxiomFlowBot/1.0)"}
+        thread_cap = max(1, min(50, int(max_threads_per_board)))
+        for board in boards[:6]:
+            try:
+                res = self.session.get(
+                    f"https://a.4cdn.org/{board}/catalog.json",
+                    headers=headers,
+                    timeout=self.timeout_seconds,
+                )
+                res.raise_for_status()
+                pages = res.json()
+            except Exception:
+                continue
+            if not isinstance(pages, list):
+                continue
+            seen_threads = 0
+            for page in pages[:2]:
+                threads = list((page or {}).get("threads") or [])
+                for row in threads:
+                    if seen_threads >= thread_cap:
+                        break
+                    if not isinstance(row, dict):
+                        continue
+                    title = str(row.get("sub") or "").strip()
+                    comment = str(row.get("com") or "").strip()
+                    merged = f"{title} {comment}".strip()
+                    symbols = extract_symbols(merged)
+                    if not symbols:
+                        continue
+                    snippet = re.sub(r"<[^>]+>", " ", merged)
+                    snippet = re.sub(r"\s+", " ", snippet).strip()[:180]
+                    for sym in symbols:
+                        events.append(
+                            TrendEvent(
+                                source="community_4chan",
+                                symbol=sym,
+                                text=f"/{board}/: {snippet}",
+                                ts=now_ts,
+                            )
+                        )
+                    seen_threads += 1
+                if seen_threads >= thread_cap:
+                    break
         return events
 
     def fetch_wallet_events(self, wallets_csv: str) -> list[TrendEvent]:
@@ -1861,6 +2072,12 @@ class SolscanProClient:
             }
 
         total = max(0.000001, float(sum(amounts)))
+        owner_rows = [
+            {"owner": str(owner), "amount": float(amount), "share": float(amount) / total}
+            for owner, amount in zip(owners, amounts)
+            if str(owner)
+        ]
+        owner_rows.sort(key=lambda row: float(row.get("share") or 0.0), reverse=True)
         shares = sorted([a / total for a in amounts], reverse=True)
         top1 = float(shares[0]) if shares else 1.0
         top5 = float(sum(shares[:5])) if shares else 1.0
@@ -1906,6 +2123,12 @@ class SolscanProClient:
             "holder_risk": holder_risk,
             "smart_wallet_score": smart_wallet_score,
             "suspicious": bool(holder_risk >= 0.68),
+            "top_holder_wallets": [str(row.get("owner") or "") for row in owner_rows[:20] if str(row.get("owner") or "")],
+            "top_holder_weights": {
+                str(row.get("owner") or ""): float(row.get("share") or 0.0)
+                for row in owner_rows[:20]
+                if str(row.get("owner") or "")
+            },
         }
 
 

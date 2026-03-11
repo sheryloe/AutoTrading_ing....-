@@ -151,6 +151,34 @@ def api_dashboard() -> Any:
     return jsonify(engine.dashboard_payload())
 
 
+@app.get("/api/meme-score-history")
+def api_meme_score_history() -> Any:
+    token_address = str(request.args.get("token_address") or request.args.get("token") or "").strip()
+    if not token_address:
+        return jsonify({"ok": False, "error": "token_address is required"}), 400
+    raw_limit = request.args.get("limit")
+    try:
+        limit = int(raw_limit) if raw_limit is not None else 240
+    except Exception:
+        limit = 240
+    raw_refresh = request.args.get("refresh")
+    if raw_refresh is None:
+        ensure_fresh = True
+    else:
+        ensure_fresh = str(raw_refresh).strip().lower() in {"1", "true", "yes", "on"}
+    force_refresh = bool(raw_refresh is not None and ensure_fresh)
+    try:
+        result = engine.get_meme_score_history(
+            token_address=token_address,
+            limit=limit,
+            ensure_fresh=ensure_fresh,
+            force_refresh=force_refresh,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "result": result})
+
+
 @app.post("/api/control/start")
 def api_start() -> Any:
     engine.start()

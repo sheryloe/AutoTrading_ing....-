@@ -42,6 +42,10 @@ class SolanaWalletTracker:
         lamports = float((result or {}).get("value") or 0.0)
         return lamports / 1_000_000_000.0
 
+    def get_sol_balance_raw(self, wallet_address: str) -> int:
+        result = self._rpc("getBalance", [wallet_address])
+        return int((result or {}).get("value") or 0)
+
     def get_token_accounts(self, wallet_address: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for program_id in (TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID):
@@ -83,6 +87,157 @@ class SolanaWalletTracker:
                 continue
         qty = float(total_raw) / float(10**max(0, decimals)) if total_raw > 0 else 0.0
         return {"raw_amount": int(total_raw), "decimals": int(decimals), "qty": float(qty)}
+
+    def get_wallet_snapshot(self, wallet_address: str, mint_address: str = "") -> dict[str, Any]:
+        snap = {
+            "wallet_address": str(wallet_address or "").strip(),
+            "token_address": str(mint_address or "").strip(),
+            "sol_lamports": 0,
+            "sol_qty": 0.0,
+            "token_raw_amount": 0,
+            "token_qty": 0.0,
+            "token_decimals": 0,
+        }
+        if not wallet_address:
+            return snap
+        try:
+            sol_lamports = self.get_sol_balance_raw(wallet_address)
+            snap["sol_lamports"] = int(sol_lamports)
+            snap["sol_qty"] = float(sol_lamports) / 1_000_000_000.0
+        except Exception:
+            pass
+        mint = str(mint_address or "").strip()
+        if mint:
+            try:
+                token_row = self.get_token_balance_raw(wallet_address, mint)
+                snap["token_raw_amount"] = int(token_row.get("raw_amount") or 0)
+                snap["token_qty"] = float(token_row.get("qty") or 0.0)
+                snap["token_decimals"] = int(token_row.get("decimals") or 0)
+            except Exception:
+                pass
+        return snap
+
+    def get_signatures_for_address(
+        self,
+        address: str,
+        limit: int = 20,
+        before: str = "",
+        until: str = "",
+    ) -> list[dict[str, Any]]:
+        wallet = str(address or "").strip()
+        if not wallet:
+            return []
+        params: dict[str, Any] = {"limit": max(1, min(100, int(limit or 20)))}
+        if str(before or "").strip():
+            params["before"] = str(before).strip()
+        if str(until or "").strip():
+            params["until"] = str(until).strip()
+        result = self._rpc("getSignaturesForAddress", [wallet, params])
+        rows = result or []
+        return list(rows) if isinstance(rows, list) else []
+
+    def get_transaction(self, signature: str) -> dict[str, Any]:
+        sig = str(signature or "").strip()
+        if not sig:
+            return {}
+        result = self._rpc(
+            "getTransaction",
+            [
+                sig,
+                {
+                    "encoding": "jsonParsed",
+                    "commitment": "confirmed",
+                    "maxSupportedTransactionVersion": 0,
+                },
+            ],
+        )
+        return dict(result or {}) if isinstance(result, dict) else {}
+
+    @staticmethod
+    def _token_amount_raw(token_amount: dict[str, Any]) -> tuple[int, int, float]:
+        raw = int(token_amount.get("amount") or 0)
+        decimals = int(token_amount.get("decimals") or 0)
+        qty = float(raw) / float(10**max(0, decimals)) if raw > 0 else 0.0
+        return raw, decimals, qty
+
+    def get_wallet_transaction_deltas(
+        self,
+        signature: str,
+        wallet_address: str,
+        tracked_mints: set[str] | list[str] | tuple[str, ...] | None = None,
+    ) -> dict[str, Any]:
+        wallet = str(wallet_address or "").strip()
+        if not wallet:
+            return {}
+        tx = self.get_transaction(signature)
+        if not tx:
+            return {}
+        meta = dict(tx.get("meta") or {})
+        transaction = dict(tx.get("transaction") or {})
+        message = dict(transaction.get("message") or {})
+        account_keys = list(message.get("accountKeys") or [])
+        keys: list[str] = []
+        for row in account_keys:
+            if isinstance(row, dict):
+                keys.append(str(row.get("pubkey") or "").strip())
+            else:
+                keys.append(str(row or "").strip())
+        wallet_index = -1
+        for idx, key in enumerate(keys):
+            if key == wallet:
+                wallet_index = idx
+                break
+        pre_balances = list(meta.get("preBalances") or [])
+        post_balances = list(meta.get("postBalances") or [])
+        wallet_pre_lamports = 0
+        wallet_post_lamports = 0
+        if 0 <= wallet_index < len(pre_balances):
+            wallet_pre_lamports = int(pre_balances[wallet_index] or 0)
+        if 0 <= wallet_index < len(post_balances):
+            wallet_post_lamports = int(post_balances[wallet_index] or 0)
+        tracked = {str(m).strip() for m in list(tracked_mints or []) if str(m or "").strip()}
+        token_map: dict[str, dict[str, Any]] = {}
+        for phase, rows in (("pre", meta.get("preTokenBalances") or []), ("post", meta.get("postTokenBalances") or [])):
+            for row in list(rows or []):
+                if not isinstance(row, dict):
+                    continue
+                owner = str(row.get("owner") or "").strip()
+                mint = str(row.get("mint") or "").strip()
+                if owner != wallet or not mint:
+                    continue
+                if tracked and mint not in tracked:
+                    continue
+                amt_raw, decimals, qty = self._token_amount_raw(dict(row.get("uiTokenAmount") or {}))
+                rec = token_map.setdefault(
+                    mint,
+                    {
+                        "mint": mint,
+                        "decimals": int(decimals),
+                        "pre_raw": 0,
+                        "post_raw": 0,
+                        "pre_qty": 0.0,
+                        "post_qty": 0.0,
+                    },
+                )
+                rec["decimals"] = max(int(rec.get("decimals") or 0), int(decimals))
+                rec[f"{phase}_raw"] = int(amt_raw)
+                rec[f"{phase}_qty"] = float(qty)
+        for rec in token_map.values():
+            rec["delta_raw"] = int(rec.get("post_raw") or 0) - int(rec.get("pre_raw") or 0)
+            rec["delta_qty"] = float(rec.get("post_qty") or 0.0) - float(rec.get("pre_qty") or 0.0)
+        fee_lamports = int(meta.get("fee") or 0)
+        return {
+            "signature": str(signature or "").strip(),
+            "slot": int(tx.get("slot") or 0),
+            "block_time": int(tx.get("blockTime") or 0),
+            "fee_lamports": int(fee_lamports),
+            "wallet_pre_sol_lamports": int(wallet_pre_lamports),
+            "wallet_post_sol_lamports": int(wallet_post_lamports),
+            "net_sol_change_lamports": int(wallet_post_lamports - wallet_pre_lamports),
+            "gross_sol_change_lamports": int(wallet_post_lamports - wallet_pre_lamports + fee_lamports),
+            "token_deltas": token_map,
+            "meta_err": meta.get("err"),
+        }
 
     def _get_sol_price_usd(self) -> float:
         now = time.time()
@@ -148,7 +303,7 @@ class SolanaWalletTracker:
         except Exception:
             token_accounts = []
 
-        snapshot_cache: dict[str, dict[str, Any]] = {}
+        aggregated: dict[str, dict[str, Any]] = {}
         for row in token_accounts:
             try:
                 parsed = (((row or {}).get("account") or {}).get("data") or {}).get("parsed") or {}
@@ -164,7 +319,24 @@ class SolanaWalletTracker:
                     amount_ui = float(amount_ui_val or 0.0)
                 if not mint or amount_ui <= 0:
                     continue
+                rec = aggregated.setdefault(
+                    mint,
+                    {
+                        "token_address": mint,
+                        "qty": 0.0,
+                        "raw_amount": 0,
+                        "decimals": int(decimals),
+                    },
+                )
+                rec["qty"] = float(rec.get("qty") or 0.0) + float(amount_ui)
+                rec["raw_amount"] = int(rec.get("raw_amount") or 0) + int(amount_raw)
+                rec["decimals"] = max(int(rec.get("decimals") or 0), int(decimals))
+            except Exception:
+                continue
 
+        snapshot_cache: dict[str, dict[str, Any]] = {}
+        for mint, rec in aggregated.items():
+            try:
                 snap = snapshot_cache.get(mint)
                 if snap is None:
                     s = dex.fetch_snapshot_for_token("solana", mint)
@@ -174,7 +346,8 @@ class SolanaWalletTracker:
                         "price_usd": float(s.price_usd if s else 0.0),
                     }
                     snapshot_cache[mint] = snap
-                value_usd = amount_ui * float(snap["price_usd"])
+                qty = float(rec.get("qty") or 0.0)
+                value_usd = qty * float(snap["price_usd"])
                 force_include = mint in include_set
                 if value_usd < min_usd and not force_include:
                     continue
@@ -183,11 +356,11 @@ class SolanaWalletTracker:
                         "symbol": str(snap["symbol"]).upper(),
                         "name": str(snap["name"]),
                         "token_address": mint,
-                        "qty": amount_ui,
-                        "raw_amount": int(amount_raw),
-                        "decimals": int(decimals),
+                        "qty": float(qty),
+                        "raw_amount": int(rec.get("raw_amount") or 0),
+                        "decimals": int(rec.get("decimals") or 0),
                         "price_usd": float(snap["price_usd"]),
-                        "value_usd": value_usd,
+                        "value_usd": float(value_usd),
                     }
                 )
             except Exception:

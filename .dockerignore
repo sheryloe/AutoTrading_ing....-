@@ -6,5 +6,12 @@ __pycache__/
 .git/
 .venv/
 venv/
+.env
+state.json
+state.reconcile_backup_*.json
+model_online.json
+runtime_settings.json
+runtime_settings.local.json
+build/
+dist/
 reports/
-
