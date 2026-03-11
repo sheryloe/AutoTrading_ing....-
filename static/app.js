@@ -1857,10 +1857,12 @@ function renderModelWorkspace(data) {
   const levRange = Array.isArray(cryptoProfile.leverage_range)
     ? `${Number(cryptoProfile.leverage_range[0] || 0).toFixed(1)}~${Number(cryptoProfile.leverage_range[1] || 0).toFixed(1)}x`
     : "-";
+  const cryptoRankMin = Number.isFinite(Number(cryptoProfile.rank_min)) ? Number(cryptoProfile.rank_min) : "-";
+  const cryptoRankMax = Number.isFinite(Number(cryptoProfile.rank_max)) ? Number(cryptoProfile.rank_max) : "-";
   setText(
     "cryptoModelParamText",
     [
-      `rank_max=${cryptoProfile.rank_max ?? "-"}`,
+      `rank=${cryptoRankMin}~${cryptoRankMax}`,
       `trend_min=${Number(cryptoProfile.trend_stack_min || 0).toFixed(2)}`,
       `overheat_max=${Number(cryptoProfile.overheat_max || 0).toFixed(2)}`,
       `lev=${levRange}`,
@@ -2284,7 +2286,9 @@ function liveModelConfigText(data, market, modelId) {
   }
   const crypto = profile.crypto || {};
   const parts = [];
-  if (Number.isFinite(Number(crypto.rank_max))) parts.push(`시총순위<=${Number(crypto.rank_max)}`);
+  if (Number.isFinite(Number(crypto.rank_min)) || Number.isFinite(Number(crypto.rank_max))) {
+    parts.push(`시총순위 ${Number.isFinite(Number(crypto.rank_min)) ? Number(crypto.rank_min) : "-"}~${Number.isFinite(Number(crypto.rank_max)) ? Number(crypto.rank_max) : "-"}`);
+  }
   if (Number.isFinite(Number(crypto.trend_stack_min))) parts.push(`Trend>=${Number(crypto.trend_stack_min).toFixed(2)}`);
   if (Number.isFinite(Number(crypto.overheat_max))) parts.push(`Overheat<=${Number(crypto.overheat_max).toFixed(2)}`);
   if (Array.isArray(crypto.leverage_range) && crypto.leverage_range.length >= 2) {
@@ -2698,6 +2702,7 @@ function renderDetailPane(data) {
       : "-";
     const runtime = p.runtime_defaults || {};
     document.getElementById("methodParamText").textContent = [
+      `rank_min=${p.rank_min ?? "-"}`,
       `rank_max=${p.rank_max ?? "-"}`,
       `trend_stack_min=${Number(p.trend_stack_min || 0).toFixed(2)}`,
       `overheat_max=${Number(p.overheat_max || 0).toFixed(2)}`,
