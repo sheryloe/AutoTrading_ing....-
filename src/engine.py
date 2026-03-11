@@ -8925,17 +8925,39 @@ class TradingEngine:
             if self._rank_within_window(int(row.get("market_cap_rank") or 0), rank_lo, rank_hi)
         ]
         extra_model_symbols: set[str] = set()
+        extra_model_limit = max(18, min(24, int(self.settings.macro_trend_pool_size)))
         for model_id in self._active_crypto_model_ids_for_scan():
             band_lo, band_hi = self._crypto_rank_band_for_model(model_id)
             if band_lo >= rank_lo and band_hi <= rank_hi:
                 continue
+            band_candidates: list[dict[str, Any]] = []
             for row in rows_all:
                 rank = int(row.get("market_cap_rank") or 0)
                 if not self._rank_within_window(rank, band_lo, band_hi):
                     continue
                 base_symbol = str(row.get("symbol") or "").upper().strip()
-                if base_symbol:
-                    extra_model_symbols.add(f"{base_symbol}USDT")
+                if not base_symbol:
+                    continue
+                score, hits = self._macro_trend_score(base_symbol, row, trend_data)
+                band_candidates.append(
+                    {
+                        "symbol": f"{base_symbol}USDT",
+                        "rank": int(rank),
+                        "score": float(score),
+                        "hits": int(hits),
+                        "volume_24h": float(row.get("volume_24h") or 0.0),
+                    }
+                )
+            band_candidates.sort(
+                key=lambda item: (
+                    -int(item["hits"]),
+                    -float(item["score"]),
+                    -float(item["volume_24h"]),
+                    int(item["rank"]),
+                )
+            )
+            for item in band_candidates[:extra_model_limit]:
+                extra_model_symbols.add(str(item["symbol"]))
 
         selected_symbols = self._refresh_macro_trend_pool(rows, trend_data, now_ts)
         if not selected_symbols and rows:
@@ -9201,7 +9223,7 @@ class TradingEngine:
             1.0,
         )
 
-    def _crypto_feature_pack(self, symbol: str, trend_bundle: dict[str, Any]) -> dict[str, float]:
+    def _crypto_feature_pack(self, symbol: str, trend_bundle: dict[str, Any], model_id: str = "") -> dict[str, float]:
         hist_tick = [float(v) for v in list(self._bybit_price_history.get(symbol) or []) if float(v) > 0]
         meta = dict(self._macro_meta.get(symbol) or {})
         chg1h = _clamp(float(meta.get("change_1h") or 0.0) / 100.0, -0.40, 0.40)
@@ -9211,15 +9233,17 @@ class TradingEngine:
         rank = float(meta.get("market_cap_rank") or 0.0)
 
         tf_5m: list[float] = []
-        try:
-            tf_5m = self.macro.fetch_binance_5m_closes(
-                symbol,
-                limit=360,
-                cache_seconds=max(60, min(240, int(self.settings.scan_interval_seconds * 3))),
-                binance_api_key=self.settings.binance_api_key,
-            )
-        except Exception:
-            tf_5m = []
+        use_remote_5m = not (str(model_id or "").upper() == "D" and rank >= 700)
+        if use_remote_5m:
+            try:
+                tf_5m = self.macro.fetch_binance_5m_closes(
+                    symbol,
+                    limit=360,
+                    cache_seconds=max(60, min(240, int(self.settings.scan_interval_seconds * 3))),
+                    binance_api_key=self.settings.binance_api_key,
+                )
+            except Exception:
+                tf_5m = []
         timeframe_source = "binance_5m"
         if len(tf_5m) < 20:
             timeframe_source = "macro_fallback"
@@ -9379,7 +9403,7 @@ class TradingEngine:
         return bool(overheat >= 0.55 and ret_15m >= 0.030)
 
     def _crypto_score_profile(self, model_id: str, symbol: str, trend_bundle: dict[str, Any]) -> dict[str, Any]:
-        feats = self._crypto_feature_pack(symbol, trend_bundle)
+        feats = self._crypto_feature_pack(symbol, trend_bundle, model_id=model_id)
         feats["edge_5m"] = _clamp(float(feats.get("edge_5m") or 0.0), -1.0, 1.0)
         feats["edge_15m"] = _clamp(float(feats.get("edge_15m") or 0.0), -1.0, 1.0)
         feats["edge_1h"] = _clamp(float(feats.get("edge_1h") or 0.0), -1.0, 1.0)
