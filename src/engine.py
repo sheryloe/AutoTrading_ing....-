@@ -454,6 +454,8 @@ class TradingEngine:
         self._macro_meta: dict[str, dict[str, Any]] = {}
         self._macro_trend_pool: list[str] = []
         self._macro_trend_pool_next_refresh_ts = 0
+        self._crypto_model_watch_pools: dict[str, list[str]] = {}
+        self._crypto_model_watch_pool_next_refresh_ts: dict[str, int] = {}
         self._wallet_pattern_cache: dict[str, dict[str, Any]] = {}
         self._focus_wallet_analysis: dict[str, Any] = {}
         self._trend_source_status: dict[str, Any] = {}
@@ -8881,6 +8883,57 @@ class TradingEngine:
         self._macro_trend_pool_next_refresh_ts = int(now_ts + refresh_sec)
         return set(self._macro_trend_pool)
 
+    def _refresh_crypto_model_watch_pool(
+        self,
+        model_id: str,
+        rows: list[dict[str, Any]],
+        trend_bundle: dict[str, Any],
+        now_ts: int,
+    ) -> set[str]:
+        model_key = str(model_id or "").upper().strip()
+        if model_key != "D":
+            return set()
+        target_size = 50
+        refresh_sec = max(4 * 60 * 60, int(self.settings.macro_trend_reselect_seconds))
+        cached = list(self._crypto_model_watch_pools.get(model_key) or [])
+        if cached and now_ts < int(self._crypto_model_watch_pool_next_refresh_ts.get(model_key) or 0):
+            return set(cached)
+
+        rank_lo, rank_hi = self._crypto_rank_band_for_model(model_key)
+        scored: list[dict[str, Any]] = []
+        for row in rows:
+            base_symbol = str(row.get("symbol") or "").upper().strip()
+            if not base_symbol:
+                continue
+            rank = int(row.get("market_cap_rank") or 0)
+            if not self._rank_within_window(rank, rank_lo, rank_hi):
+                continue
+            score, hits = self._macro_trend_score(base_symbol, row, trend_bundle)
+            scored.append(
+                {
+                    "symbol": f"{base_symbol}USDT",
+                    "rank": int(rank),
+                    "score": float(score),
+                    "hits": int(hits),
+                    "volume_24h": float(row.get("volume_24h") or 0.0),
+                }
+            )
+        if not scored:
+            return set(cached)
+
+        scored.sort(
+            key=lambda item: (
+                -int(item["hits"]),
+                -float(item["score"]),
+                -float(item["volume_24h"]),
+                int(item["rank"]),
+            )
+        )
+        selected = [str(item["symbol"]) for item in scored[:target_size]]
+        self._crypto_model_watch_pools[model_key] = list(selected)
+        self._crypto_model_watch_pool_next_refresh_ts[model_key] = int(now_ts + refresh_sec)
+        return set(selected)
+
     def _fetch_macro_demo_prices(self, trend_bundle: dict[str, Any] | None = None) -> dict[str, float]:
         trend_data = dict(trend_bundle or {})
         now_ts = int(time.time())
@@ -8925,10 +8978,14 @@ class TradingEngine:
             if self._rank_within_window(int(row.get("market_cap_rank") or 0), rank_lo, rank_hi)
         ]
         extra_model_symbols: set[str] = set()
-        extra_model_limit = max(18, min(24, int(self.settings.macro_trend_pool_size)))
         for model_id in self._active_crypto_model_ids_for_scan():
             band_lo, band_hi = self._crypto_rank_band_for_model(model_id)
             if band_lo >= rank_lo and band_hi <= rank_hi:
+                continue
+            if str(model_id).upper().strip() == "D":
+                extra_model_symbols.update(
+                    self._refresh_crypto_model_watch_pool(model_id, rows_all, trend_data, now_ts)
+                )
                 continue
             band_candidates: list[dict[str, Any]] = []
             for row in rows_all:
@@ -8956,7 +9013,7 @@ class TradingEngine:
                     int(item["rank"]),
                 )
             )
-            for item in band_candidates[:extra_model_limit]:
+            for item in band_candidates[:24]:
                 extra_model_symbols.add(str(item["symbol"]))
 
         selected_symbols = self._refresh_macro_trend_pool(rows, trend_data, now_ts)
@@ -11787,6 +11844,70 @@ class TradingEngine:
                     "daily_pnl": model_crypto_daily,
                 },
             }
+        meme_signal_map: dict[str, dict[str, Any]] = {}
+        agg_meme_positions: list[dict[str, Any]] = []
+        agg_meme_trades: list[dict[str, Any]] = []
+        agg_meme_seed = 0.0
+        agg_meme_equity = 0.0
+        agg_meme_cash = 0.0
+        agg_meme_position_value = 0.0
+        agg_meme_realized = 0.0
+        agg_meme_unrealized = 0.0
+        agg_meme_closed = 0.0
+        agg_meme_wins = 0.0
+        for model_id in MEME_MODEL_IDS:
+            detail = ((model_views.get(model_id) or {}).get("meme") or {})
+            model_name = str(detail.get("model_name") or self._market_model_name("meme", model_id))
+            summary = dict(detail.get("summary") or {})
+            agg_meme_seed += float(summary.get("seed_usd") or 0.0)
+            agg_meme_equity += float(summary.get("equity_usd") or 0.0)
+            agg_meme_cash += float(summary.get("cash_usd") or 0.0)
+            agg_meme_position_value += float(summary.get("position_value_usd") or 0.0)
+            agg_meme_realized += float(summary.get("realized_pnl_usd") or 0.0)
+            agg_meme_unrealized += float(summary.get("unrealized_pnl_usd") or 0.0)
+            agg_meme_closed += float(summary.get("closed_trades") or 0.0)
+            agg_meme_wins += float(summary.get("wins") or 0.0)
+            for row in list(detail.get("positions") or []):
+                item = dict(row or {})
+                item["model_id"] = str(model_id)
+                item["model_name"] = model_name
+                agg_meme_positions.append(item)
+            for row in list(detail.get("trades") or []):
+                item = dict(row or {})
+                item["model_id"] = str(model_id)
+                item["model_name"] = model_name
+                agg_meme_trades.append(item)
+            for row in list(detail.get("signals") or []):
+                item = dict(row or {})
+                item["model_id"] = str(model_id)
+                item["model_name"] = model_name
+                key = str(item.get("token_address") or item.get("symbol") or "").upper().strip()
+                if not key:
+                    continue
+                prev = dict(meme_signal_map.get(key) or {})
+                if not prev or float(item.get("score") or 0.0) > float(prev.get("score") or 0.0):
+                    meme_signal_map[key] = item
+        agg_meme_positions.sort(key=lambda row: float(row.get("value_usd") or 0.0), reverse=True)
+        agg_meme_trades.sort(key=lambda row: int(row.get("ts") or 0), reverse=True)
+        meme_signals = sorted(meme_signal_map.values(), key=lambda row: float(row.get("score") or 0.0), reverse=True)[:120]
+        meme_positions = agg_meme_positions[:240]
+        meme_trades = agg_meme_trades[:240]
+        agg_meme_total_pnl = float(agg_meme_realized + agg_meme_unrealized)
+        agg_meme_win_rate = float((agg_meme_wins / max(agg_meme_closed, 1e-9)) * 100.0) if agg_meme_closed > 0 else 0.0
+        meme_summary = {
+            "seed_usd": float(agg_meme_seed),
+            "cash_usd": float(agg_meme_cash),
+            "position_value_usd": float(agg_meme_position_value),
+            "equity_usd": float(agg_meme_equity),
+            "total_pnl_usd": float(agg_meme_total_pnl),
+            "total_roi_pct": float((agg_meme_total_pnl / max(agg_meme_seed, 1e-9)) * 100.0) if agg_meme_seed > 0.0 else 0.0,
+            "unrealized_pnl_usd": float(agg_meme_unrealized),
+            "realized_pnl_usd": float(agg_meme_realized),
+            "closed_trades": int(agg_meme_closed),
+            "wins": float(agg_meme_wins),
+            "win_rate": float(agg_meme_win_rate),
+            "open_positions": len(meme_positions),
+        }
         model_autotune: dict[str, Any] = {}
         for model_id in CRYPTO_MODEL_IDS:
             run = self._get_market_run(runs, "crypto", model_id)
