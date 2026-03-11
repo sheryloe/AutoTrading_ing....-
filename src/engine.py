@@ -11350,6 +11350,12 @@ class TradingEngine:
         if str(self.settings.trade_mode or "").lower() == "live":
             self._sync_wallet(now_ts, force=False)
             self._sync_bybit(now_ts, force=False)
+        else:
+            with self._lock:
+                # bybit_error/memecoin_error are live sync artifacts. In paper mode,
+                # showing an old live-sync failure is misleading, so clear them.
+                self.state.bybit_error = ""
+                self.state.memecoin_error = ""
         with self._lock:
             cache_ready = bool(self._dashboard_cache)
             if cache_ready:
