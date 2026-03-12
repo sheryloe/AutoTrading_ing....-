@@ -1,99 +1,53 @@
-# AutoTrading Console
+# AutoTrading_ing....-
 
-밈 + 크립토 자동매매 콘솔입니다. 현재 기본 프리셋은 `데모 전용`, `시드 10,000 USDT`, `밈 3엔진 + 크립토 4모델` 기준입니다.
+도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.
 
-## 1. 현재 기본 프리셋 (2026-03-11)
-- 모드: `paper`
-- 실전 실행: `OFF`
-- 밈 데모: `A/B/C` 엔진 활성
-- 크립토 데모: `A/B/C/D` 4모델 활성
-- 데모 시드: 각 밈 엔진 / 각 크립토 모델별 `10,000 USDT`
-- 크립토 배율 범위
-  - `A`: `8x ~ 12x`
-  - `B`: `11x ~ 18x`
-  - `C`: `7x ~ 11x`
-  - `D`: `8x ~ 13x`
+- Repository: https://github.com/sheryloe/AutoTrading_ing....-
+- Landing page: https://sheryloe.github.io/AutoTrading_ing....-/
+- Audience: 크립토 자동매매 실험, 대시보드 관찰, 리포트 자동 생성에 관심 있는 개발자
 
-## 2. 화면 구성
-- 워크스페이스: `데모`, `실전`, `밈 트렌드`, `크립토 트렌드`, `설정`
-- 실전 화면: `실전 밈` / `실전 크립토` 분리
-- 데모 화면: 밈 엔진 3개와 크립토 모델 4개를 각각 독립 성과로 비교
-- 리포트: 총자산, 실현/미실현 손익, 모델별 랭킹, 트렌드 요약 제공
+## Search Summary
+크립토 자동매매 실험을 위한 운영 콘솔과 리포팅 스택
 
-## 3. 모델 구성
-### 밈
-- `A 도그리 밈 선별모델`: 품질형 필터 진입
-- `B 밈 장기홀딩 예측모델`: 장기홀딩/재점화형
-- `C 밈 단타 모멘텀모델`: 빠른 회전형
+## Problem This Repo Solves
+자동매매 프로젝트는 전략 실험, 상태 점검, 리포트 축적, 런타임 설정을 별도로 관리하면 운영 피로가 크게 늘어납니다.
 
-### 크립토
-- `A 크립토 단타모델`: 안정형 단타
-- `B 크립토 공격형 단타모델`: 고배율 공격형
-- `C 크립토 스윙10 모델`: 일일 최대 10회 스윙
-- `D 크립토 단일포지션 모델`: 단일 포지션 집중형
+## Key Features
+- 앱 컨테이너와 리포터 컨테이너를 분리한 Docker Compose 구성
+- 리포트 디렉터리와 런타임 설정 파일을 볼륨으로 연결
+- 웹 대시보드와 운영 상태 API를 전제로 한 구조
+- 전략 실험 중간 보고를 자동화하는 보조 스크립트 포함
 
-## 4. 빠른 시작
-### 로컬 실행
-```powershell
-cd d:\AI_Auto
-py -3 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-Copy-Item runtime_settings.example.json runtime_settings.local.json
-py -3 web_app.py
-```
+## User Flow
+- `.env`와 상태 파일 준비
+- Docker Compose로 앱과 리포터 기동
+- 대시보드와 생성된 리포트로 전략 상태 확인
 
-### Docker 실행
-```powershell
-cd d:\AI_Auto
-Copy-Item .env.example .env
-Copy-Item runtime_settings.example.json runtime_settings.local.json
-docker compose up -d --build
-```
+## Tech Stack
+- Python
+- Docker Compose
+- HTML templates
+- Static assets
 
-접속: `http://localhost:8099`
+## Quick Start
+- `.env.example`을 참고해 `.env`와 상태 파일을 준비합니다.
+- `docker compose up -d --build`로 앱과 리포터를 함께 실행합니다.
+- 필요 시 `docker compose logs -f`로 상태를 점검합니다.
 
-## 5. Docker 시작용 EXE
-- 빌드 스크립트: `scripts/build_docker_launcher.ps1`
-- 생성 파일: `dist/AI_Auto_Docker_Start.exe`
-- 동작:
-  - Docker/Rancher Desktop 데몬 확인
-  - 필요 시 Desktop 앱 실행
-  - `docker compose up -d --build` 실행
-  - `/health` 확인 후 브라우저 오픈
+## Repository Structure
+- `scripts/`: 리포트 및 운영 보조 스크립트
+- `templates/`, `static/`: 대시보드 UI 자산
+- `reports/`: 리포트 산출물 저장 위치
 
-직접 빌드:
-```powershell
-cd d:\AI_Auto
-powershell -ExecutionPolicy Bypass -File .\scripts\build_docker_launcher.ps1
-```
+## Search Keywords
+`crypto auto trading dashboard`, `algorithmic trading console`, `docker trading app`, `자동매매 대시보드`, `크립토 리포트 자동화`
 
-## 6. 데모 초기화
-전체 데모(밈 + 크립토)를 `10,000`으로 다시 맞추려면 서버 실행 후 아래 API를 호출하면 됩니다.
+## FAQ
+### 이 저장소는 실전 자동매매용인가요?
+현재는 운영 콘솔과 상태 리포트 중심의 실험/개선용 프로젝트로 보는 편이 정확합니다.
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:8099/api/control/reset-demo `
-  -ContentType "application/json" `
-  -Body '{"seed_usdt":10000,"confirm_text":"RESET DEMO"}'
-```
+### 어떻게 실행하나요?
+Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다.
 
-이 호출은 밈 3엔진과 크립토 4모델을 함께 초기화합니다.
-
-## 7. 설정 파일
-- `.env`: 배포/포트/기본 환경 변수
-- `runtime_settings.local.json`: 로컬 런타임 오버라이드와 비밀키 저장용
-- `runtime_settings.example.json`: Git 커밋 가능한 샘플
-
-도커 컴포즈는 `.env`에 지정된 `STATE_FILE`, `MODEL_FILE`, `RUNTIME_SETTINGS_FILE` 경로를 그대로 마운트합니다.
-
-## 8. 보안 원칙
-- `.env`는 Git 추적 제외
-- `runtime_settings.local.json`도 Git 추적 제외
-- 샘플 파일에는 비밀키를 넣지 않음
-- 실전 전환 전 `ENABLE_LIVE_EXECUTION=false` 상태에서 검증
-
-## 9. 추가 문서
-- 중간 보고서: `docs/MID_REPORT_2026-03-07.md`
-- 보안 점검: `docs/SECURITY_REVIEW_2026-03-07.md`
-- 전략 리팩터링 노트: `docs/strategy_refactor_20260308.md`
+### 무엇을 먼저 확인하면 되나요?
+런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다.
