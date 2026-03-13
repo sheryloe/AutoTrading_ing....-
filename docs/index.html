@@ -1,76 +1,285 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AutoTrading_ing....- | 크립토 자동매매 실험을 위한 운영 콘솔과 리포팅 스택</title>
-  <meta name="description" content="도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.">
-  <meta name="keywords" content="crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화">
-  <meta name="robots" content="index,follow,max-image-preview:large">
-  <link rel="canonical" href="https://sheryloe.github.io/AutoTrading_ing....-/">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="AutoTrading_ing....-">
-  <meta property="og:description" content="도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.">
-  <meta property="og:url" content="https://sheryloe.github.io/AutoTrading_ing....-/">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="AutoTrading_ing....-">
-  <meta name="twitter:description" content="도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.">
-  <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="./styles.css">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "SoftwareSourceCode", "name": "AutoTrading_ing....-", "codeRepository": "https://github.com/sheryloe/AutoTrading_ing....-", "description": "도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.", "programmingLanguage": "Python", "url": "https://sheryloe.github.io/AutoTrading_ing....-/", "keywords": "crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화"}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "이 저장소는 실전 자동매매용인가요?", "acceptedAnswer": {"@type": "Answer", "text": "현재는 운영 콘솔과 상태 리포트 중심의 실험/개선용 프로젝트로 보는 편이 정확합니다."}}, {"@type": "Question", "name": "어떻게 실행하나요?", "acceptedAnswer": {"@type": "Answer", "text": "Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다."}}, {"@type": "Question", "name": "무엇을 먼저 확인하면 되나요?", "acceptedAnswer": {"@type": "Answer", "text": "런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다."}}]}]}</script>
-</head>
-<body>
-  <main class="shell">
-    <section class="hero">
-      <span class="eyebrow">Project Landing Page</span>
-      <div>
-        <h1>AutoTrading_ing....-</h1>
-        <p class="lead">도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.</p>
-      </div>
-      <div class="cta-row">
-        <a class="primary" href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub Repository</a>
-        <a href="https://sheryloe.github.io/">Project Hub</a>
-      </div>
-      <div class="meta-row">
-        <span class="meta-chip">크립토 자동매매 실험을 위한 운영 콘솔과 리포팅 스택</span>
-        <span class="meta-chip">크립토 자동매매 실험, 대시보드 관찰, 리포트 자동 생성에 관심 있는 개발자</span>
-      </div>
-      <div class="chip-row"><span class="chip">crypto auto trading dashboard</span><span class="chip">algorithmic trading console</span><span class="chip">docker trading app</span><span class="chip">자동매매 대시보드</span><span class="chip">크립토 리포트 자동화</span></div>
-    </section>
-    <section class="section">
-      <h2>Why This Project Exists</h2>
-      <p>자동매매 프로젝트는 전략 실험, 상태 점검, 리포트 축적, 런타임 설정을 별도로 관리하면 운영 피로가 크게 늘어납니다.</p>
-      <div class="cards"><article class="card"><h3>Feature</h3><p>앱 컨테이너와 리포터 컨테이너를 분리한 Docker Compose 구성</p></article><article class="card"><h3>Feature</h3><p>리포트 디렉터리와 런타임 설정 파일을 볼륨으로 연결</p></article><article class="card"><h3>Feature</h3><p>웹 대시보드와 운영 상태 API를 전제로 한 구조</p></article><article class="card"><h3>Feature</h3><p>전략 실험 중간 보고를 자동화하는 보조 스크립트 포함</p></article></div>
-    </section>
-    <section class="section split">
-      <div class="stack">
-        <div>
-          <h2>Workflow</h2>
-          <ul class="clean"><li>`.env`와 상태 파일 준비</li><li>Docker Compose로 앱과 리포터 기동</li><li>대시보드와 생성된 리포트로 전략 상태 확인</li></ul>
-        </div>
-        <div>
-          <h2>Tech Stack</h2>
-          <ul class="clean"><li>Python</li><li>Docker Compose</li><li>HTML templates</li><li>Static assets</li></ul>
-        </div>
-      </div>
-      <div class="flow">
-        <div>
-          <h2>Quick Start</h2>
-          <pre>`.env.example`을 참고해 `.env`와 상태 파일을 준비합니다.
-`docker compose up -d --build`로 앱과 리포터를 함께 실행합니다.
-필요 시 `docker compose logs -f`로 상태를 점검합니다.</pre>
-        </div>
-      </div>
-    </section>
-    <section class="section">
-      <h2>Repository Structure</h2>
-      <ul class="clean"><li>`scripts/`: 리포트 및 운영 보조 스크립트</li><li>`templates/`, `static/`: 대시보드 UI 자산</li><li>`reports/`: 리포트 산출물 저장 위치</li></ul>
-    </section>
-    <section class="section">
-      <h2>FAQ</h2>
-      <div class="cards"><article class="faq-item"><h3>이 저장소는 실전 자동매매용인가요?</h3><p>현재는 운영 콘솔과 상태 리포트 중심의 실험/개선용 프로젝트로 보는 편이 정확합니다.</p></article><article class="faq-item"><h3>어떻게 실행하나요?</h3><p>Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다.</p></article><article class="faq-item"><h3>무엇을 먼저 확인하면 되나요?</h3><p>런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다.</p></article></div>
-    </section>
-    <p class="footer">Last updated: 2026-03-12 · Owner: sheryloe</p>
-  </main>
-</body>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutoTrading_ing....- | 자동매매 운영 리스크와 대시보드를 함께 다루는 프로젝트</title>
+    <meta
+      name="description"
+      content="도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 실험형 프로젝트입니다."
+    >
+    <meta
+      name="keywords"
+      content="crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화"
+    >
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="googlebot" content="index, follow, max-image-preview:large">
+    <meta name="theme-color" content="#0f766e">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="ko_KR">
+    <meta property="og:site_name" content="AutoTrading_ing....-">
+    <meta property="og:title" content="AutoTrading_ing....- | 자동매매 운영 리스크와 대시보드를 함께 다루는 프로젝트">
+    <meta
+      property="og:description"
+      content="전략 실험, 상태 점검, 리포트 자동화를 따로 두지 않고 운영 리스크 중심으로 다시 묶은 자동매매 프로젝트입니다."
+    >
+    <meta property="og:url" content="https://sheryloe.github.io/AutoTrading_ing....-/">
+    <meta
+      property="og:image"
+      content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png"
+    >
+    <meta property="og:image:alt" content="AutoTrading 블로그형 소개 페이지 커버">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AutoTrading_ing....-">
+    <meta
+      name="twitter:description"
+      content="자동매매 상태 대시보드와 리포트 자동화를 함께 다루는 실험형 운영 프로젝트"
+    >
+    <meta
+      name="twitter:image"
+      content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png"
+    >
+    <link rel="canonical" href="https://sheryloe.github.io/AutoTrading_ing....-/">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Outfit:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="./styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareSourceCode",
+            "name": "AutoTrading_ing....-",
+            "codeRepository": "https://github.com/sheryloe/AutoTrading_ing....-",
+            "url": "https://sheryloe.github.io/AutoTrading_ing....-/",
+            "programmingLanguage": "Python, Docker Compose",
+            "description": "도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 실험형 프로젝트입니다.",
+            "keywords": "crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화"
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "이 저장소는 실전 자동매매용인가요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "현재는 운영 콘솔과 상태 리포트 중심의 실험 및 개선용 프로젝트로 보는 편이 정확합니다."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "어떻게 실행하나요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "무엇을 먼저 확인하면 되나요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#top">
+          <span class="brand-mark">AT</span>
+          <span class="brand-text">
+            <strong>AutoTrading</strong>
+            <span>Risk-aware trading ops</span>
+          </span>
+        </a>
+        <nav class="topnav" aria-label="페이지 이동">
+          <a href="#features">특징</a>
+          <a href="#workflow">구성</a>
+          <a href="#notes">운영 포인트</a>
+          <a href="#faq">FAQ</a>
+          <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Trading experiment workspace</p>
+            <h1>자동매매를 기능보다<br>운영 리스크 관점에서<br>다시 설계한 프로젝트</h1>
+            <p class="hero-body">
+              AutoTrading_ing....-는 전략 성능만 강조하는 페이지가 아니라, 자동매매를 실제로 운영할 때 마주치는
+              상태 점검, 리포트 축적, 런타임 설정, 초기화 안전장치를 먼저 보여 주는 프로젝트 페이지입니다.
+              실험을 반복할수록 왜 대시보드와 리포터가 함께 있어야 하는지, 그리고 왜 운영 리스크를 별도 주제로 다뤄야 하는지에 초점을 맞췄습니다.
+            </p>
+            <div class="hero-actions">
+              <a class="button primary" href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소 보기</a>
+              <a class="button secondary" href="https://sheryloe.github.io/">프로젝트 허브로 이동</a>
+            </div>
+            <ul class="hero-meta">
+              <li>Docker Compose 운영</li>
+              <li>대시보드 + 리포터 분리</li>
+              <li>상태 리포트 자동화</li>
+            </ul>
+          </div>
+
+          <div class="hero-visual" aria-label="AutoTrading 대시보드">
+            <figure class="visual-card visual-main">
+              <img src="assets/screenshots/auto-trading-dashboard.png" alt="자동매매 대시보드 화면" loading="eager">
+            </figure>
+            <figure class="visual-card visual-side visual-note">
+              <span class="note-badge">Guardrails</span>
+              <strong>전략 수익보다 먼저 보는 운영 체크포인트</strong>
+              <ul class="note-list">
+                <li>초기화 안전장치와 런타임 상태 확인</li>
+                <li>리포트 디렉터리와 설정 파일 연결</li>
+                <li>장애 시점 파악을 위한 로그와 보고서 축적</li>
+              </ul>
+            </figure>
+            <div class="visual-caption">
+              <strong>대시보드와 리포트가 함께 있어야 운영이 보입니다</strong>
+              <p>전략 실험 결과만 보는 대신, 실행 중인 상태와 후속 보고 구조까지 연결해서 읽을 수 있도록 설명합니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature-strip" id="features">
+          <article>
+            <span>01</span>
+            <h2>기능보다 운영 리스크를 먼저 재설계</h2>
+            <p>자동매매는 전략 성능뿐 아니라 상태 점검과 복구 동선이 중요하다는 전제에서 출발합니다.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h2>Flask 대시보드와 런타임 제어 레이어 결합</h2>
+            <p>웹 대시보드와 컨테이너 실행 상태를 한 흐름으로 읽을 수 있도록 운영 중심 구조를 선택했습니다.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h2>초기화 안전장치와 리포트 구조를 함께 제시</h2>
+            <p>실패 상황을 덜 위험하게 만들고, 사후 분석을 가능하게 하는 보고 구조까지 포함합니다.</p>
+          </article>
+        </section>
+
+        <section class="workflow" id="workflow">
+          <div class="section-heading">
+            <p class="eyebrow">Chapters</p>
+            <h2>자동매매를 설명하는 3개의 운영 문장</h2>
+            <p class="section-body">
+              Notion 스텝 문서 제목을 중심에 놓고, 이 저장소가 왜 단순 전략 코드 저장소가 아닌 운영형 실험실에 가까운지 드러내도록 구성했습니다.
+            </p>
+          </div>
+          <div class="workflow-grid">
+            <article class="workflow-card">
+              <strong>1. 자동매매를 기능보다 운영 리스크로 다시 설계한 이유</strong>
+              <p>수익률 지표만이 아니라 운영자가 감당해야 할 상태 관리와 리스크 통제를 프로젝트의 전면에 둡니다.</p>
+            </article>
+            <article class="workflow-card">
+              <strong>2. Flask 대시보드와 런타임 제어 레이어 구현 과정</strong>
+              <p>앱 실행 상태와 시각화된 대시보드를 연결해 실험 중간 점검이 쉬운 구조를 만들었습니다.</p>
+            </article>
+            <article class="workflow-card">
+              <strong>3. 초기화 안전장치와 리포트 구조로 운영성을 마무리한 결과</strong>
+              <p>실패 상황을 덜 위험하게 만들고, 사후 분석을 가능하게 하는 보고 구조까지 포함합니다.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="screenshots" id="notes">
+          <div class="section-heading">
+            <p class="eyebrow">Operating notes</p>
+            <h2>실제로 먼저 체크해야 할 운영 포인트</h2>
+            <p class="section-body">
+              자동매매 프로젝트를 처음 보는 사람이 바로 따라가기 쉽도록 실행 흐름과 점검 포인트를 본문에 묶어 두었습니다.
+            </p>
+          </div>
+          <div class="flow-banner">
+            <article class="flow-step">
+              <span>STEP 1</span>
+              <strong>`.env`와 상태 파일을 준비합니다</strong>
+              <p>런타임 설정과 상태 파일을 먼저 맞춘 뒤 컨테이너를 올리는 전개를 전제로 합니다.</p>
+            </article>
+            <article class="flow-step">
+              <span>STEP 2</span>
+              <strong>앱과 리포터를 함께 기동합니다</strong>
+              <p>`docker compose up -d --build`로 실행한 뒤 대시보드와 생성된 리포트 디렉터리를 함께 확인합니다.</p>
+            </article>
+          </div>
+          <div class="workflow-grid">
+            <article class="workflow-card">
+              <strong>Tech stack</strong>
+              <p>Python, Docker Compose, HTML templates, static assets를 중심으로 운영 콘솔과 보고 구조를 만듭니다.</p>
+            </article>
+            <article class="workflow-card">
+              <strong>Repository structure</strong>
+              <p>`scripts/`, `templates/`, `static/`, `reports/`를 나눠 실행 로직과 리포트 산출물을 분리합니다.</p>
+            </article>
+            <article class="workflow-card">
+              <strong>Audience</strong>
+              <p>크립토 자동매매 실험, 대시보드 관찰, 리포트 자동 생성에 관심 있는 개발자에게 맞춰진 구조입니다.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="seo-copy">
+          <div class="section-heading">
+            <p class="eyebrow">Search intent</p>
+            <h2>검색에서 기대하는 문맥을 바로 보여 주는 구조</h2>
+          </div>
+          <div class="seo-grid">
+            <article>
+              <h3>국문 키워드</h3>
+              <p>자동매매 대시보드, 크립토 리포트 자동화, 운영 리스크 같은 검색 조합에 맞춰 본문을 설계했습니다.</p>
+            </article>
+            <article>
+              <h3>영문 키워드</h3>
+              <p>crypto auto trading dashboard, algorithmic trading console, docker trading app 같은 검색어를 함께 대응합니다.</p>
+            </article>
+            <article>
+              <h3>이미지 미리보기</h3>
+              <p>실제 대시보드 캡처를 Open Graph 이미지로 써서 링크 공유 시 프로젝트 성격이 바로 전달되게 했습니다.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="faq" id="faq">
+          <div class="section-heading">
+            <p class="eyebrow">FAQ</p>
+            <h2>자주 묻는 질문</h2>
+          </div>
+          <div class="faq-list">
+            <details open>
+              <summary>이 저장소는 실전 자동매매용인가요?</summary>
+              <p>현재는 운영 콘솔과 상태 리포트 중심의 실험 및 개선용 프로젝트로 보는 편이 정확합니다.</p>
+            </details>
+            <details>
+              <summary>어떻게 실행하나요?</summary>
+              <p>Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다.</p>
+            </details>
+            <details>
+              <summary>무엇을 먼저 확인하면 되나요?</summary>
+              <p>런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다.</p>
+            </details>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>Last updated: 2026-03-13</span>
+        <a href="https://github.com/sheryloe/AutoTrading_ing....-">Repository</a>
+      </footer>
+    </div>
+  </body>
 </html>
