@@ -95,6 +95,30 @@ If you use newer naming in code later, the same value can be stored as:
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxx
 ```
 
+### Vercel project import choices
+
+For this repository, do not point Vercel at the Flask root.
+Use the dedicated frontend app:
+
+```txt
+Import Git Repository
+Root Directory: frontend
+Framework Preset: Next.js
+Build Command: next build
+Install Command: npm install
+Output setting: default
+```
+
+Server-side env vars may also be added to the same Vercel project if you want
+the Next.js server layer to read Supabase directly:
+
+```env
+SUPABASE_URL=https://abcxyz123456.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+```
+
+These must not be prefixed with `NEXT_PUBLIC_`.
+
 ### GitHub Actions or any backend worker
 
 Use the server-side key here. Never expose it in the browser.

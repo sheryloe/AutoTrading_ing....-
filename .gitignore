@@ -20,6 +20,9 @@ state.reconcile_backup_*.json
 # Local build artifacts
 build/
 *.spec
+node_modules/
+.next/
+out/
 
 # Logs
 *.log
