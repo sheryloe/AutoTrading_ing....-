@@ -50,6 +50,7 @@ class Settings:
     lock_paper_mode: bool
     enable_autotrade: bool
     enable_live_execution: bool
+    enable_meme_market: bool
     live_enable_meme: bool
     live_enable_crypto: bool
     scan_interval_seconds: int
@@ -195,6 +196,13 @@ class Settings:
     solscan_cu_per_request: int
     solscan_budget_window_seconds: int
     solscan_permission_backoff_seconds: int
+    git_daily_reports_enabled: bool
+    git_daily_reports_autocommit: bool
+    git_daily_reports_autopush: bool
+    git_daily_reports_path: str
+    git_daily_reports_branch: str
+    git_committer_name: str
+    git_committer_email: str
     openai_budget_state_file: str
     model_file: str
     state_file: str
@@ -215,9 +223,10 @@ class Settings:
             lock_paper_mode=_to_bool(data.get("LOCK_PAPER_MODE"), False),
             enable_autotrade=_to_bool(data.get("ENABLE_AUTOTRADE"), True),
             enable_live_execution=_to_bool(data.get("ENABLE_LIVE_EXECUTION"), False),
+            enable_meme_market=_to_bool(data.get("ENABLE_MEME_MARKET"), False),
             live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
             live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
-            scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 20)),
+            scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 600)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),
             take_profit_pct=max(0.01, _to_float(data.get("TAKE_PROFIT_PCT"), 0.18)),
@@ -329,8 +338,8 @@ class Settings:
             bybit_base_url=_to_str(data.get("BYBIT_BASE_URL"), "https://api.bybit.com"),
             bybit_recv_window=max(1000, _to_int(data.get("BYBIT_RECV_WINDOW"), 5000)),
             bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.30))),
-            bybit_leverage_min=min(20.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 3.0))),
-            bybit_leverage_max=min(20.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 20.0))),
+            bybit_leverage_min=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 15.0))),
+            bybit_leverage_max=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 30.0))),
             bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 3)),
             bybit_min_order_usd=max(5.0, _to_float(data.get("BYBIT_MIN_ORDER_USD"), 10.0)),
             crypto_min_entry_score=min(1.0, max(0.0, _to_float(data.get("CRYPTO_MIN_ENTRY_SCORE"), 0.30))),
@@ -344,7 +353,7 @@ class Settings:
                 data.get("LIVE_CRYPTO_MODELS"),
                 _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C"),
             ),
-            bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT"),
+            bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
             telegram_polling_enabled=_to_bool(data.get("TELEGRAM_POLLING_ENABLED"), True),
             telegram_poll_interval_seconds=max(2, _to_int(data.get("TELEGRAM_POLL_INTERVAL_SECONDS"), 5)),
             telegram_language=_to_str(data.get("TELEGRAM_LANGUAGE"), "ko"),
@@ -361,19 +370,19 @@ class Settings:
             demo_reset_block_until_ts=max(0, _to_int(data.get("DEMO_RESET_BLOCK_UNTIL_TS"), 0)),
             model_autotune_interval_hours=(
                 6
-                if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 24) == 6
+                if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 168) == 6
                 else (
                     12
-                    if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 24) == 12
-                    else 24
+                    if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 168) == 12
+                    else (24 if _to_int(data.get("MODEL_AUTOTUNE_INTERVAL_HOURS"), 168) == 24 else 168)
                 )
             ),
             demo_enable_bybit=_to_bool(data.get("DEMO_ENABLE_BYBIT"), False),
             demo_enable_macro=_to_bool(data.get("DEMO_ENABLE_MACRO"), True),
             macro_universe_source=_to_str(data.get("MACRO_UNIVERSE_SOURCE"), "coingecko").lower(),
-            macro_top_n=max(50, min(2000, _to_int(data.get("MACRO_TOP_N"), 500))),
-            macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 50))),
-            macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 300))),
+            macro_top_n=max(5, min(2000, _to_int(data.get("MACRO_TOP_N"), 50))),
+            macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 1))),
+            macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 20))),
             macro_trend_pool_size=max(5, min(200, _to_int(data.get("MACRO_TREND_POOL_SIZE"), 30))),
             macro_trend_reselect_seconds=max(900, min(86400, _to_int(data.get("MACRO_TREND_RESELECT_SECONDS"), 14400))),
             macro_realtime_sources=_to_str(data.get("MACRO_REALTIME_SOURCES"), "binance,bybit"),
@@ -393,6 +402,13 @@ class Settings:
             solscan_cu_per_request=max(1, _to_int(data.get("SOLSCAN_CU_PER_REQUEST"), 100)),
             solscan_budget_window_seconds=max(60, _to_int(data.get("SOLSCAN_BUDGET_WINDOW_SECONDS"), 300)),
             solscan_permission_backoff_seconds=max(300, _to_int(data.get("SOLSCAN_PERMISSION_BACKOFF_SECONDS"), 21600)),
+            git_daily_reports_enabled=_to_bool(data.get("GIT_DAILY_REPORTS_ENABLED"), False),
+            git_daily_reports_autocommit=_to_bool(data.get("GIT_DAILY_REPORTS_AUTOCOMMIT"), False),
+            git_daily_reports_autopush=_to_bool(data.get("GIT_DAILY_REPORTS_AUTOPUSH"), False),
+            git_daily_reports_path=_to_str(data.get("GIT_DAILY_REPORTS_PATH"), "reports/daily_pnl"),
+            git_daily_reports_branch=_to_str(data.get("GIT_DAILY_REPORTS_BRANCH"), ""),
+            git_committer_name=_to_str(data.get("GIT_COMMITTER_NAME"), ""),
+            git_committer_email=_to_str(data.get("GIT_COMMITTER_EMAIL"), ""),
             openai_budget_state_file=_to_str(data.get("OPENAI_BUDGET_STATE_FILE"), "reports/openai_budget_state.json"),
             model_file=_to_str(data.get("MODEL_FILE"), "model_online.json"),
             state_file=_to_str(data.get("STATE_FILE"), "state.json"),

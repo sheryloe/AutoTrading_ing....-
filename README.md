@@ -1,54 +1,139 @@
-﻿# AutoTrading_ing....-
+﻿# AI_Auto
 
-도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 프로젝트입니다.
+Execution-first crypto trading lab focused on planner-based entries, daily PnL persistence, and weekly autotune.
 
-- Repository: https://github.com/sheryloe/AutoTrading_ing....-
-- Live page: https://sheryloe.github.io/AutoTrading_ing....-/
-- Audience: 크립토 자동매매 실험, 대시보드 관찰, 리포트 자동 생성에 관심 있는 개발자
+![AI_Auto landing preview](docs/assets/screenshots/auto-trading-cover.png)
 
-## Overview
-크립토 자동매매 실험을 위한 운영 콘솔과 리포팅 스택
+## What This Repo Is Now
 
-## Why This Exists
-자동매매 프로젝트는 전략 실험, 상태 점검, 리포트 축적, 런타임 설정을 별도로 관리하면 운영 피로가 크게 늘어납니다.
+As of `2026-03-15`, the project is being reshaped around a simpler operating profile:
 
-## What You Can Do
-- 앱 컨테이너와 리포터 컨테이너를 분리한 Docker Compose 구성
-- 리포트 디렉터리와 런타임 설정 파일을 볼륨으로 연결
-- 웹 대시보드와 운영 상태 API를 전제로 한 구조
-- 전략 실험 중간 보고를 자동화하는 보조 스크립트 포함
+- `meme` flow removed from the active trading direction
+- `Top 5` major Bybit pairs only: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `XRPUSDT`, `BNBUSDT`
+- `4` crypto planner models that generate `entry / SL / TP`
+- `10-minute` analysis cycle
+- `daily` model PnL snapshots and git report files
+- `weekly` parameter autotune based on accumulated results
 
-## Typical Flow
-- `.env`와 상태 파일 준비
-- Docker Compose로 앱과 리포터 기동
-- 대시보드와 생성된 리포트로 전략 상태 확인
+This repository is not trying to look like a generic AI-generated trading demo. The direction is an operations-grade trading lab: signal planning, execution discipline, reporting, and parameter feedback loops.
 
-## Tech Stack
-- Python
-- Docker Compose
-- HTML templates
-- Static assets
+## Current Trading Profile
+
+| Item | Current direction |
+| --- | --- |
+| Market | Crypto majors only |
+| Universe | `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `XRPUSDT`, `BNBUSDT` |
+| Cycle | Every `10m` |
+| Leverage band | `15x ~ 30x` by model |
+| Models | `A/B/C/D` planner models |
+| Review layer | No LLM review |
+| Learning loop | Daily PnL + weekly autotune |
+| Reports | `reports/daily_pnl/*.json`, `*.csv`, `summary.csv` |
+
+## Model Matrix
+
+| Model | Role | Planning output |
+| --- | --- | --- |
+| `A` | Range reversion planner | mean reversion entry zone, defensive stop, staged targets |
+| `B` | Support reclaim planner | reclaim entry, invalidation stop, recovery targets |
+| `C` | Compression breakout planner | breakout retest entry, range stop, expansion targets |
+| `D` | Reset bounce planner | washout bounce entry, reset stop, rebound targets |
+
+All four models are expected to output:
+
+- `entry_price`
+- `entry_zone_low`
+- `entry_zone_high`
+- `stop_loss_price`
+- `target_price_1/2/3`
+- `risk_reward`
+- `recommended_leverage`
+- `setup_expiry_ts`
+
+## Operating Loop
+
+1. Every `10 minutes`: generate fresh crypto setups for the fixed top-5 universe.
+2. Every `24 hours`: aggregate model-level daily PnL and persist report files.
+3. Every `7 days`: adjust thresholds and TP/SL multipliers from observed performance.
+
+This is the core loop. No narrative review layer is required for it.
+
+## Runtime and Deployment Direction
+
+### Current runtime
+
+- `Flask` dashboard and Python trading engine still run together locally or on a persistent host.
+- The current Flask app starts the engine immediately at boot.
+- GitHub Pages is used for the public-facing project landing.
+
+### Target cloud split
+
+- `Vercel`: frontend dashboard only
+- `Supabase`: setups, positions, daily PnL, autotune history, heartbeat
+- `GitHub Actions`: `10m` analysis, daily report commit, weekly autotune
+- `Python engine`: batch-oriented execution layer
+
+Useful files:
+
+- [Supabase schema](docs/SUPABASE_SCHEMA_20260315.sql)
+- [Vercel and Supabase setup checklist](docs/VERCEL_SUPABASE_SETUP_20260315.md)
+- [Strategy refactor notes](docs/strategy_refactor_20260308.md)
 
 ## Quick Start
-- `.env.example`을 참고해 `.env`와 상태 파일을 준비합니다.
-- `docker compose up -d --build`로 앱과 리포터를 함께 실행합니다.
-- 필요 시 `docker compose logs -f`로 상태를 점검합니다.
 
-## Repository Structure
-- `scripts/`: 리포트 및 운영 보조 스크립트
-- `templates/`, `static/`: 대시보드 UI 자산
-- `reports/`: 리포트 산출물 저장 위치
+### Local Python
 
-## Search Keywords
-`crypto auto trading dashboard`, `algorithmic trading console`, `docker trading app`, `자동매매 대시보드`, `크립토 리포트 자동화`
+```powershell
+cd d:\AI_Auto
+py -3 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+Copy-Item runtime_settings.example.json runtime_settings.local.json
+py -3 web_app.py
+```
 
-## FAQ
-### 이 저장소는 실전 자동매매용인가요?
-현재는 운영 콘솔과 상태 리포트 중심의 실험/개선용 프로젝트로 보는 편이 정확합니다.
+### Docker
 
-### 어떻게 실행하나요?
-Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다.
+```powershell
+cd d:\AI_Auto
+Copy-Item .env.example .env
+docker compose up -d --build
+```
 
-### 무엇을 먼저 확인하면 되나요?
-런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다.
+Default local dashboard:
 
+```txt
+http://localhost:8099
+```
+
+## Repository Map
+
+- `src/`: engine, config, providers, runtime feedback, reporting
+- `web_app.py`: Flask app entrypoint
+- `templates/`, `static/`: current dashboard UI
+- `docs/`: GitHub Pages landing, setup notes, strategy documents
+- `reports/`: generated runtime and daily report outputs
+- `scripts/`: local maintenance and helper scripts
+
+## Safety Notes
+
+- `runtime_settings.local.json` and `.env` are local runtime files and should stay out of git.
+- `publishable` Supabase keys can be used in the frontend.
+- `secret` or `service_role` keys must stay server-side only.
+- The current design direction assumes no LLM review dependency for the core trading loop.
+
+## GitHub Pages
+
+The GitHub Pages source lives under `docs/`.
+The landing page is intentionally separate from the Flask dashboard UI so the repository presentation does not look like a duplicated app shell.
+
+## Status
+
+Active focus right now:
+
+- planner-based crypto execution
+- daily PnL reporting
+- weekly autotune
+- Supabase persistence
+- Vercel frontend split

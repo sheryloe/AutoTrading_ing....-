@@ -1,284 +1,362 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AutoTrading_ing....- | 자동매매 운영 리스크와 대시보드를 함께 다루는 프로젝트</title>
+    <title>AI_Auto | Planner-Based Crypto Execution Lab</title>
     <meta
       name="description"
-      content="도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 실험형 프로젝트입니다."
+      content="Top-5 major crypto pairs, 10-minute planner cycles, daily PnL persistence, and weekly autotune. AI_Auto is being rebuilt as an execution-first trading lab."
     >
     <meta
       name="keywords"
-      content="crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화"
+      content="crypto execution lab, planner based trading, bybit major pairs, supabase trading dashboard, vercel trading frontend, 자동매매 대시보드, 크립토 플래너 모델"
     >
     <meta name="robots" content="index, follow, max-image-preview:large">
-    <meta name="googlebot" content="index, follow, max-image-preview:large">
-    <meta name="theme-color" content="#0f766e">
+    <meta name="theme-color" content="#081019">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="ko_KR">
-    <meta property="og:site_name" content="AutoTrading_ing....-">
-    <meta property="og:title" content="AutoTrading_ing....- | 자동매매 운영 리스크와 대시보드를 함께 다루는 프로젝트">
+    <meta property="og:title" content="AI_Auto | Planner-Based Crypto Execution Lab">
     <meta
       property="og:description"
-      content="전략 실험, 상태 점검, 리포트 자동화를 따로 두지 않고 운영 리스크 중심으로 다시 묶은 자동매매 프로젝트입니다."
+      content="LLM review 없이, 상위 5개 메이저 코인과 4개 플래너 모델로 10분 단위 분석과 일별 PnL, 주간 autotune을 운영하는 트레이딩 랩."
     >
-    <meta property="og:url" content="https://sheryloe.github.io/AutoTrading_ing....-/">
-    <meta
-      property="og:image"
-      content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png"
-    >
-    <meta property="og:image:alt" content="AutoTrading 블로그형 소개 페이지 커버">
+    <meta property="og:image" content="assets/screenshots/auto-trading-cover.png">
+    <meta property="og:image:alt" content="AI_Auto dark trading landing preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="AutoTrading_ing....-">
+    <meta name="twitter:title" content="AI_Auto | Planner-Based Crypto Execution Lab">
     <meta
       name="twitter:description"
-      content="자동매매 상태 대시보드와 리포트 자동화를 함께 다루는 실험형 운영 프로젝트"
+      content="Top-5 majors, 10-minute setups, daily PnL reports, and weekly autotune."
     >
-    <meta
-      name="twitter:image"
-      content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png"
-    >
-    <link rel="canonical" href="https://sheryloe.github.io/AutoTrading_ing....-/">
+    <meta name="twitter:image" content="assets/screenshots/auto-trading-cover.png">
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Outfit:wght@500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     >
     <link rel="stylesheet" href="./styles.css">
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "SoftwareSourceCode",
-            "name": "AutoTrading_ing....-",
-            "codeRepository": "https://github.com/sheryloe/AutoTrading_ing....-",
-            "url": "https://sheryloe.github.io/AutoTrading_ing....-/",
-            "programmingLanguage": "Python, Docker Compose",
-            "description": "도커 기반 앱과 리포터를 함께 띄워 자동매매 상태, 리포트, 런타임 설정을 운영하는 실험형 프로젝트입니다.",
-            "keywords": "crypto auto trading dashboard, algorithmic trading console, docker trading app, 자동매매 대시보드, 크립토 리포트 자동화"
-          },
-          {
-            "@type": "FAQPage",
-            "mainEntity": [
-              {
-                "@type": "Question",
-                "name": "이 저장소는 실전 자동매매용인가요?",
-                "acceptedAnswer": {
-                  "@type": "Answer",
-                  "text": "현재는 운영 콘솔과 상태 리포트 중심의 실험 및 개선용 프로젝트로 보는 편이 정확합니다."
-                }
-              },
-              {
-                "@type": "Question",
-                "name": "어떻게 실행하나요?",
-                "acceptedAnswer": {
-                  "@type": "Answer",
-                  "text": "Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다."
-                }
-              },
-              {
-                "@type": "Question",
-                "name": "무엇을 먼저 확인하면 되나요?",
-                "acceptedAnswer": {
-                  "@type": "Answer",
-                  "text": "런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다."
-                }
-              }
-            ]
-          }
-        ]
-      }
-    </script>
   </head>
   <body>
+    <div class="bg-grid"></div>
+    <div class="bg-orb bg-orb-a"></div>
+    <div class="bg-orb bg-orb-b"></div>
+
     <div class="page-shell">
       <header class="topbar">
         <a class="brand" href="#top">
-          <span class="brand-mark">AT</span>
-          <span class="brand-text">
-            <strong>AutoTrading</strong>
-            <span>Risk-aware trading ops</span>
+          <span class="brand-mark"></span>
+          <span class="brand-copy">
+            <strong>AI_Auto</strong>
+            <span>Execution Lab / Major Pairs Only</span>
           </span>
         </a>
-        <nav class="topnav" aria-label="페이지 이동">
-          <a href="#features">특징</a>
-          <a href="#workflow">구성</a>
-          <a href="#notes">운영 포인트</a>
+        <nav class="topnav" aria-label="Sections">
+          <a href="#profile">Profile</a>
+          <a href="#models">Models</a>
+          <a href="#loop">Loop</a>
+          <a href="#deploy">Deploy</a>
           <a href="#faq">FAQ</a>
-          <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub</a>
         </nav>
+        <a class="ghost-button" href="./VERCEL_SUPABASE_SETUP_20260315.md">Deploy Notes</a>
       </header>
 
       <main id="top">
         <section class="hero">
           <div class="hero-copy">
-            <p class="eyebrow">Trading experiment workspace</p>
-            <h1>자동매매를 기능보다<br>운영 리스크 관점에서<br>다시 설계한 프로젝트</h1>
+            <p class="eyebrow">TOP 5 MAJORS / 10M CYCLE / WEEKLY AUTOTUNE</p>
+            <h1>
+              Planner-based entries for
+              <span>execution-first crypto ops</span>
+            </h1>
             <p class="hero-body">
-              AutoTrading_ing....-는 전략 성능만 강조하는 페이지가 아니라, 자동매매를 실제로 운영할 때 마주치는
-              상태 점검, 리포트 축적, 런타임 설정, 초기화 안전장치를 먼저 보여 주는 프로젝트 페이지입니다.
-              실험을 반복할수록 왜 대시보드와 리포터가 함께 있어야 하는지, 그리고 왜 운영 리스크를 별도 주제로 다뤄야 하는지에 초점을 맞췄습니다.
+              AI_Auto is being reshaped into a tighter trading system: no meme flow, no LLM review gate,
+              and no generic showcase layout. The focus is on four planner models that produce entry, stop-loss,
+              and target levels for a fixed major-coin universe, then learn from daily reports and weekly retunes.
             </p>
             <div class="hero-actions">
-              <a class="button primary" href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소 보기</a>
-              <a class="button secondary" href="https://sheryloe.github.io/">프로젝트 허브로 이동</a>
+              <a class="button button-primary" href="./SUPABASE_SCHEMA_20260315.sql">Supabase Schema</a>
+              <a class="button button-secondary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Vercel + Supabase Setup</a>
             </div>
-            <ul class="hero-meta">
-              <li>Docker Compose 운영</li>
-              <li>대시보드 + 리포터 분리</li>
-              <li>상태 리포트 자동화</li>
+            <ul class="chip-row">
+              <li>BTC / ETH / SOL / XRP / BNB</li>
+              <li>15x - 30x model bands</li>
+              <li>Daily git reports</li>
+              <li>7-day autotune cycle</li>
             </ul>
           </div>
 
-          <div class="hero-visual" aria-label="AutoTrading 대시보드">
-            <figure class="visual-card visual-main">
-              <img src="assets/screenshots/auto-trading-dashboard.png" alt="자동매매 대시보드 화면" loading="eager">
+          <div class="hero-visual">
+            <section class="terminal-card board-card">
+              <div class="terminal-head">
+                <span>live profile</span>
+                <span>execution preset</span>
+              </div>
+              <div class="board-grid">
+                <article>
+                  <label>Universe</label>
+                  <strong>5 majors</strong>
+                  <p>Bybit-listed, liquid, fixed watchlist</p>
+                </article>
+                <article>
+                  <label>Cadence</label>
+                  <strong>10m</strong>
+                  <p>planner refresh and setup expiry checks</p>
+                </article>
+                <article>
+                  <label>Reports</label>
+                  <strong>24h</strong>
+                  <p>PnL snapshot, csv/json export, git commit</p>
+                </article>
+                <article>
+                  <label>Retune</label>
+                  <strong>7d</strong>
+                  <p>threshold and tp/sl multiplier adjustment</p>
+                </article>
+              </div>
+            </section>
+
+            <figure class="screenshot-card">
+              <img src="assets/screenshots/auto-trading-dashboard.png" alt="AI_Auto dashboard screenshot" loading="eager">
+              <figcaption>
+                <span class="caption-kicker">Current dashboard runtime</span>
+                <strong>Flask runtime today, Vercel frontend split next</strong>
+                <p>The engine still lives in Python, but the presentation layer is being rebuilt into a cleaner deployment split.</p>
+              </figcaption>
             </figure>
-            <figure class="visual-card visual-side visual-note">
-              <span class="note-badge">Guardrails</span>
-              <strong>전략 수익보다 먼저 보는 운영 체크포인트</strong>
-              <ul class="note-list">
-                <li>초기화 안전장치와 런타임 상태 확인</li>
-                <li>리포트 디렉터리와 설정 파일 연결</li>
-                <li>장애 시점 파악을 위한 로그와 보고서 축적</li>
+
+            <section class="terminal-card tape-card">
+              <div class="terminal-head">
+                <span>market tape</span>
+                <span>major pairs only</span>
+              </div>
+              <div class="tape-track">
+                <span>BTCUSDT</span>
+                <span>ETHUSDT</span>
+                <span>SOLUSDT</span>
+                <span>XRPUSDT</span>
+                <span>BNBUSDT</span>
+                <span>BTCUSDT</span>
+                <span>ETHUSDT</span>
+                <span>SOLUSDT</span>
+                <span>XRPUSDT</span>
+                <span>BNBUSDT</span>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="profile-grid" id="profile">
+          <article class="profile-card accent-cyan">
+            <span class="card-index">01</span>
+            <h2>Execution profile</h2>
+            <p>No meme rotation, no trend-chasing social layer. Only major-pair setup planning with explicit risk levels.</p>
+          </article>
+          <article class="profile-card accent-green">
+            <span class="card-index">02</span>
+            <h2>Data loop</h2>
+            <p>Every cycle writes structured data that can be reused for daily PnL, weekly autotune, and dashboard state.</p>
+          </article>
+          <article class="profile-card accent-amber">
+            <span class="card-index">03</span>
+            <h2>Presentation split</h2>
+            <p>The public page should not look like the in-app UI. GitHub Pages acts like a brand and operating brief, not a cloned dashboard.</p>
+          </article>
+        </section>
+
+        <section class="section-shell section-surface">
+          <div class="section-head">
+            <p class="eyebrow">Surface map</p>
+            <h2>What the system now optimizes for</h2>
+          </div>
+          <div class="surface-grid">
+            <article class="surface-card">
+              <label>Universe</label>
+              <strong>Top 5 majors</strong>
+              <p>BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT</p>
+            </article>
+            <article class="surface-card">
+              <label>Signal shape</label>
+              <strong>Entry / SL / TP</strong>
+              <p>Each model outputs a plan, not just a score.</p>
+            </article>
+            <article class="surface-card">
+              <label>Feedback loop</label>
+              <strong>Result-driven tuning</strong>
+              <p>Retune depends on observed performance, not manual review prompts.</p>
+            </article>
+            <article class="surface-card">
+              <label>Storage target</label>
+              <strong>Supabase</strong>
+              <p>Setups, positions, daily pnl, tune history, heartbeat.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-shell" id="models">
+          <div class="section-head">
+            <p class="eyebrow">Model matrix</p>
+            <h2>Four planner models, four execution attitudes</h2>
+            <p class="section-copy">The models are meant to disagree in useful ways. They should create different entry zones, different invalidation logic, and different target pacing.</p>
+          </div>
+          <div class="model-grid">
+            <article class="model-card">
+              <div class="model-head">
+                <span>A</span>
+                <strong>Range Reversion</strong>
+              </div>
+              <p>Mean reversion around stretched local ranges. Defensive leverage band and fast invalidation.</p>
+              <ul>
+                <li>Entry: support-side reversion zone</li>
+                <li>Stop: range breakdown</li>
+                <li>Targets: mid-band to opposite edge</li>
               </ul>
-            </figure>
-            <div class="visual-caption">
-              <strong>대시보드와 리포트가 함께 있어야 운영이 보입니다</strong>
-              <p>전략 실험 결과만 보는 대신, 실행 중인 상태와 후속 보고 구조까지 연결해서 읽을 수 있도록 설명합니다.</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="feature-strip" id="features">
-          <article>
-            <span>01</span>
-            <h2>기능보다 운영 리스크를 먼저 재설계</h2>
-            <p>자동매매는 전략 성능뿐 아니라 상태 점검과 복구 동선이 중요하다는 전제에서 출발합니다.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h2>Flask 대시보드와 런타임 제어 레이어 결합</h2>
-            <p>웹 대시보드와 컨테이너 실행 상태를 한 흐름으로 읽을 수 있도록 운영 중심 구조를 선택했습니다.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h2>초기화 안전장치와 리포트 구조를 함께 제시</h2>
-            <p>실패 상황을 덜 위험하게 만들고, 사후 분석을 가능하게 하는 보고 구조까지 포함합니다.</p>
-          </article>
-        </section>
-
-        <section class="workflow" id="workflow">
-          <div class="section-heading">
-            <p class="eyebrow">Chapters</p>
-            <h2>자동매매를 설명하는 3개의 운영 문장</h2>
-            <p class="section-body">
-              Notion 스텝 문서 제목을 중심에 놓고, 이 저장소가 왜 단순 전략 코드 저장소가 아닌 운영형 실험실에 가까운지 드러내도록 구성했습니다.
-            </p>
-          </div>
-          <div class="workflow-grid">
-            <article class="workflow-card">
-              <strong>1. 자동매매를 기능보다 운영 리스크로 다시 설계한 이유</strong>
-              <p>수익률 지표만이 아니라 운영자가 감당해야 할 상태 관리와 리스크 통제를 프로젝트의 전면에 둡니다.</p>
             </article>
-            <article class="workflow-card">
-              <strong>2. Flask 대시보드와 런타임 제어 레이어 구현 과정</strong>
-              <p>앱 실행 상태와 시각화된 대시보드를 연결해 실험 중간 점검이 쉬운 구조를 만들었습니다.</p>
+            <article class="model-card">
+              <div class="model-head">
+                <span>B</span>
+                <strong>Support Reclaim</strong>
+              </div>
+              <p>Recovery trades that wait for price to reclaim structure before taking risk.</p>
+              <ul>
+                <li>Entry: reclaim confirmation band</li>
+                <li>Stop: failed reclaim</li>
+                <li>Targets: swing recovery ladder</li>
+              </ul>
             </article>
-            <article class="workflow-card">
-              <strong>3. 초기화 안전장치와 리포트 구조로 운영성을 마무리한 결과</strong>
-              <p>실패 상황을 덜 위험하게 만들고, 사후 분석을 가능하게 하는 보고 구조까지 포함합니다.</p>
+            <article class="model-card">
+              <div class="model-head">
+                <span>C</span>
+                <strong>Compression Breakout</strong>
+              </div>
+              <p>Expansion trades built from squeezed volatility and retest behavior.</p>
+              <ul>
+                <li>Entry: breakout retest</li>
+                <li>Stop: box re-entry</li>
+                <li>Targets: expansion multiples</li>
+              </ul>
+            </article>
+            <article class="model-card">
+              <div class="model-head">
+                <span>D</span>
+                <strong>Reset Bounce</strong>
+              </div>
+              <p>Washout and rebound setups that prioritize a clean reset before re-entry.</p>
+              <ul>
+                <li>Entry: bounce after local reset</li>
+                <li>Stop: reset low failure</li>
+                <li>Targets: rebound levels</li>
+              </ul>
             </article>
           </div>
         </section>
 
-        <section class="screenshots" id="notes">
-          <div class="section-heading">
-            <p class="eyebrow">Operating notes</p>
-            <h2>실제로 먼저 체크해야 할 운영 포인트</h2>
-            <p class="section-body">
-              자동매매 프로젝트를 처음 보는 사람이 바로 따라가기 쉽도록 실행 흐름과 점검 포인트를 본문에 묶어 두었습니다.
-            </p>
+        <section class="section-shell loop-shell" id="loop">
+          <div class="section-head">
+            <p class="eyebrow">Operating loop</p>
+            <h2>Three cadences define the whole system</h2>
           </div>
-          <div class="flow-banner">
-            <article class="flow-step">
-              <span>STEP 1</span>
-              <strong>`.env`와 상태 파일을 준비합니다</strong>
-              <p>런타임 설정과 상태 파일을 먼저 맞춘 뒤 컨테이너를 올리는 전개를 전제로 합니다.</p>
+          <div class="loop-grid">
+            <article class="loop-card">
+              <label>Every 10 minutes</label>
+              <strong>Generate setups</strong>
+              <p>Refresh feature packs, emit planner outputs, and validate entry-readiness against the fixed symbol set.</p>
             </article>
-            <article class="flow-step">
-              <span>STEP 2</span>
-              <strong>앱과 리포터를 함께 기동합니다</strong>
-              <p>`docker compose up -d --build`로 실행한 뒤 대시보드와 생성된 리포트 디렉터리를 함께 확인합니다.</p>
+            <article class="loop-card">
+              <label>Every 24 hours</label>
+              <strong>Persist model PnL</strong>
+              <p>Write json/csv reports, update summaries, and capture the daily operating state for later analysis.</p>
             </article>
-          </div>
-          <div class="workflow-grid">
-            <article class="workflow-card">
-              <strong>Tech stack</strong>
-              <p>Python, Docker Compose, HTML templates, static assets를 중심으로 운영 콘솔과 보고 구조를 만듭니다.</p>
-            </article>
-            <article class="workflow-card">
-              <strong>Repository structure</strong>
-              <p>`scripts/`, `templates/`, `static/`, `reports/`를 나눠 실행 로직과 리포트 산출물을 분리합니다.</p>
-            </article>
-            <article class="workflow-card">
-              <strong>Audience</strong>
-              <p>크립토 자동매매 실험, 대시보드 관찰, 리포트 자동 생성에 관심 있는 개발자에게 맞춰진 구조입니다.</p>
+            <article class="loop-card">
+              <label>Every 7 days</label>
+              <strong>Autotune parameters</strong>
+              <p>Adjust thresholds and tp/sl multipliers from closed-trade outcomes instead of narrative review.</p>
             </article>
           </div>
         </section>
 
-        <section class="seo-copy">
-          <div class="section-heading">
-            <p class="eyebrow">Search intent</p>
-            <h2>검색에서 기대하는 문맥을 바로 보여 주는 구조</h2>
+        <section class="section-shell" id="deploy">
+          <div class="section-head">
+            <p class="eyebrow">Deployment topology</p>
+            <h2>Separate presentation, storage, and scheduling</h2>
+            <p class="section-copy">Vercel should not host the always-on Flask engine. The cleaner split is frontend on Vercel, storage on Supabase, and timed execution on GitHub Actions.</p>
           </div>
-          <div class="seo-grid">
-            <article>
-              <h3>국문 키워드</h3>
-              <p>자동매매 대시보드, 크립토 리포트 자동화, 운영 리스크 같은 검색 조합에 맞춰 본문을 설계했습니다.</p>
+          <div class="deploy-grid">
+            <article class="deploy-card">
+              <span>Vercel</span>
+              <strong>Frontend dashboard</strong>
+              <p>Read-only presentation, auth-gated views, realtime subscriptions.</p>
             </article>
-            <article>
-              <h3>영문 키워드</h3>
-              <p>crypto auto trading dashboard, algorithmic trading console, docker trading app 같은 검색어를 함께 대응합니다.</p>
+            <article class="deploy-card">
+              <span>Supabase</span>
+              <strong>Source of truth</strong>
+              <p>Setups, positions, daily pnl, autotune history, heartbeat, report commit state.</p>
             </article>
-            <article>
-              <h3>이미지 미리보기</h3>
-              <p>실제 대시보드 캡처를 Open Graph 이미지로 써서 링크 공유 시 프로젝트 성격이 바로 전달되게 했습니다.</p>
+            <article class="deploy-card">
+              <span>GitHub Actions</span>
+              <strong>Timed execution</strong>
+              <p>10-minute analysis, daily report snapshots, weekly autotune jobs.</p>
+            </article>
+            <article class="deploy-card">
+              <span>Python runtime</span>
+              <strong>Execution engine</strong>
+              <p>Planner logic, exchange integration, report generation, and state maintenance.</p>
             </article>
           </div>
         </section>
 
-        <section class="faq" id="faq">
-          <div class="section-heading">
+        <section class="section-shell resources-shell">
+          <div class="section-head">
+            <p class="eyebrow">Repo surfaces</p>
+            <h2>Use the repo as an operating brief</h2>
+          </div>
+          <div class="resources-grid">
+            <a class="resource-card" href="./SUPABASE_SCHEMA_20260315.sql">
+              <span>SQL</span>
+              <strong>Supabase schema</strong>
+              <p>Tables for setups, positions, daily pnl, tune history, and heartbeat.</p>
+            </a>
+            <a class="resource-card" href="./VERCEL_SUPABASE_SETUP_20260315.md">
+              <span>Setup</span>
+              <strong>Vercel + Supabase checklist</strong>
+              <p>Required keys, env mapping, auth notes, and deployment split.</p>
+            </a>
+            <a class="resource-card" href="./strategy_refactor_20260308.md">
+              <span>Notes</span>
+              <strong>Strategy refactor log</strong>
+              <p>Background context for why the system is being simplified and hardened.</p>
+            </a>
+          </div>
+        </section>
+
+        <section class="section-shell faq-shell" id="faq">
+          <div class="section-head">
             <p class="eyebrow">FAQ</p>
-            <h2>자주 묻는 질문</h2>
+            <h2>Operational questions first</h2>
           </div>
           <div class="faq-list">
             <details open>
-              <summary>이 저장소는 실전 자동매매용인가요?</summary>
-              <p>현재는 운영 콘솔과 상태 리포트 중심의 실험 및 개선용 프로젝트로 보는 편이 정확합니다.</p>
+              <summary>Is Vercel supposed to run the Flask engine?</summary>
+              <p>No. The current direction is to split the frontend from the Python runtime. Vercel should host the frontend, not the always-on engine loop.</p>
             </details>
             <details>
-              <summary>어떻게 실행하나요?</summary>
-              <p>Docker Compose로 앱과 리포터 컨테이너를 함께 띄우는 방식입니다.</p>
+              <summary>Do I need an OpenAI or Gemini key for the core loop?</summary>
+              <p>No. The current execution direction is daily-result tracking and weekly parameter tuning, not LLM review.</p>
             </details>
             <details>
-              <summary>무엇을 먼저 확인하면 되나요?</summary>
-              <p>런타임 설정 파일과 보고서 디렉터리, 대시보드 API 연결 상태를 먼저 확인하는 것이 좋습니다.</p>
+              <summary>Why is GitHub Pages styled differently from the in-app dashboard?</summary>
+              <p>Because the project landing should communicate the operating profile and deployment shape, not mirror the Flask app UI one-to-one.</p>
             </details>
           </div>
         </section>
       </main>
 
       <footer class="footer">
-        <span>Last updated: 2026-03-13</span>
-        <a href="https://github.com/sheryloe/AutoTrading_ing....-">Repository</a>
+        <span>Updated 2026-03-15</span>
+        <span>AI_Auto / Planner-based crypto execution lab</span>
       </footer>
     </div>
   </body>
