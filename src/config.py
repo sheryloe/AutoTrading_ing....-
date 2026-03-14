@@ -203,6 +203,10 @@ class Settings:
     git_daily_reports_branch: str
     git_committer_name: str
     git_committer_email: str
+    supabase_sync_enabled: bool
+    supabase_url: str
+    supabase_secret_key: str
+    supabase_sync_timeout_seconds: int
     openai_budget_state_file: str
     model_file: str
     state_file: str
@@ -409,6 +413,13 @@ class Settings:
             git_daily_reports_branch=_to_str(data.get("GIT_DAILY_REPORTS_BRANCH"), ""),
             git_committer_name=_to_str(data.get("GIT_COMMITTER_NAME"), ""),
             git_committer_email=_to_str(data.get("GIT_COMMITTER_EMAIL"), ""),
+            supabase_sync_enabled=_to_bool(data.get("SUPABASE_SYNC_ENABLED"), False),
+            supabase_url=_to_str(data.get("SUPABASE_URL"), ""),
+            supabase_secret_key=_to_str(
+                data.get("SUPABASE_SECRET_KEY") or data.get("SUPABASE_SERVICE_ROLE_KEY"),
+                "",
+            ),
+            supabase_sync_timeout_seconds=max(5, _to_int(data.get("SUPABASE_SYNC_TIMEOUT_SECONDS"), 15)),
             openai_budget_state_file=_to_str(data.get("OPENAI_BUDGET_STATE_FILE"), "reports/openai_budget_state.json"),
             model_file=_to_str(data.get("MODEL_FILE"), "model_online.json"),
             state_file=_to_str(data.get("STATE_FILE"), "state.json"),
@@ -496,4 +507,6 @@ def settings_to_public_dict(settings: Settings) -> dict[str, Any]:
         data["birdeye_api_key"] = "***"
     if data.get("openai_api_key"):
         data["openai_api_key"] = "***"
+    if data.get("supabase_secret_key"):
+        data["supabase_secret_key"] = "***"
     return data

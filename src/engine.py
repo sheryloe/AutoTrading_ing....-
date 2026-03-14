@@ -9,6 +9,7 @@ import hashlib
 import tempfile
 import threading
 import time
+import uuid
 from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,7 @@ from src.online_model import OnlineModel, load_online_model, save_online_model
 from src.meme_discovery import MemeDiscoveryConfig, MemeDiscoveryService
 from src.providers import BybitV5Client, JupiterSolanaTrader, OpenAICandidateAdvisor, PumpPortalLocalTrader, SolanaWalletTracker, TelegramBotClient
 from src.runtime_feedback import RuntimeFeedbackStore
+from src.supabase_sync import SupabaseSyncClient
 from src.state import (
     STATE_DAILY_PNL_HISTORY_LIMIT,
     STATE_TREND_HISTORY_LIMIT,
@@ -500,6 +502,12 @@ class TradingEngine:
         self._feedback_cache_ttl_seconds = 60.0
         self._repo_root = Path(__file__).resolve().parents[1]
         self._git_daily_report_kv_key = "git_daily_pnl_report_state"
+        self.supabase_sync = SupabaseSyncClient(
+            url=self.settings.supabase_url,
+            secret_key=self.settings.supabase_secret_key,
+            enabled=bool(self.settings.supabase_sync_enabled),
+            timeout_seconds=int(self.settings.supabase_sync_timeout_seconds),
+        )
 
         self._ensure_model_runs()
         self._sync_primary_views_from_model_a()
@@ -514,6 +522,12 @@ class TradingEngine:
         latest = load_settings()
         self.settings = latest
         self._enforce_paper_lock()
+        self.supabase_sync = SupabaseSyncClient(
+            url=self.settings.supabase_url,
+            secret_key=self.settings.supabase_secret_key,
+            enabled=bool(self.settings.supabase_sync_enabled),
+            timeout_seconds=int(self.settings.supabase_sync_timeout_seconds),
+        )
         feedback_db_changed = str(self.settings.runtime_feedback_db_file or "").strip() != prev_feedback_db
         if feedback_db_changed:
             self.runtime_feedback = RuntimeFeedbackStore(self.settings.runtime_feedback_db_file)
@@ -1799,6 +1813,223 @@ class TradingEngine:
         return bool(getattr(self.settings, "enable_meme_market", True))
 
     @staticmethod
+    def _iso_datetime(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            ts = int(value)
+            if ts <= 0:
+                return None
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        text = str(value or "").strip()
+        return text or None
+
+    @staticmethod
+    def _supabase_position_id(model_id: str, symbol: str, opened_at: Any) -> str:
+        raw = f"crypto:{str(model_id or '').upper()}:{str(symbol or '').upper()}:{int(opened_at or 0)}"
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, raw))
+
+    def _build_supabase_heartbeat_row(self, now_ts: int) -> dict[str, Any]:
+        return {
+            "engine_name": "ai_auto_core",
+            "market": "crypto",
+            "last_seen_at": self._iso_datetime(now_ts),
+            "last_cycle_started_at": self._iso_datetime(now_ts),
+            "last_cycle_finished_at": self._iso_datetime(now_ts),
+            "last_error": "",
+            "version_sha": "",
+            "host_name": os.environ.get("COMPUTERNAME", ""),
+            "meta_json": {
+                "trade_mode": str(self.settings.trade_mode or ""),
+                "demo_enable_macro": bool(self.settings.demo_enable_macro),
+                "configured_symbols": list(self._configured_crypto_symbols()),
+            },
+        }
+
+    def _build_supabase_runtime_tune_rows(self, now_ts: int) -> list[dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        rows: list[dict[str, Any]] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            tune = self._read_model_runtime_tune_from_run(run, model_id, now_ts)
+            rows.append(
+                {
+                    "model_id": model_id,
+                    "market": "crypto",
+                    "active_variant_id": str(tune.get("active_variant_id") or run.get("active_variant_id") or ""),
+                    "threshold": float(tune.get("threshold") or 0.0),
+                    "tp_mul": float(tune.get("tp_mul") or 0.0),
+                    "sl_mul": float(tune.get("sl_mul") or 0.0),
+                    "next_eval_at": self._iso_datetime(tune.get("next_eval_ts")),
+                    "last_eval_at": self._iso_datetime(tune.get("last_eval_ts")),
+                    "last_eval_note_code": str(tune.get("last_eval_note") or ""),
+                    "last_eval_note_ko": str(tune.get("last_eval_note_ko") or ""),
+                    "last_eval_closed": int(tune.get("last_eval_closed") or 0),
+                    "last_eval_win_rate": float(tune.get("last_eval_win_rate") or 0.0),
+                    "last_eval_pnl_usd": float(tune.get("last_eval_pnl_usd") or 0.0),
+                    "last_eval_pf": float(tune.get("last_eval_pf") or 0.0),
+                    "source_json": {
+                        "variant_seq": int(tune.get("variant_seq") or 0),
+                        "next_eval_ts": int(tune.get("next_eval_ts") or 0),
+                    },
+                }
+            )
+        return rows
+
+    def _build_supabase_daily_pnl_rows(self) -> list[dict[str, Any]]:
+        with self._lock:
+            table = list(self.state.daily_pnl or [])
+        rows: list[dict[str, Any]] = []
+        for row in table[-180:]:
+            model_id = str((row or {}).get("model_id") or "").upper()
+            day_key = str((row or {}).get("date") or "").strip()
+            if model_id not in CRYPTO_MODEL_IDS or not day_key:
+                continue
+            rows.append(
+                {
+                    "day": day_key,
+                    "market": "crypto",
+                    "model_id": model_id,
+                    "equity_usd": float((row or {}).get("bybit_equity_usd") or 0.0),
+                    "total_pnl_usd": float((row or {}).get("bybit_total_pnl_usd") or 0.0),
+                    "realized_pnl_usd": float((row or {}).get("bybit_realized_pnl_usd") or 0.0),
+                    "unrealized_pnl_usd": float((row or {}).get("bybit_unrealized_pnl_usd") or 0.0),
+                    "win_rate": float((row or {}).get("bybit_win_rate") or 0.0),
+                    "closed_trades": int((row or {}).get("bybit_closed_trades") or 0),
+                    "source_json": {
+                        "total_equity_usd": float((row or {}).get("total_equity_usd") or 0.0),
+                        "total_pnl_usd_all": float((row or {}).get("total_pnl_usd") or 0.0),
+                    },
+                }
+            )
+        return rows
+
+    def _build_supabase_setup_rows(self) -> list[dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        rows: list[dict[str, Any]] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            for signal in list(run.get("latest_crypto_signals") or [])[:80]:
+                symbol = str((signal or {}).get("symbol") or "").upper().strip()
+                if not symbol:
+                    continue
+                rows.append(
+                    {
+                        "cycle_at": self._iso_datetime((signal or {}).get("scored_at_ts")),
+                        "market": "crypto",
+                        "symbol": symbol,
+                        "model_id": model_id,
+                        "timeframe": "10m",
+                        "side": "long",
+                        "score": float((signal or {}).get("score") or 0.0),
+                        "threshold": float((signal or {}).get("entry_threshold") or 0.0),
+                        "confidence": float((signal or {}).get("score") or 0.0),
+                        "entry_price": float((signal or {}).get("entry_price") or 0.0),
+                        "entry_zone_low": float((signal or {}).get("entry_zone_low") or 0.0),
+                        "entry_zone_high": float((signal or {}).get("entry_zone_high") or 0.0),
+                        "stop_loss_price": float((signal or {}).get("stop_loss_price") or 0.0),
+                        "take_profit_price": float((signal or {}).get("take_profit_price") or 0.0),
+                        "target_price_1": float((signal or {}).get("target_price_1") or 0.0),
+                        "target_price_2": float((signal or {}).get("target_price_2") or 0.0),
+                        "target_price_3": float((signal or {}).get("target_price_3") or 0.0),
+                        "risk_reward": float((signal or {}).get("risk_reward") or 0.0),
+                        "recommended_leverage": float((signal or {}).get("leverage") or 0.0),
+                        "entry_ready": bool((signal or {}).get("entry_ready")),
+                        "setup_state": str((signal or {}).get("setup_state") or "planned"),
+                        "expires_at": self._iso_datetime((signal or {}).get("setup_expiry_ts")),
+                        "reason_text": str((signal or {}).get("reason") or ""),
+                        "indicators_json": dict((signal or {}).get("indicator_snapshot") or {}),
+                    }
+                )
+        return rows
+
+    def _build_supabase_open_position_rows(self) -> list[dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        rows: list[dict[str, Any]] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            for pos in list((run.get("bybit_positions") or {}).values()):
+                symbol = str((pos or {}).get("symbol") or "").upper().strip()
+                if not symbol:
+                    continue
+                current = float(self._crypto_current_price(pos))
+                marked = self._mark_crypto_position(pos, current)
+                opened_at = int((pos or {}).get("opened_at") or 0)
+                rows.append(
+                    {
+                        "id": self._supabase_position_id(model_id, symbol, opened_at),
+                        "market": "crypto",
+                        "symbol": symbol,
+                        "model_id": model_id,
+                        "side": str((pos or {}).get("side") or "long"),
+                        "status": "open",
+                        "opened_at": self._iso_datetime(opened_at),
+                        "planned_entry_price": float((pos or {}).get("entry_plan_price") or 0.0),
+                        "actual_entry_price": float((pos or {}).get("avg_price_usd") or 0.0),
+                        "stop_loss_price": float((pos or {}).get("stop_loss_price") or 0.0),
+                        "take_profit_price": float((pos or {}).get("take_profit_price") or 0.0),
+                        "target_price_1": float((pos or {}).get("target_price_1") or 0.0),
+                        "target_price_2": float((pos or {}).get("target_price_2") or 0.0),
+                        "target_price_3": float((pos or {}).get("target_price_3") or 0.0),
+                        "qty": float(marked.get("qty") or 0.0),
+                        "notional_usd": float((pos or {}).get("notional_usd") or marked.get("exposure_usd") or 0.0),
+                        "leverage": float(marked.get("leverage") or 0.0),
+                        "fees_usd": 0.0,
+                        "funding_usd": 0.0,
+                        "realized_pnl_usd": 0.0,
+                        "unrealized_pnl_usd": float(marked.get("pnl_usd") or 0.0),
+                        "max_drawdown_usd": 0.0,
+                        "position_meta": {
+                            "entry_score": float((pos or {}).get("entry_score") or 0.0),
+                            "risk_reward": float((pos or {}).get("risk_reward") or 0.0),
+                            "reason": str((pos or {}).get("reason") or ""),
+                            "setup_state": str((pos or {}).get("setup_state") or ""),
+                        },
+                    }
+                )
+        return rows
+
+    def _sync_supabase_snapshot(self, now_ts: int) -> None:
+        if not bool(getattr(getattr(self, "supabase_sync", None), "enabled", False)):
+            return
+        results = {
+            "engine_heartbeat": self.supabase_sync.upsert_rows(
+                "engine_heartbeat",
+                [self._build_supabase_heartbeat_row(now_ts)],
+                on_conflict="engine_name",
+            ),
+            "model_runtime_tunes": self.supabase_sync.upsert_rows(
+                "model_runtime_tunes",
+                self._build_supabase_runtime_tune_rows(now_ts),
+                on_conflict="model_id",
+            ),
+            "daily_model_pnl": self.supabase_sync.upsert_rows(
+                "daily_model_pnl",
+                self._build_supabase_daily_pnl_rows(),
+                on_conflict="day,market,model_id",
+            ),
+            "model_setups": self.supabase_sync.upsert_rows(
+                "model_setups",
+                self._build_supabase_setup_rows(),
+                on_conflict="cycle_at,symbol,model_id",
+            ),
+            "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows()),
+        }
+        errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
+        if errors:
+            self.runtime_feedback.append_event(
+                source="supabase_sync",
+                level="warn",
+                status="partial_failure",
+                detail="Supabase snapshot sync failed",
+                meta=errors,
+                now_ts=now_ts,
+            )
+
+    @staticmethod
     def _parse_model_id_csv(raw: Any, fallback_all: bool = True, allowed_ids: tuple[str, ...] | None = None) -> tuple[str, ...]:
         valid_ids = tuple(allowed_ids or ALL_MODEL_IDS)
         text = str(raw or "").replace("|", ",").replace(" ", ",")
@@ -2982,6 +3213,7 @@ class TradingEngine:
         self._maybe_autotune_models(now)
         self._maybe_drawdown_guard_restart(now)
         self._sync_primary_views_from_model_a()
+        self._sync_supabase_snapshot(now)
         self._scan_and_notify_runtime_errors()
         self._send_telegram_periodic_report(now)
 
