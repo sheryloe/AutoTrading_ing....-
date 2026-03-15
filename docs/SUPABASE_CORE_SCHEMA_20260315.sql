@@ -1,6 +1,6 @@
 begin;
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 create table if not exists public.instruments (
   symbol text primary key,
@@ -65,7 +65,7 @@ create or replace function public.upsert_service_secret(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if coalesce(trim(p_provider), '') = '' then
@@ -86,7 +86,7 @@ begin
   )
   values (
     trim(p_provider),
-    encode(pgp_sym_encrypt(p_payload::text, p_passphrase, 'cipher-algo=aes256'), 'base64'),
+    encode(extensions.pgp_sym_encrypt(p_payload::text, p_passphrase, 'cipher-algo=aes256'), 'base64'),
     coalesce(p_meta, '{}'::jsonb),
     timezone('utc', now())
   )
@@ -105,7 +105,7 @@ create or replace function public.get_service_secret(
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_cipher text;
@@ -127,7 +127,7 @@ begin
     return '{}'::jsonb;
   end if;
 
-  v_plain := pgp_sym_decrypt(decode(v_cipher, 'base64'), p_passphrase);
+  v_plain := extensions.pgp_sym_decrypt(decode(v_cipher, 'base64'), p_passphrase);
   return coalesce(v_plain::jsonb, '{}'::jsonb);
 end;
 $$;
@@ -138,7 +138,7 @@ create or replace function public.delete_service_secret(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   delete from public.service_secrets where provider = trim(coalesce(p_provider, ''));
