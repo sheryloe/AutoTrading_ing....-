@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Step 9. 하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유 | AI_Auto 자동매매 리빌드 10단계</title>
+    <meta name="description" content="런타임 저장과 하드 리셋을 분리하고, 10000 USDT 시드로 futures demo를 다시 시작하게 만든 이유를 설명합니다.">
+    <meta name="keywords" content="하드 리셋, 데모 시드, futures demo, 포지션 초기화, AI_Auto">
+    <link rel="canonical" href="https://sheryloe.github.io/AutoTrading_ing....-/series/step-09-hard-reset-and-seed-policy.html">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Step 9. 하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유 | AI_Auto 자동매매 리빌드 10단계">
+    <meta property="og:description" content="런타임 저장과 하드 리셋을 분리하고, 10000 USDT 시드로 futures demo를 다시 시작하게 만든 이유를 설명합니다.">
+    <meta property="og:url" content="https://sheryloe.github.io/AutoTrading_ing....-/series/step-09-hard-reset-and-seed-policy.html">
+    <meta property="og:image" content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Step 9. 하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유 | AI_Auto 자동매매 리빌드 10단계">
+    <meta name="twitter:description" content="런타임 저장과 하드 리셋을 분리하고, 10000 USDT 시드로 futures demo를 다시 시작하게 만든 이유를 설명합니다.">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="./series.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Step 9. 하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유 | AI_Auto 자동매매 리빌드 10단계", "description": "런타임 저장과 하드 리셋을 분리하고, 10000 USDT 시드로 futures demo를 다시 시작하게 만든 이유를 설명합니다.", "datePublished": "2026-03-15", "dateModified": "2026-03-15", "inLanguage": "ko-KR", "keywords": ["하드 리셋", "데모 시드", "futures demo", "포지션 초기화", "AI_Auto"], "url": "https://sheryloe.github.io/AutoTrading_ing....-/series/step-09-hard-reset-and-seed-policy.html", "mainEntityOfPage": "https://sheryloe.github.io/AutoTrading_ing....-/series/step-09-hard-reset-and-seed-policy.html", "author": {"@type": "Organization", "name": "AI_Auto"}, "publisher": {"@type": "Organization", "name": "AI_Auto"}}</script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="page-shell">
+      <header class="topbar article-topbar">
+        <a class="brand" href="../index.html">
+          <span class="brand-mark"></span>
+          <span class="brand-copy">
+            <strong>AI_Auto</strong>
+            <span>AI_Auto 자동매매 리빌드 10단계</span>
+          </span>
+        </a>
+        <nav class="topnav">
+          <a href="./index.html">시리즈 홈</a>
+          <a href="../index.html">랜딩</a>
+          <a href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">GitHub Wiki</a>
+        </nav>
+      </header>
+      <main>
+        <article class="article-shell">
+          <header class="article-hero">
+            <p class="eyebrow">Step 09</p>
+            <h1>하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유</h1>
+            <p class="article-description">런타임 저장과 하드 리셋을 분리하고, 10000 USDT 시드로 futures demo를 다시 시작하게 만든 이유를 설명합니다.</p>
+            <div class="article-meta-row">
+              <span>게시일 2026-03-15</span>
+              <span>수정일 2026-03-15</span>
+              <span>키워드 하드 리셋, 데모 시드, futures demo, 포지션 초기화, AI_Auto</span>
+            </div>
+          </header>
+          <div class="article-body"><section class="article-section"><h2>왜 리셋 정책이 중요했나</h2><p>운영 구조를 바꾸다 보면 설정값은 자주 손보게 됩니다. 그런데 설정을 다시 저장할 때마다 현재 데모 포지션이나 누적 손익이 같이 초기화된다면, 운영자는 언제 데이터가 끊겼는지 믿을 수 없게 됩니다. 그래서 이번 프로젝트에서는 런타임 저장과 상태 초기화를 완전히 분리했습니다.</p><p>즉 runtime profile 저장은 현재 상태를 유지한 채 다음 배치 규칙만 바꾸고, 하드 리셋은 명시적으로 실행했을 때만 포지션과 손익을 비우도록 설계했습니다. 이 차이가 있어야 운영자가 실험과 리셋을 구분할 수 있습니다.</p></section></section><section class="article-section"><h2>왜 이번에는 실제 하드 리셋이 필요했나</h2><p>이번 재구성은 spot 감각이 섞여 있던 과거 상태를 futures 기준으로 다시 잡는 과정이었습니다. 이런 상황에서 과거 포지션과 PnL을 그대로 끌고 가면, 새로운 선물 가정 아래에서 성과를 해석할 때 오류가 생깁니다. 그래서 이번에는 상태를 유지하는 것이 아니라, 오히려 선물 기준으로 완전히 새 출발하는 편이 맞았습니다.</p><p>결과적으로 현재 시드는 10000 USDT로 다시 맞췄고, positions, model_setups, daily_model_pnl, model_runtime_tunes, recent_crypto_trades까지 모두 비웠습니다. 이 상태에서 다음 8분 배치부터 선물 데모 기록이 새로 쌓이게 됩니다.</p></section></section><section class="article-section"><h2>무엇이 지워지고 무엇이 남는가</h2><p>하드 리셋에서 중요한 것은 범위를 명확히 알리는 것입니다. 이번 구조에서 지워지는 것은 데모 포지션, 최근 체결 로그, 일별 PnL, 튜닝 상태, 엔진 상태입니다. 반대로 남는 것은 provider 자격증명과 runtime profile입니다. 리셋은 상태를 비우는 액션이어야지, 환경을 다시 만드는 액션이어서는 안 됩니다.</p></section><section class="article-section"><h2>확인 문구를 별도로 둔 이유</h2><p>하드 리셋은 버튼 하나로 바로 실행되지 않게 했습니다. `RESET FUTURES DEMO`라는 확인 문구를 정확히 입력해야만 실행되도록 가드를 뒀습니다. 이런 가드는 귀찮아 보일 수 있지만, 실수로 누른 리셋 한 번이 운영 문맥을 모두 날릴 수 있다는 점을 생각하면 절대 과한 장치가 아닙니다.</p></section><section class="article-section"><h2>리셋 정책을 명시적으로 분리한 이유</h2><p>운영자가 설정을 조금 바꿨다고 해서 시드, 포지션, 누적 손익이 갑자기 초기화되면 비교 자체가 무너집니다. 그래서 이번 프로젝트에서는 런타임 프로필 저장과 하드 리셋을 아예 다른 행동으로 분리했습니다. 설정 변경은 현재 상태를 유지한 채 다음 사이클에 반영되고, 리셋은 의도적으로 확인 문구까지 입력해야만 실행되도록 만들었습니다.</p><p>선물 데모를 다시 시작할 때도 이 구분이 중요합니다. 기존 결과가 spot 성격의 전제를 섞고 있었다면 선물 기준으로 리셋하는 것이 맞지만, 그 결정은 항상 명시적으로 이뤄져야 합니다. 운영자가 무엇을 지우고 무엇을 유지하는지 이해한 상태에서만 리셋이 일어나야 이후의 성과 비교도 의미가 남습니다.</p></section></section><section class="article-section"><h2>선물 기준의 새 출발선을 만드는 의미</h2><p>하드 리셋은 단순히 데이터를 지우는 행동이 아니라 새로운 실험 단위를 선언하는 행위에 가깝습니다. 특히 spot 성격의 과거 전제가 섞여 있던 상태라면, 선물 기준의 시드와 레버리지 정책으로 다시 출발선을 맞추는 작업이 반드시 필요합니다. 그 기준선이 있어야 이후 PnL과 모델 성과도 같은 문맥에서 비교할 수 있습니다.</p></section></div>
+          <footer class="article-footer">
+            <div class="pager-row"><a class="pager-card" href="./step-08-daily-pnl-weekly-autotune.html"><span>이전 글</span><strong>Step 8. 일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유</strong></a><a class="pager-card align-right" href="./step-10-live-readiness-checklist.html"><span>다음 글</span><strong>Step 10. 실거래로 가기 전에 꼭 확인해야 할 라이브 전환 체크리스트</strong></a></div>
+          </footer>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>

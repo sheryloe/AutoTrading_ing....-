@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Step 8. 일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유 | AI_Auto 자동매매 리빌드 10단계</title>
+    <meta name="description" content="신호 생성만이 아니라 결과 기록과 주간 autotune까지 운영 루프로 묶은 이유를 설명합니다.">
+    <meta name="keywords" content="일별 PnL, autotune, weekly tuning, 모델 성과, AI_Auto">
+    <link rel="canonical" href="https://sheryloe.github.io/AutoTrading_ing....-/series/step-08-daily-pnl-weekly-autotune.html">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Step 8. 일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유 | AI_Auto 자동매매 리빌드 10단계">
+    <meta property="og:description" content="신호 생성만이 아니라 결과 기록과 주간 autotune까지 운영 루프로 묶은 이유를 설명합니다.">
+    <meta property="og:url" content="https://sheryloe.github.io/AutoTrading_ing....-/series/step-08-daily-pnl-weekly-autotune.html">
+    <meta property="og:image" content="https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Step 8. 일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유 | AI_Auto 자동매매 리빌드 10단계">
+    <meta name="twitter:description" content="신호 생성만이 아니라 결과 기록과 주간 autotune까지 운영 루프로 묶은 이유를 설명합니다.">
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="./series.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Step 8. 일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유 | AI_Auto 자동매매 리빌드 10단계", "description": "신호 생성만이 아니라 결과 기록과 주간 autotune까지 운영 루프로 묶은 이유를 설명합니다.", "datePublished": "2026-03-15", "dateModified": "2026-03-15", "inLanguage": "ko-KR", "keywords": ["일별 PnL", "autotune", "weekly tuning", "모델 성과", "AI_Auto"], "url": "https://sheryloe.github.io/AutoTrading_ing....-/series/step-08-daily-pnl-weekly-autotune.html", "mainEntityOfPage": "https://sheryloe.github.io/AutoTrading_ing....-/series/step-08-daily-pnl-weekly-autotune.html", "author": {"@type": "Organization", "name": "AI_Auto"}, "publisher": {"@type": "Organization", "name": "AI_Auto"}}</script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="page-shell">
+      <header class="topbar article-topbar">
+        <a class="brand" href="../index.html">
+          <span class="brand-mark"></span>
+          <span class="brand-copy">
+            <strong>AI_Auto</strong>
+            <span>AI_Auto 자동매매 리빌드 10단계</span>
+          </span>
+        </a>
+        <nav class="topnav">
+          <a href="./index.html">시리즈 홈</a>
+          <a href="../index.html">랜딩</a>
+          <a href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">GitHub Wiki</a>
+        </nav>
+      </header>
+      <main>
+        <article class="article-shell">
+          <header class="article-hero">
+            <p class="eyebrow">Step 08</p>
+            <h1>일별 PnL 기록과 주간 autotune을 운영 루프에 넣은 이유</h1>
+            <p class="article-description">신호 생성만이 아니라 결과 기록과 주간 autotune까지 운영 루프로 묶은 이유를 설명합니다.</p>
+            <div class="article-meta-row">
+              <span>게시일 2026-03-15</span>
+              <span>수정일 2026-03-15</span>
+              <span>키워드 일별 PnL, autotune, weekly tuning, 모델 성과, AI_Auto</span>
+            </div>
+          </header>
+          <div class="article-body"><section class="article-section"><h2>신호만 보고 끝내면 남는 것이 없다</h2><p>자동매매 프로젝트가 계속 흔들리는 이유 중 하나는 신호 생성은 열심히 하는데, 그 신호가 실제로 어떤 결과를 냈는지 장기적으로 축적하지 않는 데 있습니다. 지금 구조에서는 daily_model_pnl 테이블과 일별 리포트 커밋 경로를 통해, 결과를 남기고 다시 읽는 흐름을 운영 루프 안에 넣었습니다.</p><p>이 기록이 있어야 모델 성과 화면이 단순 데모 장식이 아니라 실제 운영 자료가 됩니다. 손익 합계, 승률, 종료 거래 수, 최신 equity를 모델별로 누적해서 보는 구조는 다음 결정을 위한 기준선 역할을 합니다.</p></section></section><section class="article-section"><h2>왜 autotune을 주간으로 두었나</h2><p>Top 5 메이저 코인과 8분 배치 구조에서는 초단위 재학습보다 주간 단위 미세 조정이 더 현실적입니다. 너무 자주 조정하면 샘플 수는 적은데 파라미터만 요동치고, 너무 늦게 조정하면 이미 환경이 바뀐 뒤일 수 있습니다. 그래서 현재는 주간 autotune을 기본값으로 두었습니다.</p><p>이 튜닝은 모델을 새로 학습시키는 거대한 파이프라인이 아니라, threshold, tp_mul, sl_mul 같은 운영 파라미터를 평가 결과에 따라 조정하는 수준으로 제한했습니다. 이것이 현재 프로젝트 범위에 가장 잘 맞는 방법입니다.</p></section></section><section class="article-section"><h2>tuning 상태를 따로 보여주는 이유</h2><p>모델 성과와 튜닝 상태는 붙어 있지만 같은 정보는 아닙니다. 성과는 결과이고, 튜닝 상태는 그 결과를 바탕으로 어떤 파라미터가 현재 적용되어 있는지를 보여줍니다. 그래서 model_runtime_tunes를 별도 원장으로 두고, 화면에서도 모델별 성과와 함께 읽게 만들었습니다.</p><p>이렇게 해야 운영자가 특정 모델의 손익이 흔들릴 때 단순히 나쁘다로 끝내지 않고, threshold가 최근 어떻게 바뀌었는지와 평가 노트가 무엇인지까지 같이 볼 수 있습니다.</p></section></section><section class="article-section"><h2>운영 루프가 완성된다는 의미</h2><p>지금 구조는 신호 생성에서 끝나지 않고, 체결 시뮬레이션, 포지션 반영, 일별 PnL 집계, 주간 autotune, 리포트 커밋까지 이어집니다. 이 전체가 하나의 운영 루프입니다. 운영자는 개별 화면을 넘나들며 이 루프의 어느 단계가 살아 있는지 확인할 수 있습니다.</p></section><section class="article-section"><h2>결과 기록이 있어야 autotune도 의미가 생긴다</h2><p>자동매매에서 튜닝만 강조하면 자칫 신호 생성기가 더 똑똑해지는 것처럼 보일 수 있습니다. 하지만 실제로는 어떤 결과가 쌓였는지, 손익이 어떤 조건에서 흔들렸는지, 모델별 편차가 어떻게 나타났는지를 기록하지 않으면 튜닝은 근거 없는 숫자 조정이 됩니다. 그래서 일별 PnL과 주간 autotune은 한 흐름 안에서 함께 설계돼야 합니다.</p><p>이번 구조는 매일 결과를 남기고, 주 단위로 파라미터를 조정하는 운영 루프를 먼저 만든 뒤 그 위에 전략을 실험하는 방식입니다. 이 접근은 화려해 보이지는 않아도 훨씬 안정적입니다. 기록이 있는 튜닝은 다음 실험의 기준선을 남기고, 기록이 없는 튜닝은 단순한 감에 머물기 쉽습니다.</p></section></section><section class="article-section"><h2>일별 리포트가 Git 기록과 연결되는 이유</h2><p>하루 단위 손익을 별도 리포트로 남기고 Git 커밋까지 이어가면, 운영 변경과 성과 변화를 함께 추적할 수 있습니다. 단순히 DB에만 남기면 그날 어떤 운영 판단이 있었는지 맥락이 약해질 수 있는데, 리포트와 커밋은 변경 이력과 결과를 한 흐름으로 묶어 줍니다. 운영 루프를 기록 가능한 형태로 남기는 것이 이번 구조의 핵심 중 하나였습니다.</p></section></div>
+          <footer class="article-footer">
+            <div class="pager-row"><a class="pager-card" href="./step-07-operator-ui-information-architecture.html"><span>이전 글</span><strong>Step 7. 개요·모델 성과·포지션·설정으로 UI를 분리한 운영자 경험 설계</strong></a><a class="pager-card align-right" href="./step-09-hard-reset-and-seed-policy.html"><span>다음 글</span><strong>Step 9. 하드 리셋과 시드 정책을 분리해 선물 데모를 다시 시작한 이유</strong></a></div>
+          </footer>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>
