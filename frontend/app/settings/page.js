@@ -63,6 +63,12 @@ export default async function SettingsPage() {
         />
       </section>
 
+      <section className="warning-card">
+        <strong>리셋 정책</strong>
+        <p>런타임 프로필을 다시 저장해도 현재 데모 시드, 누적 손익, 오픈 포지션은 유지됩니다.</p>
+        <p>시드를 새로 적용하려면 별도의 데모 리셋 액션이 필요합니다.</p>
+      </section>
+
       <ControlConsole
         initialConfig={control.runtimeConfig}
         runtimeUpdatedAt={control.runtimeUpdatedAt}

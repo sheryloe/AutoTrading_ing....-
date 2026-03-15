@@ -495,7 +495,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           </select>
 
           <label className="field-label" htmlFor="demo-seed">
-            모델별 데모 시드(USDT)
+            다음 리셋 기준 시드(USDT)
           </label>
           <input
             id="demo-seed"
@@ -506,6 +506,9 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             value={config.demoSeedUsdt}
             onChange={(event) => setConfig((prev) => ({ ...prev, demoSeedUsdt: event.target.value }))}
           />
+          <p className="status-line full-span">
+            런타임 프로필 저장은 <strong>현재 데모 시드, 누적 PnL, 오픈 포지션을 초기화하지 않습니다.</strong> 이 값은 나중에 명시적으로 데모 리셋을 실행할 때 기준 시드로만 사용됩니다.
+          </p>
 
           <label className="field-label" htmlFor="max-positions">
             최대 포지션 수
