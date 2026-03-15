@@ -3215,6 +3215,11 @@ class TradingEngine:
             self._persist_trend_history(now, trend_bundle)
             self._refresh_meme_watch_scores(now)
         bybit_prices = self._fetch_macro_demo_prices(trend_bundle) if self.settings.demo_enable_macro else {}
+        crypto_intrabar_candles = (
+            self._fetch_crypto_intrabar_candles(list(bybit_prices.keys()))
+            if self.settings.demo_enable_macro and bybit_prices
+            else {}
+        )
 
         if self._meme_market_enabled():
             for model_id in MEME_MODEL_IDS:
@@ -3265,6 +3270,7 @@ class TradingEngine:
                         self.state.model_runs[crypto_key] = run
                     self._normalize_market_run(run, "crypto", model_id, self.state.demo_seed_usdt)
 
+                self._process_crypto_intrabar_window(model_id, run, bybit_prices, crypto_intrabar_candles, now)
                 run["latest_crypto_signals"] = self._score_crypto_signals(model_id, run, bybit_prices, trend_bundle)[:80]
                 self._evaluate_model_bybit_exits(model_id, run, bybit_prices)
                 if self._is_market_autotrade_enabled("crypto") and self._is_autotrade_model_enabled("crypto", model_id):
@@ -10335,6 +10341,73 @@ class TradingEngine:
             return last_mark
         return float((pos or {}).get("avg_price_usd") or 0.0)
 
+    def _fetch_crypto_intrabar_candles(self, symbols: list[str], window_minutes: int | None = None) -> dict[str, list[dict[str, Any]]]:
+        unique_symbols = [str(symbol or "").upper().strip() for symbol in list(symbols or []) if str(symbol or "").strip()]
+        unique_symbols = list(dict.fromkeys(unique_symbols))
+        if not unique_symbols:
+            return {}
+        lookback = int(window_minutes or max(10, min(30, int(self.settings.scan_interval_seconds / 60) + 4)))
+        cache_seconds = max(10, min(60, int(self.settings.scan_interval_seconds // 8) or 30))
+        out: dict[str, list[dict[str, Any]]] = {}
+        for symbol in unique_symbols:
+            try:
+                rows = self.macro.fetch_binance_1m_ohlc(
+                    symbol,
+                    limit=lookback,
+                    cache_seconds=cache_seconds,
+                    binance_api_key=self.settings.binance_api_key,
+                )
+            except Exception:
+                rows = []
+            if rows:
+                out[symbol] = [dict(row) for row in rows]
+        return out
+
+    @staticmethod
+    def _intrabar_rows_since(rows: list[dict[str, Any]], from_ts: int) -> list[dict[str, Any]]:
+        start_ts = int(from_ts or 0)
+        if start_ts <= 0:
+            return [dict(row) for row in list(rows or [])]
+        out: list[dict[str, Any]] = []
+        for row in list(rows or []):
+            close_ts = int((row or {}).get("close_ts") or 0)
+            if close_ts >= start_ts:
+                out.append(dict(row or {}))
+        return out
+
+    @staticmethod
+    def _intrabar_entry_price_hit(plan: dict[str, Any], candle: dict[str, Any]) -> float:
+        entry_price = float((plan or {}).get("entry_price") or 0.0)
+        zone_low = float((plan or {}).get("entry_zone_low") or 0.0)
+        zone_high = float((plan or {}).get("entry_zone_high") or 0.0)
+        low = float((candle or {}).get("low") or 0.0)
+        high = float((candle or {}).get("high") or 0.0)
+        if low <= 0.0 or high <= 0.0:
+            return 0.0
+        if entry_price > 0.0 and low <= entry_price <= high:
+            return float(entry_price)
+        if zone_low > 0.0 and zone_high > 0.0 and max(low, min(zone_low, zone_high)) <= min(high, max(zone_low, zone_high)):
+            if entry_price > 0.0:
+                return float(_clamp(entry_price, min(zone_low, zone_high), max(zone_low, zone_high)))
+            return float((min(zone_low, zone_high) + max(zone_low, zone_high)) / 2.0)
+        return 0.0
+
+    @staticmethod
+    def _intrabar_long_exit_hit(pos: dict[str, Any], candle: dict[str, Any]) -> tuple[float, str]:
+        low = float((candle or {}).get("low") or 0.0)
+        high = float((candle or {}).get("high") or 0.0)
+        stop_loss_price = float((pos or {}).get("stop_loss_price") or 0.0)
+        take_profit_price = float((pos or {}).get("take_profit_price") or 0.0)
+        if low <= 0.0 or high <= 0.0:
+            return (0.0, "")
+        if stop_loss_price > 0.0 and low <= stop_loss_price and take_profit_price > 0.0 and high >= take_profit_price:
+            return (float(stop_loss_price), f"SL intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
+        if stop_loss_price > 0.0 and low <= stop_loss_price:
+            return (float(stop_loss_price), f"SL intrabar {stop_loss_price:.4f}")
+        if take_profit_price > 0.0 and high >= take_profit_price:
+            return (float(take_profit_price), f"TP intrabar {take_profit_price:.4f}")
+        return (0.0, "")
+
     @staticmethod
     def _mark_crypto_position(pos: dict[str, Any], current_price: float) -> dict[str, float]:
         qty = float(pos.get("qty") or 0.0)
@@ -10624,6 +10697,207 @@ class TradingEngine:
         self._prune_run_trades(run, now_ts)
         return True
 
+    def _open_crypto_demo_position(
+        self,
+        *,
+        model_id: str,
+        run: dict[str, Any],
+        symbol: str,
+        fill_price: float,
+        order_usd: float,
+        order_pct: float,
+        leverage: float,
+        score: float,
+        tp_pct: float,
+        sl_pct: float,
+        plan: dict[str, Any],
+        reason_text: str,
+        atr_pct: float,
+        opened_at: int,
+    ) -> bool:
+        price = max(0.0, float(fill_price or 0.0))
+        margin_usd = max(0.0, float(order_usd or 0.0))
+        if not symbol or price <= 0.0 or margin_usd <= 0.0:
+            return False
+        notional_usd = margin_usd * max(1.0, float(leverage or 1.0))
+        qty = notional_usd / max(price, 1e-9)
+        run.setdefault("bybit_positions", {})[symbol] = {
+            "symbol": symbol,
+            "side": "long",
+            "qty": qty,
+            "avg_price_usd": price,
+            "last_mark_price_usd": price,
+            "margin_usd": margin_usd,
+            "order_pct": float(order_pct),
+            "leverage": float(leverage),
+            "notional_usd": notional_usd,
+            "opened_at": int(opened_at),
+            "entry_score": float(score),
+            "tp_pct": float(tp_pct),
+            "sl_pct": float(sl_pct),
+            "entry_plan_price": float((plan or {}).get("entry_price") or price),
+            "entry_zone_low": float((plan or {}).get("entry_zone_low") or 0.0),
+            "entry_zone_high": float((plan or {}).get("entry_zone_high") or 0.0),
+            "stop_loss_price": float((plan or {}).get("stop_loss_price") or 0.0),
+            "take_profit_price": float((plan or {}).get("take_profit_price") or 0.0),
+            "target_price_1": float((plan or {}).get("target_price_1") or 0.0),
+            "target_price_2": float((plan or {}).get("target_price_2") or 0.0),
+            "target_price_3": float((plan or {}).get("target_price_3") or 0.0),
+            "risk_reward": float((plan or {}).get("risk_reward") or 0.0),
+            "setup_state": str((plan or {}).get("setup_state") or ""),
+            "reason": str(reason_text or ""),
+        }
+        run["bybit_cash_usd"] = float(run.get("bybit_cash_usd") or 0.0) - margin_usd
+        run.setdefault("trades", []).append(
+            {
+                "ts": int(opened_at),
+                "source": "crypto_demo",
+                "side": "buy",
+                "symbol": symbol,
+                "token_address": symbol,
+                "qty": qty,
+                "price_usd": price,
+                "notional_usd": notional_usd,
+                "margin_usd": margin_usd,
+                "order_pct": float(order_pct),
+                "leverage": float(leverage),
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+                "reason": (
+                    f"{reason_text} | alloc={order_pct*100:.1f}% | lev={float(leverage):.2f}x tp={tp_pct*100:.1f}% sl={sl_pct*100:.1f}% "
+                    f"entry={float((plan or {}).get('entry_price') or price):.4f} rr={float((plan or {}).get('risk_reward') or 0.0):.2f} atr={atr_pct:.2f}%"
+                ),
+                "model_id": model_id,
+            }
+        )
+        self._record_last_entry_alloc(run, "crypto", symbol, order_pct, score, int(opened_at))
+        self._prune_run_trades(run, int(opened_at))
+        return True
+
+    def _process_crypto_intrabar_window(
+        self,
+        model_id: str,
+        run: dict[str, Any],
+        prices: dict[str, float],
+        candles_by_symbol: dict[str, list[dict[str, Any]]],
+        now_ts: int,
+    ) -> None:
+        if not candles_by_symbol:
+            run["crypto_intrabar_eval_ts"] = int(now_ts)
+            return
+        eval_from_ts = int(run.get("crypto_intrabar_eval_ts") or max(0, int(now_ts) - max(300, int(self.settings.scan_interval_seconds))))
+
+        # Existing open positions: if SL/TP was touched intrabar, reflect it even if current price recovered.
+        for pos in list((run.get("bybit_positions") or {}).values()):
+            symbol = str((pos or {}).get("symbol") or "").upper().strip()
+            rows = self._intrabar_rows_since(candles_by_symbol.get(symbol) or [], max(eval_from_ts, int((pos or {}).get("opened_at") or 0)))
+            if not rows:
+                continue
+            for candle in rows:
+                exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
+                if exit_price > 0.0 and exit_reason:
+                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason)
+                    break
+            else:
+                last_close = float((rows[-1] or {}).get("close") or 0.0)
+                if last_close > 0.0:
+                    pos["last_mark_price_usd"] = last_close
+
+        if not (self._is_market_autotrade_enabled("crypto") and self._is_autotrade_model_enabled("crypto", model_id)):
+            run["crypto_intrabar_eval_ts"] = int(now_ts)
+            return
+
+        positions = run.get("bybit_positions") or {}
+        max_positions = max(1, int(self.settings.bybit_max_positions))
+        min_score_floor = _clamp(float(getattr(self.settings, "crypto_min_entry_score", 0.30) or 0.30), 0.0, 1.0)
+        self._normalize_crypto_reentry_cooldowns(run, int(now_ts))
+        pending_rows = sorted(
+            [dict(row or {}) for row in list(run.get("latest_crypto_signals") or []) if isinstance(row, dict)],
+            key=lambda row: float(row.get("score") or 0.0),
+            reverse=True,
+        )
+
+        for row in pending_rows:
+            if len(positions) >= max_positions:
+                break
+            symbol = str(row.get("symbol") or "").upper().strip()
+            if not symbol or symbol in positions:
+                continue
+            score = float(row.get("score") or 0.0)
+            entry_threshold = max(min_score_floor, float(row.get("entry_threshold") or min_score_floor))
+            if score <= entry_threshold:
+                continue
+            if float(row.get("risk_reward") or 0.0) < 1.10:
+                continue
+            if int(row.get("setup_expiry_ts") or 0) > 0 and int(now_ts) > int(row.get("setup_expiry_ts") or 0):
+                continue
+            blocked, _, _ = self._crypto_reentry_blocked(run, symbol, int(now_ts))
+            if blocked:
+                continue
+            rows = self._intrabar_rows_since(
+                candles_by_symbol.get(symbol) or [],
+                max(eval_from_ts, int(row.get("scored_at_ts") or 0)),
+            )
+            if not rows:
+                continue
+            hit_index = -1
+            fill_price = 0.0
+            for idx, candle in enumerate(rows):
+                fill_price = self._intrabar_entry_price_hit(row, candle)
+                if fill_price > 0.0:
+                    hit_index = idx
+                    break
+            if hit_index < 0 or fill_price <= 0.0:
+                continue
+            cash = float(run.get("bybit_cash_usd") or 0.0)
+            min_order = float(self.settings.bybit_min_order_usd)
+            if cash < min_order:
+                break
+            order_pct = self._demo_order_pct_for_entry("crypto", score, entry_threshold)
+            order_usd = min(cash, max(min_order, self._crypto_target_order_usd(run, order_pct, prices)))
+            if order_usd < min_order:
+                continue
+            leverage = float(row.get("leverage") or 0.0)
+            if leverage <= 0.0:
+                leverage = self._compute_crypto_leverage(model_id, float(score), float(entry_threshold), float(row.get("volatility") or 0.0))
+            tp_pct = float(row.get("tp_pct") or 0.0)
+            sl_pct = float(row.get("sl_pct") or 0.0)
+            if sl_pct <= 0.0 or tp_pct <= 0.0:
+                sl_pct, tp_pct = self._compute_risk_profile(model_id, "crypto", float(row.get("volatility") or 0.0))
+            atr_pct = float(((row.get("indicator_snapshot") or {}) if isinstance(row.get("indicator_snapshot"), dict) else {}).get("atr_pct") or 0.0)
+            reason_text = str(row.get("reason") or "").strip()
+            if not reason_text:
+                reason_text = f"{str(row.get('strategy') or ('MODEL-' + model_id))} | intrabar-fill conf={score:.4f} thr={entry_threshold:.4f}"
+            opened_at = int((rows[hit_index] or {}).get("close_ts") or int(now_ts))
+            opened = self._open_crypto_demo_position(
+                model_id=model_id,
+                run=run,
+                symbol=symbol,
+                fill_price=fill_price,
+                order_usd=order_usd,
+                order_pct=order_pct,
+                leverage=leverage,
+                score=score,
+                tp_pct=tp_pct,
+                sl_pct=sl_pct,
+                plan=row,
+                reason_text=reason_text,
+                atr_pct=atr_pct,
+                opened_at=opened_at,
+            )
+            if not opened:
+                continue
+            pos = (run.get("bybit_positions") or {}).get(symbol)
+            if not isinstance(pos, dict):
+                continue
+            for candle in rows[hit_index:]:
+                exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
+                if exit_price > 0.0 and exit_reason:
+                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason)
+                    break
+
+        run["crypto_intrabar_eval_ts"] = int(now_ts)
+
     def _execute_model_bybit_entries(
         self,
         model_id: str,
@@ -10795,60 +11069,23 @@ class TradingEngine:
             zone_high = float(plan.get("entry_zone_high") or 0.0)
             if zone_low > 0.0 and zone_high > 0.0:
                 fill_price = _clamp(float(price), min(zone_low, zone_high), max(zone_low, zone_high))
-            notional_usd = order_usd * leverage
-            qty = notional_usd / max(fill_price, 1e-9)
-            run.setdefault("bybit_positions", {})[symbol] = {
-                "symbol": symbol,
-                "side": "long",
-                "qty": qty,
-                "avg_price_usd": fill_price,
-                "last_mark_price_usd": fill_price,
-                "margin_usd": order_usd,
-                "order_pct": float(order_pct),
-                "leverage": leverage,
-                "notional_usd": notional_usd,
-                "opened_at": now,
-                "entry_score": score,
-                "tp_pct": tp_pct,
-                "sl_pct": sl_pct,
-                "entry_plan_price": float(plan.get("entry_price") or fill_price),
-                "entry_zone_low": float(plan.get("entry_zone_low") or 0.0),
-                "entry_zone_high": float(plan.get("entry_zone_high") or 0.0),
-                "stop_loss_price": float(plan.get("stop_loss_price") or 0.0),
-                "take_profit_price": float(plan.get("take_profit_price") or 0.0),
-                "target_price_1": float(plan.get("target_price_1") or 0.0),
-                "target_price_2": float(plan.get("target_price_2") or 0.0),
-                "target_price_3": float(plan.get("target_price_3") or 0.0),
-                "risk_reward": float(plan.get("risk_reward") or 0.0),
-                "setup_state": str(plan.get("setup_state") or ""),
-                "reason": reason_text,
-            }
-            run["bybit_cash_usd"] = cash - order_usd
-            run.setdefault("trades", []).append(
-                {
-                    "ts": now,
-                    "source": "crypto_demo",
-                    "side": "buy",
-                    "symbol": symbol,
-                    "token_address": symbol,
-                    "qty": qty,
-                    "price_usd": fill_price,
-                    "notional_usd": notional_usd,
-                    "margin_usd": order_usd,
-                    "order_pct": float(order_pct),
-                    "leverage": leverage,
-                    "pnl_usd": 0.0,
-                    "pnl_pct": 0.0,
-                    "reason": (
-                        f"{reason_text} | alloc={order_pct*100:.1f}% | lev={leverage:.2f}x tp={tp_pct*100:.1f}% sl={sl_pct*100:.1f}% "
-                        f"entry={float(plan.get('entry_price') or fill_price):.4f} rr={float(plan.get('risk_reward') or 0.0):.2f} atr={atr_pct:.2f}%"
-                    ),
-                    "model_id": model_id,
-                }
-            )
-            self._record_last_entry_alloc(run, "crypto", symbol, order_pct, score, now)
-            self._prune_run_trades(run, now)
-            opened += 1
+            if self._open_crypto_demo_position(
+                model_id=model_id,
+                run=run,
+                symbol=symbol,
+                fill_price=fill_price,
+                order_usd=order_usd,
+                order_pct=order_pct,
+                leverage=leverage,
+                score=score,
+                tp_pct=tp_pct,
+                sl_pct=sl_pct,
+                plan=plan,
+                reason_text=reason_text,
+                atr_pct=atr_pct,
+                opened_at=now,
+            ):
+                opened += 1
 
     def _model_metrics(self, model_id: str, run: dict[str, Any]) -> dict[str, Any]:
         trades = [t for t in list(run.get("trades") or []) if not self._is_live_trade_row(t)]

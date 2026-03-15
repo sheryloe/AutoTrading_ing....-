@@ -2145,6 +2145,8 @@ class MacroMarketClient:
         self._rt_cache_key: tuple[str, ...] = ()
         self._kline_cache: dict[str, list[float]] = {}
         self._kline_cache_ts: dict[str, float] = {}
+        self._kline_ohlc_cache: dict[str, list[dict[str, Any]]] = {}
+        self._kline_ohlc_cache_ts: dict[str, float] = {}
 
     def fetch_top_markets(
         self,
@@ -2363,6 +2365,72 @@ class MacroMarketClient:
             self._kline_cache_ts[key] = now
             return closes
         return list(cached)
+
+    def fetch_binance_1m_ohlc(
+        self,
+        symbol: str,
+        limit: int = 20,
+        cache_seconds: int = 30,
+        binance_api_key: str = "",
+    ) -> list[dict[str, Any]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        n = max(5, min(240, int(limit)))
+        ttl = max(10, min(120, int(cache_seconds)))
+        key = f"{sym}:1m:{n}:{1 if str(binance_api_key or '').strip() else 0}"
+        now = time.time()
+        cached = self._kline_ohlc_cache.get(key) or []
+        ts = float(self._kline_ohlc_cache_ts.get(key) or 0.0)
+        if cached and (now - ts) < ttl:
+            return [dict(row) for row in cached]
+
+        headers: dict[str, str] = {}
+        api_key = str(binance_api_key or "").strip()
+        if api_key:
+            headers["X-MBX-APIKEY"] = api_key
+        res = self.session.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": sym, "interval": "1m", "limit": n},
+            headers=headers or None,
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        if not isinstance(rows, list):
+            return [dict(row) for row in cached]
+
+        candles: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 7:
+                continue
+            try:
+                open_ts = int(float(row[0]) / 1000.0)
+                open_v = float(row[1] or 0.0)
+                high_v = float(row[2] or 0.0)
+                low_v = float(row[3] or 0.0)
+                close_v = float(row[4] or 0.0)
+                close_ts = int(float(row[6]) / 1000.0)
+            except Exception:
+                continue
+            if min(open_v, high_v, low_v, close_v) <= 0.0:
+                continue
+            candles.append(
+                {
+                    "open_ts": open_ts,
+                    "close_ts": close_ts,
+                    "open": open_v,
+                    "high": high_v,
+                    "low": low_v,
+                    "close": close_v,
+                }
+            )
+
+        if candles:
+            self._kline_ohlc_cache[key] = [dict(row) for row in candles]
+            self._kline_ohlc_cache_ts[key] = now
+            return candles
+        return [dict(row) for row in cached]
 
     def _fetch_cmc(self, limit: int, api_key: str) -> list[dict[str, Any]]:
         url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
