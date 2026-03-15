@@ -11,6 +11,20 @@ AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘
 | Python 배치 | 분석, intrabar 체결 판정, PnL 계산, autotune | 실제 전략 로직과 데모 체결 처리 |
 | GitHub Actions | `cloud-cycle` 스케줄 실행 | 8분 주기, 중복 실행 방지, 일별 commit/push |
 
+## 아키텍처 다이어그램
+
+```mermaid
+flowchart LR
+  UI[Vercel 운영 콘솔] --> SB[(Supabase)]
+  GA[GitHub Actions cloud-cycle] --> PY[Python 배치]
+  PY --> SB
+  SB --> UI
+  UI --> API[Service control API]
+  API --> SB
+```
+
+> 화면, 상태 저장, 배치 실행을 분리해 두면 문제를 찾을 때 어디부터 봐야 하는지가 훨씬 분명해집니다.
+
 ### Vercel
 
 - 운영 콘솔 UI 제공

@@ -15,6 +15,22 @@ AI_Auto는 Supabase를 상태 원장으로 사용합니다. 각 테이블은 운
 | `public.positions` | 오픈·종료 포지션 상태 | 포지션 |
 | `public.daily_model_pnl` | 모델별 일별 손익 집계 | 모델 성과 |
 
+## 데이터 흐름 다이어그램
+
+```mermaid
+flowchart LR
+  PY[Python 배치] --> HB[engine_heartbeat]
+  PY --> MS[model_setups]
+  PY --> PO[positions]
+  PY --> DP[daily_model_pnl]
+  UI[Vercel 콘솔] --> HB
+  UI --> MS
+  UI --> PO
+  UI --> DP
+```
+
+> 위키에서 테이블을 볼 때는 “배치가 무엇을 기록하고, 어떤 화면이 그것을 읽는가”를 같이 보면 훨씬 이해가 빠릅니다.
+
 ## 테이블별 핵심 컬럼
 
 | 테이블 | 중요 컬럼 예시 | 설명 |

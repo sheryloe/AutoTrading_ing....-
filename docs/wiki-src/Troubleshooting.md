@@ -12,6 +12,19 @@
 | GitHub Actions가 겹쳐 보임 | workflow 실행 기록 | 이전 timeout 설정 또는 중복 실행 오해 |
 | Bybit 키 저장 후 바로 live가 될까 걱정됨 | runtime profile 상태 | live 가드 조건 미충족 |
 
+## 점검 흐름 다이어그램
+
+```mermaid
+flowchart TD
+  A[문제 발생] --> B{어디서 막혔는가}
+  B -->|저장 버튼| C[Vercel env / 관리자 토큰 확인]
+  B -->|provider 저장| D[unauthorized 여부 확인]
+  B -->|데이터 없음| E[heartbeat와 cloud-cycle 로그 확인]
+  B -->|live 관련 걱정| F[runtime profile과 arm 상태 확인]
+```
+
+> 대부분의 문제는 Vercel env, 관리자 토큰, GitHub Actions 실행 기록 중 하나에서 먼저 원인이 드러납니다.
+
 ## `/settings` 저장 버튼이 비활성화될 때
 
 점검 순서:

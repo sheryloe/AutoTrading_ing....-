@@ -10,6 +10,12 @@
 - [ ] `cloud-cycle`이 최근 8분 내에 한 번 이상 돌았다
 - [ ] 모델별 데모 시드와 진입 비중이 현재 운영 의도와 맞는다
 
+## 운영 화면 참고
+
+![AI_Auto 운영 화면](https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png)
+
+> 운영 가이드는 화면 조작 방법보다 “지금 무엇을 건드려도 되는지”와 “무엇은 유지되는지”를 먼저 구분하는 데 초점을 둡니다.
+
 ## provider 키 관리
 
 현재 provider 구조는 아래와 같습니다.

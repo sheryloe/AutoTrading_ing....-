@@ -11,6 +11,19 @@
 | C | 압축 돌파 | 변동성 수축 이후 breakout retest | `14x ~ 25x` |
 | D | 리셋 바운스 | 실패한 돌파 이후 반대 방향 복귀 | `6x ~ 12x` |
 
+## 모델 출력 다이어그램
+
+```mermaid
+flowchart LR
+  M[모델 A/B/C/D] --> E[entry price]
+  M --> S[stop loss]
+  M --> T[target price 1/2/3]
+  M --> C[confidence]
+  M --> L[recommended leverage]
+```
+
+> 네 모델은 점수만 내는 구조가 아니라 실제 포지션 계획을 만들기 위한 값들을 함께 제안합니다.
+
 ## 모델별 해석
 
 ### A. 레인지 리버전

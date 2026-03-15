@@ -11,6 +11,12 @@
 | 포지션 | 오픈 포지션, latest setup, intrabar 로그 | 환경 변수나 실행 타깃 수정 |
 | 설정 | Service control, provider vault, 리셋 | 실시간 성과 비교 |
 
+## 콘솔 스크린샷
+
+![AI_Auto 콘솔 화면](https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-dashboard.png)
+
+> 한 화면에 모든 정보를 넣지 않고, 상태 확인과 운영 입력을 분리한 것이 현재 콘솔 구조의 핵심입니다.
+
 ## 1. 개요
 
 개요 화면은 지금 시스템이 살아 있는지와 전체 흐름이 어떤지만 빠르게 보는 화면입니다.

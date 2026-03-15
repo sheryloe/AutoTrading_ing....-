@@ -16,6 +16,19 @@
 | `BYBIT_SYMBOLS` | `BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT` | 현재 추적 심볼 |
 | `CRYPTO_DATA_SOURCE_ORDER` | `binance,bybit,coingecko` | 시장 데이터 우선순위 |
 
+## 설정 관계 다이어그램
+
+```mermaid
+flowchart LR
+  A[execution target] --> B[runtime profile]
+  C[진입 비중/시드] --> B
+  D[intrabar 충돌 규칙] --> B
+  E[데이터 소스 우선순위] --> B
+  B --> F[다음 cloud-cycle에 반영]
+```
+
+> `/settings`에서 저장하는 값은 바로 다음 배치부터 해석 기준으로 적용됩니다. 다만 현재 포지션과 누적 PnL은 그대로 유지됩니다.
+
 ## 실행 관련 항목
 
 | 항목 | 선택값 | 설명 |

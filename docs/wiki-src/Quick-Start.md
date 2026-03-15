@@ -9,6 +9,19 @@
 - [ ] GitHub Actions가 켜져 있다
 - [ ] `/settings`에서 관리자 토큰으로 저장할 준비가 되어 있다
 
+## 빠른 시작 다이어그램
+
+```mermaid
+flowchart LR
+  A[Supabase 준비] --> B[Vercel env 입력]
+  B --> C[/settings 저장]
+  C --> D[GitHub Actions secrets 입력]
+  D --> E[cloud-cycle 수동 실행]
+  E --> F[heartbeat와 화면 확인]
+```
+
+> 빠른 시작은 연결 순서를 맞추는 것이 핵심입니다. 환경 변수, 설정 저장, 배치 실행을 섞지 않고 순서대로 진행하면 대부분의 초기 오류를 줄일 수 있습니다.
+
 ## 1. Supabase 준비
 
 1. Supabase 프로젝트 생성

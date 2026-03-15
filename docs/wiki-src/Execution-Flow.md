@@ -16,6 +16,22 @@
 | 8 | Supabase에 결과 저장 | 콘솔 화면 갱신 준비 |
 | 9 | 주간 autotune 시점이면 파라미터 조정 | 다음 사이클 기준 조정 |
 
+## 실행 흐름 다이어그램
+
+```mermaid
+flowchart TD
+  A[cloud-cycle 시작] --> B[runtime profile과 provider vault 로드]
+  B --> C[시장 데이터 수집]
+  C --> D[모델 A/B/C/D 분석]
+  D --> E[setup 생성]
+  E --> F[1분봉 intrabar 체결 판정]
+  F --> G[포지션/PnL 갱신]
+  G --> H[Supabase 저장]
+  H --> I[필요 시 autotune]
+```
+
+> 이 루프는 실시간 틱 엔진이 아니라 8분 배치 기준으로 안정적으로 운영할 수 있는 데모 흐름을 목표로 합니다.
+
 ## planner 모델이 만드는 값
 
 각 모델은 최소한 아래 값을 만듭니다.
