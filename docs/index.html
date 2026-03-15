@@ -45,32 +45,32 @@
           <a href="#screens">화면 구조</a>
           <a href="#models">모델 운영</a>
           <a href="#stack">배포 구조</a>
-          <a href="#links">문서</a>
+          <a href="#reference">참고</a>
         </nav>
-        <a class="ghost-button" href="./VERCEL_SUPABASE_SETUP_20260315.md">운영 가이드</a>
+        <a class="ghost-button" href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub</a>
       </header>
 
       <main id="top">
         <section class="hero">
           <div class="hero-copy">
             <p class="eyebrow">Operator-first automation</p>
-            <h1>
-              한 화면에 다 넣지 않고,
-              <span>운영 흐름에 맞게 나눈 자동매매 콘솔</span>
-            </h1>
+            <h1>운영 흐름에 맞게 다시 설계한 자동매매 콘솔</h1>
             <p class="hero-body">
-              AI_Auto는 상시 자동매매 화면을 단순히 예쁘게 포장한 프로젝트가 아닙니다. 개요, 모델 성과,
-              포지션, 설정을 분리해 운영자가 실제로 읽고 판단하기 쉬운 구조로 다시 설계했습니다.
+              AI_Auto는 Top 5 메이저 코인을 대상으로 8분 배치 futures demo를 운영하는 서비스형 트레이딩 콘솔입니다.
+              개요, 모델 성과, 포지션, 설정을 분리해 운영자가 실제로 읽고 판단하기 쉬운 구조를 우선했습니다.
             </p>
-            <div class="hero-actions">
-              <a class="button button-primary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Vercel + Supabase 가이드</a>
-              <a class="button button-secondary" href="./SUPABASE_CORE_SCHEMA_20260315.sql">Supabase 스키마</a>
-            </div>
+            <p class="hero-links">
+              자세한 코드와 운영 문서는
+              <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소</a>
+              와
+              <a href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">GitHub Wiki</a>
+              에서 확인할 수 있습니다.
+            </p>
             <ul class="hero-chips">
               <li>개요 / 모델 성과 / 포지션 / 설정</li>
               <li>Top 5 메이저 코인</li>
               <li>8분 주기 배치 분석</li>
-              <li>일별 PnL / 주간 autotune</li>
+              <li>futures demo / intrabar 체결 반영</li>
             </ul>
           </div>
 
@@ -96,12 +96,12 @@
               <article>
                 <label>성과 관리</label>
                 <strong>일별 PnL / 주간 튜닝</strong>
-                <p>성과 기록과 파라미터 튜닝을 운영 흐름에 포함했습니다.</p>
+                <p>일별 손익 기록과 주간 autotune을 운영 루프에 포함했습니다.</p>
               </article>
               <article>
                 <label>설정 방식</label>
                 <strong>서비스 콘솔</strong>
-                <p>거래소 키와 runtime profile을 운영 화면에서 분리 관리합니다.</p>
+                <p>provider 키와 runtime profile을 운영 화면에서 분리 관리합니다.</p>
               </article>
             </div>
           </div>
@@ -110,7 +110,7 @@
         <section id="why" class="section-card">
           <div class="section-head">
             <p class="eyebrow">왜 재구성했나</p>
-            <h2>대시보드, 성과, 설정이 섞이면 운영 화면이 아니라 잡탕이 됩니다.</h2>
+            <h2>상태 확인과 설정 입력을 분리해야 운영 화면이 됩니다.</h2>
           </div>
           <div class="why-grid">
             <article>
@@ -119,11 +119,11 @@
             </article>
             <article>
               <strong>판단 속도</strong>
-              <p>지표를 보다가 설정 폼을 만나는 구조는 운영 판단을 느리게 만듭니다. 그래서 화면을 기능별로 분리했습니다.</p>
+              <p>지표를 보다가 설정 폼을 만나는 구조는 판단을 느리게 만듭니다. 그래서 화면을 기능별로 분리했습니다.</p>
             </article>
             <article>
               <strong>제품 인상</strong>
-              <p>GitHub Pages는 앱 복제본이 아니라 브랜드 랜딩으로 두고, 실제 콘솔은 Vercel 앱으로 역할을 나눴습니다.</p>
+              <p>GitHub Pages는 프로젝트 소개와 진입점에 집중하고, 실제 운영은 콘솔과 Wiki 문서로 분리했습니다.</p>
             </article>
           </div>
         </section>
@@ -183,27 +183,27 @@
         <section id="models" class="section-card">
           <div class="section-head">
             <p class="eyebrow">모델 운영</p>
-            <h2>4개 모델이 신호와 계획 가격을 생성합니다.</h2>
+            <h2>4개 planner 모델이 진입과 청산 계획을 제안합니다.</h2>
           </div>
           <div class="model-grid">
             <article>
               <span>A</span>
-              <strong>반전형</strong>
-              <p>되돌림 구간과 평균 회귀를 중심으로 진입 가격을 계산합니다.</p>
+              <strong>레인지 리버전</strong>
+              <p>되돌림 구간과 평균 회귀를 중심으로 entry와 stop 구조를 계산합니다.</p>
             </article>
             <article>
               <span>B</span>
-              <strong>유동성 회수형</strong>
-              <p>스윕 후 회복되는 패턴에서 entry / stop 구조를 만듭니다.</p>
+              <strong>리클레임</strong>
+              <p>스윕 후 회복되는 패턴에서 reclaim 기준의 진입 계획을 만듭니다.</p>
             </article>
             <article>
               <span>C</span>
-              <strong>압축 돌파형</strong>
-              <p>변동성 수축 이후의 breakout retest를 기준으로 설정합니다.</p>
+              <strong>압축 돌파</strong>
+              <p>변동성 수축 이후 breakout retest를 기준으로 목표 구간을 설정합니다.</p>
             </article>
             <article>
               <span>D</span>
-              <strong>실패 돌파형</strong>
+              <strong>리셋 바운스</strong>
               <p>실패한 돌파 이후 반대 방향으로 복귀하는 구간을 활용합니다.</p>
             </article>
           </div>
@@ -230,33 +230,17 @@
           </div>
         </section>
 
-        <section id="links" class="section-card">
+        <section id="reference" class="section-card reference-block">
           <div class="section-head">
-            <p class="eyebrow">문서</p>
-            <h2>바로 이동할 문서와 운영 링크</h2>
+            <p class="eyebrow">참고</p>
+            <h2>상세 문서는 GitHub 저장소와 Wiki를 기준으로 관리합니다.</h2>
           </div>
-          <div class="link-grid">
-            <a class="link-card" href="./SUPABASE_CORE_SCHEMA_20260315.sql">
-              <strong>Supabase 코어 스키마</strong>
-              <p>provider vault와 운영 상태 저장에 필요한 SQL입니다.</p>
-            </a>
-            <a class="link-card" href="./VERCEL_SUPABASE_SETUP_20260315.md">
-              <strong>운영 가이드</strong>
-              <p>Vercel, Supabase, GitHub Actions 설정 순서를 단계별로 설명합니다.</p>
-            </a>
-            <a class="link-card" href="./series/index.html">
-              <strong>10단계 블로그 시리즈</strong>
-              <p>서비스형 futures 데모 콘솔로 재구성한 과정과 운영 기준을 10개 글로 정리했습니다.</p>
-            </a>
-            <a class="link-card" href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">
-              <strong>GitHub Wiki</strong>
-              <p>README보다 더 길게 읽을 수 있는 운영 문서와 단계별 정리 페이지를 제공합니다.</p>
-            </a>
-            <a class="link-card" href="https://github.com/sheryloe/AutoTrading_ing....-">
-              <strong>GitHub 저장소</strong>
-              <p>전체 코드와 문서, 변경 이력을 확인할 수 있습니다.</p>
-            </a>
-          </div>
+          <p class="reference-copy">
+            프로젝트 개요는 이 페이지에 남기고, 실제 운영 기준과 설정 절차, 배포 참고 문서는 GitHub 저장소와 Wiki를 중심으로 관리합니다.
+            최신 코드, 변경 이력, 설정 문서가 필요한 경우
+            <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소</a>
+            에서 바로 확인할 수 있습니다.
+          </p>
         </section>
       </main>
 
