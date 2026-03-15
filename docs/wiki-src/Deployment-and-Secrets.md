@@ -1,5 +1,9 @@
 # 배포와 시크릿 기준
 
+> [Prev: Data State Reference](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Data-State-Reference) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Operations Guide](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Operations-Guide)
+
+---
+
 AI_Auto는 시크릿을 한 곳에 몰아넣지 않습니다. 어떤 값이 어디에 있어야 하는지 구분해야 저장 버튼, provider vault, GitHub Actions가 서로 충돌하지 않습니다.
 
 ## 저장 위치 요약

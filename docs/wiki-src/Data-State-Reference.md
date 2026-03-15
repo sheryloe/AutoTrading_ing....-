@@ -1,5 +1,9 @@
 # 데이터 저장 구조
 
+> [Prev: Models and Risk](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Models-and-Risk) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Deployment and Secrets](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Deployment-and-Secrets)
+
+---
+
 AI_Auto는 Supabase를 상태 원장으로 사용합니다. 각 테이블은 운영자가 화면에서 보는 데이터와 배치가 기록하는 데이터를 연결하는 역할을 맡습니다.
 
 ## 핵심 테이블

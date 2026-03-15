@@ -1,5 +1,9 @@
 # 빠른 시작
 
+> [Prev: Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: System Architecture](https://github.com/sheryloe/AutoTrading_ing....-/wiki/System-Architecture)
+
+---
+
 이 페이지는 AI_Auto를 새 환경에서 다시 붙일 때 가장 먼저 확인해야 하는 순서만 짧게 정리한 문서입니다.
 
 ## 시작 전 체크리스트

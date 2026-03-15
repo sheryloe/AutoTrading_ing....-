@@ -1,5 +1,9 @@
 # 운영 콘솔 화면 안내
 
+> [Prev: System Architecture](https://github.com/sheryloe/AutoTrading_ing....-/wiki/System-Architecture) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Execution Flow](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Execution-Flow)
+
+---
+
 운영 콘솔은 한 화면에 모든 것을 몰아넣지 않고, 역할별로 분리된 4개 화면 구조를 기준으로 합니다.
 
 ## 화면 구성 요약

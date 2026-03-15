@@ -1,5 +1,9 @@
 # 실행 흐름
 
+> [Prev: Console Screens](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Console-Screens) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Runtime Configuration](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Runtime-Configuration)
+
+---
+
 현재 AI_Auto는 8분 배치 기반의 futures demo 운영 루프를 기준으로 돌아갑니다.
 
 ## 전체 흐름

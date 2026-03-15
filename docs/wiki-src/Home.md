@@ -1,5 +1,9 @@
 # AI_Auto Wiki
 
+> [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Quick Start](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Quick-Start)
+
+---
+
 AI_Auto는 Top 5 메이저 코인을 대상으로 8분 배치 futures demo를 운영하는 서비스형 자동매매 콘솔입니다. 이 위키는 README보다 더 운영자 시선에 맞춰, 실제로 어디부터 보고 무엇을 설정해야 하는지 빠르게 찾을 수 있도록 재구성한 문서 공간입니다.
 
 ## 먼저 읽으면 좋은 순서

@@ -1,5 +1,9 @@
 # 트러블슈팅
 
+> [Prev: Operations Guide](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Operations-Guide) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki)
+
+---
+
 운영 중 자주 막히는 증상과 점검 순서를 짧게 모아둔 페이지입니다.
 
 ## 자주 보는 문제 요약

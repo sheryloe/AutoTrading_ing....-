@@ -1,5 +1,9 @@
 # 시스템 아키텍처
 
+> [Prev: Quick Start](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Quick-Start) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Console Screens](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Console-Screens)
+
+---
+
 AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘솔과 상태 저장과 배치 실행을 분리한 서비스형 구조입니다.
 
 ## 레이어별 역할

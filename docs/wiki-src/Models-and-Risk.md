@@ -1,5 +1,9 @@
 # 모델과 리스크 기준
 
+> [Prev: Runtime Configuration](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Runtime-Configuration) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Data State Reference](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Data-State-Reference)
+
+---
+
 현재 AI_Auto는 crypto futures demo를 기준으로 4개의 planner 모델을 운영합니다. 각 모델은 점수만 내는 구조가 아니라 entry, stop loss, target price를 직접 제안합니다.
 
 ## 모델 요약

@@ -1,5 +1,9 @@
 # 런타임 설정 레퍼런스
 
+> [Prev: Execution Flow](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Execution-Flow) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Models and Risk](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Models-and-Risk)
+
+---
+
 이 문서는 `/settings`에서 저장하는 runtime profile이 실제로 어떤 의미인지 빠르게 확인하기 위한 레퍼런스입니다.
 
 ## 기본값

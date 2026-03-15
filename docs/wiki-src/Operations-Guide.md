@@ -1,5 +1,9 @@
 # 운영 가이드
 
+> [Prev: Deployment and Secrets](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Deployment-and-Secrets) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Troubleshooting](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Troubleshooting)
+
+---
+
 이 문서는 실제 운영 중 자주 헷갈리는 기준을 정리한 페이지입니다.
 
 ## 운영 시작 전 체크리스트
