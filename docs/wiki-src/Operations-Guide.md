@@ -2,6 +2,14 @@
 
 이 문서는 실제 운영 중 자주 헷갈리는 기준을 정리한 페이지입니다.
 
+## 운영 시작 전 체크리스트
+
+- [ ] execution target이 `paper`인지 확인했다
+- [ ] provider 키 저장이 끝났다
+- [ ] 하드 리셋이 필요한지 먼저 판단했다
+- [ ] `cloud-cycle`이 최근 8분 내에 한 번 이상 돌았다
+- [ ] 모델별 데모 시드와 진입 비중이 현재 운영 의도와 맞는다
+
 ## provider 키 관리
 
 현재 provider 구조는 아래와 같습니다.
@@ -29,6 +37,11 @@
 - 과거 spot 감각의 기록은 비교 기준으로 그대로 쓰지 않음
 
 ## runtime 저장과 리셋의 차이
+
+| 작업 | 유지되는 것 | 초기화되는 것 |
+| --- | --- | --- |
+| runtime profile 저장 | 포지션, 누적 PnL, provider 자격증명 | 없음 |
+| 하드 리셋 | provider 자격증명, runtime profile | 포지션, setup, 일별 PnL, runtime tune, 최근 체결 로그, 엔진 상태 |
 
 ### runtime profile 저장
 

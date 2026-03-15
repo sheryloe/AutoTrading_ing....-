@@ -4,6 +4,13 @@ AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘
 
 ## 레이어별 역할
 
+| 레이어 | 담당 역할 | 운영 포인트 |
+| --- | --- | --- |
+| Vercel | 운영 콘솔 UI, Service control API | `/settings` 저장과 화면 렌더링 |
+| Supabase | 상태 원장, provider vault, runtime profile | heartbeat, setup, 포지션, 일별 PnL 저장 |
+| Python 배치 | 분석, intrabar 체결 판정, PnL 계산, autotune | 실제 전략 로직과 데모 체결 처리 |
+| GitHub Actions | `cloud-cycle` 스케줄 실행 | 8분 주기, 중복 실행 방지, 일별 commit/push |
+
 ### Vercel
 
 - 운영 콘솔 UI 제공
@@ -34,6 +41,13 @@ AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘
 - `cloud-cycle` 8분 주기 실행
 - daily report commit / push
 - 배치 실행 자동화
+
+## 운영자가 아키텍처를 읽을 때 보는 순서
+
+- [ ] 화면이 안 뜨면 `Vercel`
+- [ ] 데이터가 안 보이면 `Supabase`
+- [ ] 분석/체결 결과가 이상하면 `Python 배치`
+- [ ] 8분 실행이 안 돌면 `GitHub Actions`
 
 ## 왜 이렇게 나눴는가
 
