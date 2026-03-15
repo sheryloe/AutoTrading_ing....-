@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import RefreshBanner from "./refresh-banner";
 
 const NAV_ITEMS = [
   { href: "/", label: "개요", desc: "오늘의 상태와 핵심 KPI" },
@@ -27,8 +28,8 @@ export default function AppShell({ children }) {
         <div className="sidebar-caption">
           <span className="caption-chip">HYPER OPS</span>
           <p>
-            상태 확인, 모델 성과, 포지션 점검, 운영 설정을 한 화면에 몰아넣지 않고
-            역할별로 분리한 운영형 대시보드입니다.
+            상태 확인, 모델 성과, 포지션 점검, 운영 설정을 역할별 화면으로 분리한
+            운영형 대시보드입니다.
           </p>
         </div>
 
@@ -74,7 +75,10 @@ export default function AppShell({ children }) {
         </header>
 
         <main className="shell-main">
-          <div className="page-stack">{children}</div>
+          <div className="page-stack">
+            <RefreshBanner />
+            {children}
+          </div>
         </main>
       </div>
     </div>
