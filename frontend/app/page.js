@@ -28,8 +28,8 @@ export default async function HomePage() {
     <>
       <PageHeader
         eyebrow="운영 개요"
-        title="오늘의 상태를 먼저 읽는 대시보드"
-        description="개요는 핵심 지표와 최근 사이클만 보여줍니다. 빠른 이동 카드 대신 모델 스냅샷을 별도 전시해 각 모델 상태를 바로 읽을 수 있게 바꿨습니다."
+        title="동그리 크립토 트레이딩 에이전트"
+        description="개요 화면에서는 핵심 지표와 최근 사이클, 모델 스냅샷만 먼저 보여줍니다. 성과 분석과 설정 입력은 각 전용 화면에서 따로 관리합니다."
         actions={[
           { href: "/models", label: "모델 성과 보기", tone: "primary" },
           { href: "/positions", label: "포지션 보기", tone: "ghost" },
