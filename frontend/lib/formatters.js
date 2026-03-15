@@ -25,5 +25,6 @@ export function formatTs(value) {
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Seoul",
   }).format(dt);
 }
