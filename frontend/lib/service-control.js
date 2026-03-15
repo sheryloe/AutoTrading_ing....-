@@ -26,6 +26,7 @@ const DEFAULT_RUNTIME_CONFIG = {
   BYBIT_ORDER_PCT: 0.275,
   BYBIT_ORDER_PCT_MIN: 0.15,
   BYBIT_ORDER_PCT_MAX: 0.4,
+  INTRABAR_CONFLICT_POLICY: "conservative",
   CRYPTO_DATA_SOURCE_ORDER: DEFAULT_SOURCE_ORDER,
   CRYPTO_USE_BINANCE_DATA: true,
   CRYPTO_USE_BYBIT_DATA: true,
@@ -172,6 +173,11 @@ export function normalizeRuntimeConfig(raw = {}) {
     BYBIT_ORDER_PCT: orderPctMid,
     BYBIT_ORDER_PCT_MIN: orderPctMin,
     BYBIT_ORDER_PCT_MAX: orderPctMax,
+    INTRABAR_CONFLICT_POLICY: ["conservative", "neutral", "aggressive"].includes(
+      String(raw.INTRABAR_CONFLICT_POLICY || "").toLowerCase()
+    )
+      ? String(raw.INTRABAR_CONFLICT_POLICY).toLowerCase()
+      : DEFAULT_RUNTIME_CONFIG.INTRABAR_CONFLICT_POLICY,
     CRYPTO_DATA_SOURCE_ORDER: sourceOrder.join(","),
     CRYPTO_USE_BINANCE_DATA: flags.binance,
     CRYPTO_USE_BYBIT_DATA: flags.bybit,

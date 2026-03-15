@@ -63,6 +63,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     bybitMaxPositions: String(initialConfig?.BYBIT_MAX_POSITIONS || 3),
     bybitOrderPctMin: String(initialConfig?.BYBIT_ORDER_PCT_MIN || 0.15),
     bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.4),
+    intrabarConflictPolicy: String(initialConfig?.INTRABAR_CONFLICT_POLICY || "conservative"),
     bybitSymbols: String(initialConfig?.BYBIT_SYMBOLS || "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
     cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
     useBinanceData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BINANCE_DATA ?? true)),
@@ -146,6 +147,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             BYBIT_MAX_POSITIONS: Number(config.bybitMaxPositions || 3),
             BYBIT_ORDER_PCT_MIN: Number(config.bybitOrderPctMin || 0.15),
             BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.4),
+            INTRABAR_CONFLICT_POLICY: config.intrabarConflictPolicy,
             BYBIT_SYMBOLS: config.bybitSymbols,
             CRYPTO_DATA_SOURCE_ORDER: config.cryptoDataSourceOrder,
             CRYPTO_USE_BINANCE_DATA: config.useBinanceData === "true",
@@ -508,6 +510,20 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             value={config.bybitOrderPctMax}
             onChange={(event) => setConfig((prev) => ({ ...prev, bybitOrderPctMax: event.target.value }))}
           />
+
+          <label className="field-label" htmlFor="intrabar-conflict-policy">
+            같은 캔들 충돌 규칙
+          </label>
+          <select
+            id="intrabar-conflict-policy"
+            className="control-input"
+            value={config.intrabarConflictPolicy}
+            onChange={(event) => setConfig((prev) => ({ ...prev, intrabarConflictPolicy: event.target.value }))}
+          >
+            <option value="conservative">conservative / SL 우선</option>
+            <option value="neutral">neutral / open 기준 근접 우선</option>
+            <option value="aggressive">aggressive / TP 우선</option>
+          </select>
 
           <label className="field-label" htmlFor="autotune-hours">
             튜닝 주기(시간)

@@ -2053,12 +2053,57 @@ class TradingEngine:
                         "position_meta": {
                             "entry_score": float((pos or {}).get("entry_score") or 0.0),
                             "risk_reward": float((pos or {}).get("risk_reward") or 0.0),
+                            "fill_mode": str((pos or {}).get("fill_mode") or "spot"),
                             "reason": str((pos or {}).get("reason") or ""),
                             "setup_state": str((pos or {}).get("setup_state") or ""),
                         },
                     }
                 )
         return rows
+
+    def _build_recent_crypto_trade_rows(self, limit: int = 80) -> list[dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        rows: list[dict[str, Any]] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            for tr in list(run.get("trades") or []):
+                if str((tr or {}).get("source") or "").strip().lower() != "crypto_demo":
+                    continue
+                side = str((tr or {}).get("side") or "").strip().lower()
+                fill_mode = str((tr or {}).get("fill_mode") or "spot").strip().lower()
+                close_mode = str((tr or {}).get("close_mode") or "").strip().lower()
+                ts = int((tr or {}).get("ts") or 0)
+                rows.append(
+                    {
+                        "ts": self._iso_datetime(ts),
+                        "ts_epoch": ts,
+                        "model_id": model_id,
+                        "model_name": self._market_model_name("crypto", model_id),
+                        "side": side,
+                        "symbol": str((tr or {}).get("symbol") or ""),
+                        "price_usd": float((tr or {}).get("price_usd") or 0.0),
+                        "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
+                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0),
+                        "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0),
+                        "reason": str((tr or {}).get("reason") or ""),
+                        "fill_mode": fill_mode if side == "buy" else "",
+                        "close_mode": close_mode if side == "sell" else "",
+                        "event_mode": fill_mode if side == "buy" else close_mode,
+                        "event_label": (
+                            "intrabar 체결"
+                            if side == "buy" and fill_mode == "intrabar"
+                            else (
+                                "spot 체결"
+                                if side == "buy"
+                                else ("intrabar 종료" if close_mode == "intrabar" else "spot 종료")
+                            )
+                        ),
+                        "is_intrabar": bool((fill_mode if side == "buy" else close_mode) == "intrabar"),
+                    }
+                )
+        rows.sort(key=lambda row: int(row.get("ts_epoch") or 0), reverse=True)
+        return rows[: max(1, int(limit))]
 
     def _sync_supabase_snapshot(self, now_ts: int) -> None:
         if not bool(getattr(getattr(self, "supabase_sync", None), "enabled", False)):
@@ -2085,6 +2130,10 @@ class TradingEngine:
                 on_conflict="cycle_at,symbol,model_id",
             ),
             "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows()),
+            "recent_crypto_trades": self.supabase_sync.upsert_blob(
+                "recent_crypto_trades",
+                {"rows": self._build_recent_crypto_trade_rows(limit=120), "updated_at": self._iso_datetime(now_ts)},
+            ),
         }
         errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
         if errors:
@@ -10392,15 +10441,24 @@ class TradingEngine:
             return float((min(zone_low, zone_high) + max(zone_low, zone_high)) / 2.0)
         return 0.0
 
-    @staticmethod
-    def _intrabar_long_exit_hit(pos: dict[str, Any], candle: dict[str, Any]) -> tuple[float, str]:
+    def _intrabar_long_exit_hit(self, pos: dict[str, Any], candle: dict[str, Any]) -> tuple[float, str]:
         low = float((candle or {}).get("low") or 0.0)
         high = float((candle or {}).get("high") or 0.0)
+        open_price = float((candle or {}).get("open") or 0.0)
         stop_loss_price = float((pos or {}).get("stop_loss_price") or 0.0)
         take_profit_price = float((pos or {}).get("take_profit_price") or 0.0)
         if low <= 0.0 or high <= 0.0:
             return (0.0, "")
         if stop_loss_price > 0.0 and low <= stop_loss_price and take_profit_price > 0.0 and high >= take_profit_price:
+            policy = str(getattr(self.settings, "intrabar_conflict_policy", "conservative") or "conservative").lower()
+            if policy == "aggressive":
+                return (float(take_profit_price), f"TP intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
+            if policy == "neutral":
+                ref_price = open_price if open_price > 0.0 else float((candle or {}).get("close") or 0.0)
+                if ref_price <= 0.0:
+                    ref_price = float((stop_loss_price + take_profit_price) / 2.0)
+                if abs(ref_price - take_profit_price) < abs(ref_price - stop_loss_price):
+                    return (float(take_profit_price), f"TP intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
             return (float(stop_loss_price), f"SL intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
         if stop_loss_price > 0.0 and low <= stop_loss_price:
             return (float(stop_loss_price), f"SL intrabar {stop_loss_price:.4f}")
@@ -10653,6 +10711,7 @@ class TradingEngine:
         pos: dict[str, Any],
         price_usd: float,
         reason: str,
+        close_mode: str = "",
     ) -> bool:
         symbol = str(pos.get("symbol") or "")
         if not symbol:
@@ -10688,6 +10747,7 @@ class TradingEngine:
                 "pnl_usd": pnl_usd,
                 "pnl_pct": pnl_pct,
                 "reason": reason,
+                "close_mode": str(close_mode or ("intrabar" if "intrabar" in str(reason or "").lower() else "spot")),
                 "model_id": model_id,
             }
         )
@@ -10714,6 +10774,7 @@ class TradingEngine:
         reason_text: str,
         atr_pct: float,
         opened_at: int,
+        fill_mode: str = "spot",
     ) -> bool:
         price = max(0.0, float(fill_price or 0.0))
         margin_usd = max(0.0, float(order_usd or 0.0))
@@ -10745,6 +10806,7 @@ class TradingEngine:
             "target_price_3": float((plan or {}).get("target_price_3") or 0.0),
             "risk_reward": float((plan or {}).get("risk_reward") or 0.0),
             "setup_state": str((plan or {}).get("setup_state") or ""),
+            "fill_mode": str(fill_mode or "spot"),
             "reason": str(reason_text or ""),
         }
         run["bybit_cash_usd"] = float(run.get("bybit_cash_usd") or 0.0) - margin_usd
@@ -10761,6 +10823,7 @@ class TradingEngine:
                 "margin_usd": margin_usd,
                 "order_pct": float(order_pct),
                 "leverage": float(leverage),
+                "fill_mode": str(fill_mode or "spot"),
                 "pnl_usd": 0.0,
                 "pnl_pct": 0.0,
                 "reason": (
@@ -10796,7 +10859,7 @@ class TradingEngine:
             for candle in rows:
                 exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
                 if exit_price > 0.0 and exit_reason:
-                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason)
+                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason, close_mode="intrabar")
                     break
             else:
                 last_close = float((rows[-1] or {}).get("close") or 0.0)
@@ -10884,6 +10947,7 @@ class TradingEngine:
                 reason_text=reason_text,
                 atr_pct=atr_pct,
                 opened_at=opened_at,
+                fill_mode="intrabar",
             )
             if not opened:
                 continue
@@ -10893,7 +10957,7 @@ class TradingEngine:
             for candle in rows[hit_index:]:
                 exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
                 if exit_price > 0.0 and exit_reason:
-                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason)
+                    self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason, close_mode="intrabar")
                     break
 
         run["crypto_intrabar_eval_ts"] = int(now_ts)
@@ -11084,6 +11148,7 @@ class TradingEngine:
                 reason_text=reason_text,
                 atr_pct=atr_pct,
                 opened_at=now,
+                fill_mode="spot",
             ):
                 opened += 1
 

@@ -14,8 +14,8 @@ export default async function PositionsPage() {
     <>
       <PageHeader
         eyebrow="포지션"
-        title="모델별로 나눠 보는 실행 상태"
-        description="포지션과 setup도 한 표에 섞지 않고 모델 탭별로 분리했습니다. 선택한 모델의 오픈 포지션과 진입 계획만 집중해서 볼 수 있습니다."
+        title="모델별 실행 상태와 체결 흐름"
+        description="오픈 포지션, 최신 진입 계획, 최근 체결 로그를 모델 단위로 분리해서 봅니다. intrabar 체결과 종료도 여기서 바로 확인할 수 있습니다."
         actions={[
           { href: "/settings", label: "설정 열기", tone: "primary" },
           { href: "/models", label: "모델 성과 보기", tone: "ghost" },
@@ -40,15 +40,23 @@ export default async function PositionsPage() {
         />
         <MetricCard label="오픈 포지션" value={String(snapshot?.openPositionCount || 0)} meta="전체 모델 합계" tone="amber" />
         <MetricCard
-          label="최근 사이클"
+          label="최신 사이클"
           value={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
-          meta={`최근 신호 ${snapshot?.latestSignalCount || 0}건`}
+          meta={`최신 신호 ${snapshot?.latestSignalCount || 0}건`}
           tone="green"
         />
-        <MetricCard label="최근 setup 수" value={String(data.setupRows.length)} meta="전체 모델 기준" />
+        <MetricCard
+          label="최근 체결 로그"
+          value={String(snapshot?.recentTradeCount || 0)}
+          meta="intrabar / spot 포함"
+        />
       </section>
 
-      <PositionsTabs openPositions={data.openPositions} setupRows={data.setupRows} />
+      <PositionsTabs
+        openPositions={data.openPositions}
+        setupRows={data.setupRows}
+        recentTradeRows={data.recentTradeRows}
+      />
     </>
   );
 }

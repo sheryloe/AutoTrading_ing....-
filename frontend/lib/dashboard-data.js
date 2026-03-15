@@ -142,20 +142,28 @@ export async function loadPositionsPageData() {
       heartbeat: null,
       openPositions: [],
       setupRows: [],
+      recentTradeRows: [],
       snapshot: null,
     };
   }
 
-  const [heartbeatRes, positionsRes, setupsRes] = await Promise.all([
+  const [heartbeatRes, positionsRes, setupsRes, recentTradesRes] = await Promise.all([
     supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
     supabase.from("positions").select("*").eq("status", "open").order("opened_at", { ascending: false }).limit(12),
     supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(18),
+    supabase
+      .from("engine_state_blobs")
+      .select("payload_json,updated_at")
+      .eq("blob_key", "recent_crypto_trades")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
-  const errors = collectErrors([heartbeatRes, positionsRes, setupsRes]);
+  const errors = collectErrors([heartbeatRes, positionsRes, setupsRes, recentTradesRes]);
   const heartbeat = heartbeatRes.data?.[0] || null;
   const openPositions = positionsRes.data || [];
   const setupRows = setupsRes.data || [];
+  const recentTradeRows = Array.isArray(recentTradesRes.data?.payload_json?.rows) ? recentTradesRes.data.payload_json.rows : [];
   const latestCycleAt = setupRows[0]?.cycle_at || null;
 
   return {
@@ -164,12 +172,14 @@ export async function loadPositionsPageData() {
     heartbeat,
     openPositions,
     setupRows,
+    recentTradeRows,
     snapshot: {
       latestCycleAt,
       latestSignalCount: latestCycleAt
         ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
         : 0,
       openPositionCount: openPositions.length,
+      recentTradeCount: recentTradeRows.length,
     },
   };
 }

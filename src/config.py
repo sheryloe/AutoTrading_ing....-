@@ -151,6 +151,7 @@ class Settings:
     bybit_order_pct: float
     bybit_order_pct_min: float
     bybit_order_pct_max: float
+    intrabar_conflict_policy: str
     bybit_leverage_min: float
     bybit_leverage_max: float
     bybit_max_positions: int
@@ -346,6 +347,11 @@ class Settings:
             bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.30))),
             bybit_order_pct_min=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.15))),
             bybit_order_pct_max=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.40))),
+            intrabar_conflict_policy=(
+                _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower()
+                if _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower() in {"conservative", "neutral", "aggressive"}
+                else "conservative"
+            ),
             bybit_leverage_min=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 15.0))),
             bybit_leverage_max=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 30.0))),
             bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 3)),

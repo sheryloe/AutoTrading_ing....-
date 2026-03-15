@@ -5,19 +5,34 @@ import EmptyState from "./empty-state";
 import SectionCard from "./section-card";
 import StatusBadge from "./status-badge";
 import TablePanel from "./table-panel";
-import { formatMoney, formatTs } from "../../lib/formatters";
+import { formatMoney, formatPct, formatTs } from "../../lib/formatters";
 import { getModelMeta, MODEL_ORDER } from "../../lib/model-meta";
 
-function pickDefaultModel(openPositions, setupRows) {
+function pickDefaultModel(openPositions, setupRows, recentTradeRows) {
   const ids = new Set([
     ...openPositions.map((item) => String(item.model_id || "").toUpperCase()),
     ...setupRows.map((item) => String(item.model_id || "").toUpperCase()),
+    ...recentTradeRows.map((item) => String(item.model_id || "").toUpperCase()),
   ]);
   return MODEL_ORDER.find((id) => ids.has(id)) || "A";
 }
 
-export default function PositionsTabs({ openPositions, setupRows }) {
-  const [activeModel, setActiveModel] = useState(() => pickDefaultModel(openPositions, setupRows));
+function tradeTone(row) {
+  const side = String(row.side || "").toLowerCase();
+  const mode = String(row.event_mode || "").toLowerCase();
+  if (side === "buy") {
+    return mode === "intrabar" ? "warning" : "info";
+  }
+  return mode === "intrabar" ? "success" : "muted";
+}
+
+function positionFillLabel(row) {
+  const fillMode = String(row?.position_meta?.fill_mode || "").toLowerCase();
+  return fillMode === "intrabar" ? "intrabar 체결" : "spot 체결";
+}
+
+export default function PositionsTabs({ openPositions, setupRows, recentTradeRows }) {
+  const [activeModel, setActiveModel] = useState(() => pickDefaultModel(openPositions, setupRows, recentTradeRows));
 
   const activePositions = useMemo(
     () => openPositions.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
@@ -26,6 +41,10 @@ export default function PositionsTabs({ openPositions, setupRows }) {
   const activeSetups = useMemo(
     () => setupRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
     [activeModel, setupRows]
+  );
+  const activeTrades = useMemo(
+    () => recentTradeRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
+    [activeModel, recentTradeRows]
   );
   const latestCycleAt = activeSetups[0]?.cycle_at || null;
   const meta = getModelMeta(activeModel);
@@ -58,7 +77,7 @@ export default function PositionsTabs({ openPositions, setupRows }) {
             <div className="status-row compact">
               <StatusBadge tone="info">오픈 포지션 {activePositions.length}</StatusBadge>
               <StatusBadge tone="warning">최신 setup {activeSetups.length}</StatusBadge>
-              <StatusBadge tone="success">{latestCycleAt ? formatTs(latestCycleAt) : "사이클 대기"}</StatusBadge>
+              <StatusBadge tone="success">최근 체결 {activeTrades.length}</StatusBadge>
             </div>
           </div>
 
@@ -68,19 +87,19 @@ export default function PositionsTabs({ openPositions, setupRows }) {
               <strong>{activePositions.length}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>최신 setup</span>
-              <strong>{activeSetups.length}</strong>
+              <span>최근 체결</span>
+              <strong>{activeTrades.length}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>최근 사이클</span>
-              <strong>{latestCycleAt ? formatTs(latestCycleAt) : "-"}</strong>
+              <span>최신 사이클</span>
+              <strong>{latestCycleAt ? formatTs(latestCycleAt) : "사이클 대기"}</strong>
             </article>
           </div>
         </div>
       </SectionCard>
 
       <section className="content-grid content-grid-two">
-        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 포지션`} meta={`${activePositions.length}개`}>
+        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}개`}>
           {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
@@ -90,44 +109,48 @@ export default function PositionsTabs({ openPositions, setupRows }) {
                     <p>
                       {row.side} / {row.status}
                     </p>
+                    <div className="status-row compact">
+                      <StatusBadge tone="info">{positionFillLabel(row)}</StatusBadge>
+                    </div>
                   </div>
                   <div className="mini-metrics">
-                    <span>{formatMoney(row.actual_entry_price || row.planned_entry_price)}</span>
-                    <span>{formatMoney(row.realized_pnl_usd)}</span>
+                    <span>진입 {formatMoney(row.actual_entry_price || row.planned_entry_price)}</span>
+                    <span>미실현 {formatMoney(row.unrealized_pnl_usd)}</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="오픈 포지션이 없습니다" description="선택한 모델에 열려 있는 포지션이 없습니다." />
+            <EmptyState title="오픈 포지션이 없습니다" description="선택한 모델에 현재 열려 있는 포지션이 없습니다." />
           )}
         </SectionCard>
 
-        <SectionCard eyebrow="최근 setup" title={`${meta.name} 진입 계획`} meta={latestCycleAt ? formatTs(latestCycleAt) : "대기 중"}>
-          {activeSetups.length ? (
+        <SectionCard eyebrow="최근 체결" title={`${meta.name} 체결 로그`} meta={`${activeTrades.length}건`}>
+          {activeTrades.length ? (
             <div className="mini-list">
-              {activeSetups.slice(0, 5).map((row) => (
-                <article key={row.id} className="mini-card">
+              {activeTrades.slice(0, 6).map((row, idx) => (
+                <article key={`${row.ts}-${row.symbol}-${idx}`} className="mini-card">
                   <div>
                     <strong>{row.symbol}</strong>
-                    <p>RR {Number(row.risk_reward || 0).toFixed(2)}</p>
+                    <p>{formatTs(row.ts)}</p>
+                    <div className="status-row compact">
+                      <StatusBadge tone={tradeTone(row)}>{row.event_label}</StatusBadge>
+                    </div>
                   </div>
                   <div className="mini-metrics">
-                    <span>{formatMoney(row.entry_price)}</span>
-                    <StatusBadge tone={row.entry_ready ? "success" : "muted"}>
-                      {row.entry_ready ? "진입 가능" : "대기"}
-                    </StatusBadge>
+                    <span>{formatMoney(row.price_usd)}</span>
+                    <span>{String(row.side || "").toLowerCase() === "sell" ? formatMoney(row.pnl_usd) : "-"}</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="최근 setup이 없습니다" description="선택한 모델의 setup 데이터가 아직 없습니다." />
+            <EmptyState title="최근 체결 로그가 없습니다" description="선택한 모델에 아직 체결 이벤트가 기록되지 않았습니다." />
           )}
         </SectionCard>
       </section>
 
-      <TablePanel eyebrow="진입 계획 테이블" title={`${meta.name} Entry / SL / TP`} meta={`${activeSetups.length}건`}>
+      <TablePanel eyebrow="진입 계획" title={`${meta.name} Entry / SL / TP`} meta={`${activeSetups.length}건`}>
         <table>
           <thead>
             <tr>
@@ -151,6 +174,41 @@ export default function PositionsTabs({ openPositions, setupRows }) {
                   <td>{formatMoney(row.target_price_1)}</td>
                   <td>{Number(row.risk_reward || 0).toFixed(2)}</td>
                   <td>{row.entry_ready ? "진입 가능" : "대기"}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7">데이터가 없습니다.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </TablePanel>
+
+      <TablePanel eyebrow="체결 상세" title={`${meta.name} 최근 체결 이벤트`} meta={`${activeTrades.length}건`}>
+        <table>
+          <thead>
+            <tr>
+              <th>시각</th>
+              <th>심볼</th>
+              <th>구분</th>
+              <th>방식</th>
+              <th>가격</th>
+              <th>PnL</th>
+              <th>수익률</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeTrades.length ? (
+              activeTrades.map((row, idx) => (
+                <tr key={`${row.ts}-${row.symbol}-${idx}`}>
+                  <td>{formatTs(row.ts)}</td>
+                  <td>{row.symbol}</td>
+                  <td>{String(row.side || "").toLowerCase() === "buy" ? "체결" : "종료"}</td>
+                  <td>{row.event_label}</td>
+                  <td>{formatMoney(row.price_usd)}</td>
+                  <td>{String(row.side || "").toLowerCase() === "sell" ? formatMoney(row.pnl_usd) : "-"}</td>
+                  <td>{String(row.side || "").toLowerCase() === "sell" ? formatPct(row.pnl_pct || 0) : "-"}</td>
                 </tr>
               ))
             ) : (
