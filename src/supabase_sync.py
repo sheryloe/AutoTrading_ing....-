@@ -53,6 +53,55 @@ class SupabaseSyncClient:
             return {"ok": True, "count": len(payload)}
         return {"ok": False, "status": resp.status_code, "error": resp.text[:400]}
 
+    def fetch_rows(self, table: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self.enabled:
+            return {"ok": False, "error": "disabled"}
+        resp = self.session.get(
+            self._table_url(table),
+            params=dict(params or {}),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        if resp.ok:
+            try:
+                data = resp.json()
+            except Exception:
+                return {"ok": False, "status": resp.status_code, "error": "invalid_json"}
+            return {"ok": True, "rows": data if isinstance(data, list) else []}
+        return {"ok": False, "status": resp.status_code, "error": resp.text[:400]}
+
+    def upsert_blob(self, blob_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+        row = {
+            "blob_key": str(blob_key or "").strip(),
+            "payload_json": dict(payload or {}),
+        }
+        if not row["blob_key"]:
+            return {"ok": False, "error": "blob_key_required"}
+        return self.upsert_rows("engine_state_blobs", [row], on_conflict="blob_key")
+
+    def fetch_blob(self, blob_key: str) -> dict[str, Any]:
+        key = str(blob_key or "").strip()
+        if not key:
+            return {"ok": False, "error": "blob_key_required"}
+        result = self.fetch_rows(
+            "engine_state_blobs",
+            params={
+                "blob_key": f"eq.{key}",
+                "select": "payload_json,updated_at",
+                "limit": "1",
+            },
+        )
+        if not result.get("ok"):
+            return result
+        rows = list(result.get("rows") or [])
+        if not rows:
+            return {"ok": False, "error": "not_found"}
+        row = dict(rows[0] or {})
+        payload = row.get("payload_json")
+        if not isinstance(payload, dict):
+            payload = {}
+        return {"ok": True, "payload": payload, "updated_at": row.get("updated_at")}
+
     def replace_open_positions(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not self.enabled:
             return {"ok": False, "error": "disabled"}

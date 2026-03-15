@@ -8,6 +8,7 @@ The current target flow is:
 - weekly parameter autotune
 - Vercel dashboard
 - Supabase storage + realtime
+- GitHub Actions batch execution
 
 ## 1. What values are required
 
@@ -125,7 +126,7 @@ Use the server-side key here. Never expose it in the browser.
 
 ```env
 SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
 ```
 
 If you keep older variable naming, map the same values like this:
@@ -134,6 +135,28 @@ If you keep older variable naming, map the same values like this:
 SUPABASE_URL=https://abcxyz123456.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
+
+### GitHub Actions secrets for no-local operation
+
+These are the secrets the batch runner needs when there is no local machine involved:
+
+```env
+SUPABASE_URL=https://abcxyz123456.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+BYBIT_API_KEY=xxxxxxxxxxxxxxxxx
+BYBIT_API_SECRET=xxxxxxxxxxxxxxxxx
+TELEGRAM_BOT_TOKEN=xxxxxxxxxxxxxxxxx
+TELEGRAM_CHAT_ID=xxxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=optional
+```
+
+Notes:
+
+- `BYBIT_API_KEY` / `BYBIT_API_SECRET` are needed if the engine should pull account and execution data.
+- `TELEGRAM_*` are optional.
+- `GOOGLE_API_KEY` is optional in the current crypto-only path.
+- Repository `Settings > Actions > General > Workflow permissions` should allow `Read and write permissions`
+  because the daily report can commit and push to `main`.
 
 ## 3. What is optional
 
@@ -179,16 +202,16 @@ Reason:
 ### GitHub Actions
 
 - runs every 10 minutes for analysis
-- runs daily for report snapshot + commit
-- runs weekly for autotune
+- uses the same batch cycle to trigger the daily report and weekly autotune when due
 - writes to Supabase using the server-side key
+- persists engine state/model snapshots into Supabase so the runner does not depend on local files
 
 ## 6. Fastest path
 
 If you want the quickest deployment path:
 
 1. Create Supabase project
-2. Run [SUPABASE_SCHEMA_20260315.sql](D:\AI_Auto\docs\SUPABASE_SCHEMA_20260315.sql)
+2. Run [SUPABASE_CORE_SCHEMA_20260315.sql](D:\AI_Auto\docs\SUPABASE_CORE_SCHEMA_20260315.sql)
 3. Send:
    - `Project URL`
    - `Publishable key` or `anon key`
@@ -199,7 +222,27 @@ If you want the quickest deployment path:
    - `Auth on/off`
 4. Then the frontend wiring can start
 
-## 7. Source notes
+## 7. Current cloud runner shape
+
+The repo now includes a one-shot batch entrypoint:
+
+- [run_batch_cycle.py](D:\AI_Auto\scripts\run_batch_cycle.py)
+
+And the batch cycle is intended to run on GitHub Actions with:
+
+- checkout
+- Python install
+- `pip install -r requirements.txt`
+- `python scripts/run_batch_cycle.py`
+
+The runner does not start Flask. It runs one cycle, persists state/model into Supabase,
+and exits.
+
+The workflow file is:
+
+- [.github/workflows/cloud-cycle.yml](D:\AI_Auto\.github\workflows\cloud-cycle.yml)
+
+## 8. Source notes
 
 Official docs to check while setting values:
 

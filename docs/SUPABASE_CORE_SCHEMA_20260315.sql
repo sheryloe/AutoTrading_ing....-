@@ -40,6 +40,12 @@ create table if not exists public.engine_heartbeat (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.engine_state_blobs (
+  blob_key text primary key,
+  payload_json jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.model_runtime_tunes (
   model_id text primary key,
   market text not null default 'crypto',

@@ -107,14 +107,7 @@ def _trade_from_dict(data: dict[str, Any]) -> Trade:
     )
 
 
-def load_state(path: str, start_cash_usd: float) -> EngineState:
-    target = Path(path)
-    if not target.exists():
-        return EngineState(cash_usd=float(start_cash_usd))
-    try:
-        raw = json.loads(target.read_text(encoding="utf-8"))
-    except Exception:
-        return EngineState(cash_usd=float(start_cash_usd))
+def state_from_dict(raw: dict[str, Any], start_cash_usd: float) -> EngineState:
     if not isinstance(raw, dict):
         return EngineState(cash_usd=float(start_cash_usd))
 
@@ -163,10 +156,8 @@ def load_state(path: str, start_cash_usd: float) -> EngineState:
     )
 
 
-def save_state(path: str, state: EngineState) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+def state_to_dict(state: EngineState) -> dict[str, Any]:
+    return {
         "cash_usd": float(state.cash_usd),
         "positions": {token: asdict(pos) for token, pos in state.positions.items()},
         "trades": [asdict(trade) for trade in state.trades[-STATE_TRADE_HISTORY_LIMIT:]],
@@ -192,6 +183,23 @@ def save_state(path: str, state: EngineState) -> None:
         "model_runs": dict(state.model_runs or {}),
         "daily_pnl": list(state.daily_pnl[-STATE_DAILY_PNL_HISTORY_LIMIT:]),
     }
+
+
+def load_state(path: str, start_cash_usd: float) -> EngineState:
+    target = Path(path)
+    if not target.exists():
+        return EngineState(cash_usd=float(start_cash_usd))
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except Exception:
+        return EngineState(cash_usd=float(start_cash_usd))
+    return state_from_dict(raw, start_cash_usd)
+
+
+def save_state(path: str, state: EngineState) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = state_to_dict(state)
     serialized = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
     tmp = target.with_suffix(f"{target.suffix}.tmp")
     try:

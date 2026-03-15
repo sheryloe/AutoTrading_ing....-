@@ -35,6 +35,8 @@ from src.state import (
     Trade,
     load_state,
     save_state,
+    state_from_dict,
+    state_to_dict,
 )
 
 
@@ -341,13 +343,19 @@ class TradingEngine:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or load_settings()
         self._enforce_paper_lock()
-        self.state: EngineState = load_state(self.settings.state_file, self.settings.paper_start_cash_usd)
+        self.supabase_sync = SupabaseSyncClient(
+            url=self.settings.supabase_url,
+            secret_key=self.settings.supabase_secret_key,
+            enabled=bool(self.settings.supabase_sync_enabled),
+            timeout_seconds=int(self.settings.supabase_sync_timeout_seconds),
+        )
+        self.state: EngineState = self._load_bootstrap_state()
         if self.state.cash_usd <= 0:
             self.state.cash_usd = float(self.settings.paper_start_cash_usd)
         if self.state.demo_seed_usdt <= 0:
             self.state.demo_seed_usdt = float(self.settings.demo_seed_usdt)
 
-        self.model: OnlineModel = load_online_model(self.settings.model_file)
+        self.model: OnlineModel = self._load_bootstrap_model()
         self.runtime_feedback = RuntimeFeedbackStore(self.settings.runtime_feedback_db_file)
         self.dex = DexScreenerClient()
         self.pumpfun = PumpFunClient()
@@ -502,12 +510,6 @@ class TradingEngine:
         self._feedback_cache_ttl_seconds = 60.0
         self._repo_root = Path(__file__).resolve().parents[1]
         self._git_daily_report_kv_key = "git_daily_pnl_report_state"
-        self.supabase_sync = SupabaseSyncClient(
-            url=self.settings.supabase_url,
-            secret_key=self.settings.supabase_secret_key,
-            enabled=bool(self.settings.supabase_sync_enabled),
-            timeout_seconds=int(self.settings.supabase_sync_timeout_seconds),
-        )
 
         self._ensure_model_runs()
         self._sync_primary_views_from_model_a()
@@ -515,6 +517,71 @@ class TradingEngine:
     @property
     def running(self) -> bool:
         return self._running
+
+    def _load_bootstrap_state(self) -> EngineState:
+        local_path = Path(str(self.settings.state_file or "state.json"))
+        if local_path.exists():
+            return load_state(str(local_path), self.settings.paper_start_cash_usd)
+        if self.supabase_sync.enabled:
+            try:
+                result = self.supabase_sync.fetch_blob("engine_state")
+                payload = result.get("payload") if bool(result.get("ok")) else None
+                if isinstance(payload, dict):
+                    return state_from_dict(payload, self.settings.paper_start_cash_usd)
+            except Exception:
+                pass
+        return EngineState(cash_usd=float(self.settings.paper_start_cash_usd))
+
+    def _load_bootstrap_model(self) -> OnlineModel:
+        local_path = Path(str(self.settings.model_file or "model_online.json"))
+        if local_path.exists():
+            return load_online_model(str(local_path))
+        if self.supabase_sync.enabled:
+            try:
+                result = self.supabase_sync.fetch_blob("online_model")
+                payload = result.get("payload") if bool(result.get("ok")) else None
+                if isinstance(payload, dict):
+                    return OnlineModel.from_dict(payload)
+            except Exception:
+                pass
+        return OnlineModel()
+
+    def _load_daily_git_report_state(self) -> dict[str, Any]:
+        try:
+            state = dict(self.runtime_feedback.load_kv(self._git_daily_report_kv_key) or {})
+        except Exception:
+            state = {}
+        if state:
+            return state
+        if self.supabase_sync.enabled:
+            try:
+                result = self.supabase_sync.fetch_blob(self._git_daily_report_kv_key)
+                payload = result.get("payload") if bool(result.get("ok")) else None
+                if isinstance(payload, dict):
+                    return payload
+            except Exception:
+                pass
+        return {}
+
+    def _save_daily_git_report_state(self, payload: dict[str, Any], now_ts: int) -> None:
+        try:
+            self.runtime_feedback.save_kv(self._git_daily_report_kv_key, payload, now_ts=int(now_ts))
+        except Exception:
+            pass
+        if self.supabase_sync.enabled:
+            try:
+                self.supabase_sync.upsert_blob(self._git_daily_report_kv_key, payload)
+            except Exception:
+                pass
+
+    def _persist_supabase_state(self) -> None:
+        if not self.supabase_sync.enabled:
+            return
+        try:
+            self.supabase_sync.upsert_blob("engine_state", state_to_dict(self.state))
+            self.supabase_sync.upsert_blob("online_model", self.model.to_dict())
+        except Exception:
+            pass
 
     def _reload_settings(self) -> None:
         prev_token = str(getattr(getattr(self, "telegram", None), "bot_token", "") or "")
@@ -1385,6 +1452,7 @@ class TradingEngine:
             save_state(self.settings.state_file, self.state)
             self._backup_state_file("auto", force=False)
             save_online_model(self.settings.model_file, self.model)
+            self._persist_supabase_state()
             self._last_persist_ts = int(now)
 
     @staticmethod
@@ -10997,10 +11065,7 @@ class TradingEngine:
         if not bool(getattr(self.settings, "git_daily_reports_enabled", False)):
             return
         previous_day = (datetime.fromtimestamp(int(now_ts), tz=timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-        try:
-            last_state = dict(self.runtime_feedback.load_kv(self._git_daily_report_kv_key) or {})
-        except Exception:
-            last_state = {}
+        last_state = self._load_daily_git_report_state()
         if str(last_state.get("last_report_date") or "") == previous_day:
             return
         with self._lock:
@@ -11048,10 +11113,7 @@ class TradingEngine:
                     + (" | push" if bool(commit_result.get("pushed")) else ""),
                     send_telegram=False,
                 )
-        try:
-            self.runtime_feedback.save_kv(self._git_daily_report_kv_key, state_payload, now_ts=int(now_ts))
-        except Exception:
-            pass
+        self._save_daily_git_report_state(state_payload, int(now_ts))
 
     def _sync_wallet(self, now: int, force: bool = False) -> None:
         if not self.settings.phantom_wallet_address:
