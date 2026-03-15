@@ -1906,7 +1906,7 @@ class TradingEngine:
             "last_cycle_finished_at": self._iso_datetime(now_ts),
             "last_error": "",
             "version_sha": "",
-            "host_name": os.environ.get("COMPUTERNAME", ""),
+            "host_name": os.environ.get("HOSTNAME", "") or os.environ.get("COMPUTERNAME", ""),
             "meta_json": {
                 "trade_mode": str(self.settings.trade_mode or ""),
                 "demo_enable_macro": bool(self.settings.demo_enable_macro),

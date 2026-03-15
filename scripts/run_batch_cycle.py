@@ -69,18 +69,57 @@ def _hydrate_runtime_from_supabase() -> None:
         _hydrate_provider_secrets(client, master_key)
 
 
+def _build_heartbeat_row(engine: TradingEngine, *, started_at: int, finished_at: int | None = None, error: str = "") -> dict:
+    row = dict(engine._build_supabase_heartbeat_row(int(finished_at or started_at)))  # noqa: SLF001
+    row["last_cycle_started_at"] = engine._iso_datetime(int(started_at))  # noqa: SLF001
+    row["last_cycle_finished_at"] = engine._iso_datetime(int(finished_at or started_at))  # noqa: SLF001
+    row["last_error"] = str(error or "")[:400]
+    row["version_sha"] = str(os.environ.get("GITHUB_SHA") or row.get("version_sha") or "")[:64]
+    row["host_name"] = str(
+        os.environ.get("HOSTNAME") or os.environ.get("COMPUTERNAME") or row.get("host_name") or ""
+    )[:120]
+    meta = dict(row.get("meta_json") or {})
+    meta["execution_target"] = str(getattr(engine.settings, "trade_mode", "") or "")
+    meta["runner"] = "github-actions"
+    row["meta_json"] = meta
+    return row
+
+
+def _push_heartbeat(engine: TradingEngine, *, started_at: int, finished_at: int | None = None, error: str = "") -> None:
+    client = getattr(engine, "supabase_sync", None)
+    if not bool(getattr(client, "enabled", False)):
+        return
+    row = _build_heartbeat_row(engine, started_at=started_at, finished_at=finished_at, error=error)
+    result = client.upsert_rows("engine_heartbeat", [row], on_conflict="engine_name")
+    if not bool((result or {}).get("ok")):
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "heartbeat_sync_failed": True,
+                    "error": result.get("error") if isinstance(result, dict) else "heartbeat_sync_failed",
+                },
+                ensure_ascii=True,
+            ),
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     started = int(time.time())
     _hydrate_runtime_from_supabase()
     engine = TradingEngine(load_settings())
+    _push_heartbeat(engine, started_at=started, finished_at=started, error="")
     try:
         engine.run_cycle()
         engine._persist(force=True)  # noqa: SLF001
+        finished = int(time.time())
+        _push_heartbeat(engine, started_at=started, finished_at=finished, error="")
         payload = engine.dashboard_payload()
         summary = {
             "ok": True,
             "started_at": started,
-            "finished_at": int(time.time()),
+            "finished_at": finished,
             "heartbeat": payload.get("last_cycle_ts"),
             "crypto_signals": len(list(payload.get("bybit_signal_rows") or [])),
             "open_positions": len(list(payload.get("bybit_positions") or [])),
@@ -89,10 +128,12 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=True))
         return 0
     except Exception as exc:  # noqa: BLE001
+        finished = int(time.time())
+        _push_heartbeat(engine, started_at=started, finished_at=finished, error=str(exc))
         error_payload = {
             "ok": False,
             "started_at": started,
-            "finished_at": int(time.time()),
+            "finished_at": finished,
             "error": str(exc),
         }
         print(json.dumps(error_payload, ensure_ascii=True), file=sys.stderr)
