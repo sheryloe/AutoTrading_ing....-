@@ -36,6 +36,43 @@ const DEFAULT_RUNTIME_CONFIG = {
   DEMO_ENABLE_MACRO: true,
 };
 
+function buildEmptyEngineState(seedUsdt) {
+  const seed = Number(seedUsdt || DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT);
+  return {
+    cash_usd: seed,
+    positions: {},
+    trades: [],
+    last_signal_ts: {},
+    latest_signals: [],
+    alerts: [],
+    trend_events: [],
+    wallet_assets: [],
+    bybit_assets: [],
+    bybit_positions: [],
+    bybit_error: "",
+    memecoin_error: "",
+    last_cycle_ts: 0,
+    last_wallet_sync_ts: 0,
+    last_bybit_sync_ts: 0,
+    telegram_offset: 0,
+    demo_seed_usdt: seed,
+    live_seed_usd: 0,
+    live_seed_set_ts: 0,
+    live_perf_anchor_usd: 0,
+    live_perf_anchor_ts: 0,
+    live_net_flow_usd: 0,
+    model_runs: {},
+    daily_pnl: [],
+  };
+}
+
+function collectMutationErrors(results = []) {
+  return results
+    .map((result) => result?.error?.message)
+    .filter(Boolean)
+    .map((message) => String(message));
+}
+
 function toBool(value, fallback) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "boolean") return value;
@@ -300,4 +337,80 @@ export async function deleteProviderSecret(provider) {
   if (error) {
     throw new Error(error.message || "service_secret_delete_failed");
   }
+}
+
+export async function hardResetServiceDemo({ seedUsdt = DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT } = {}) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    throw new Error("supabase_admin_not_ready");
+  }
+
+  const seed = toFloat(seedUsdt, DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT, 50, 1_000_000);
+  const resetAt = new Date().toISOString();
+
+  const runtimeRes = await supabase
+    .from("engine_state_blobs")
+    .select("payload_json")
+    .eq("blob_key", SERVICE_RUNTIME_BLOB_KEY)
+    .maybeSingle();
+
+  if (runtimeRes.error) {
+    throw new Error(runtimeRes.error.message || "runtime_config_load_failed");
+  }
+
+  const runtimeConfig = normalizeRuntimeConfig(
+    runtimeRes.data?.payload_json && typeof runtimeRes.data.payload_json === "object" ? runtimeRes.data.payload_json : {}
+  );
+  runtimeConfig.DEMO_SEED_USDT = seed;
+
+  const blobRes = await supabase.from("engine_state_blobs").upsert(
+    [
+      {
+        blob_key: SERVICE_RUNTIME_BLOB_KEY,
+        payload_json: runtimeConfig,
+      },
+      {
+        blob_key: "engine_state",
+        payload_json: buildEmptyEngineState(seed),
+      },
+      {
+        blob_key: "online_model",
+        payload_json: {},
+      },
+      {
+        blob_key: "recent_crypto_trades",
+        payload_json: {
+          rows: [],
+          reset_at: resetAt,
+          seed_usdt: seed,
+        },
+      },
+    ],
+    { onConflict: "blob_key" }
+  );
+
+  if (blobRes.error) {
+    throw new Error(blobRes.error.message || "engine_state_reset_failed");
+  }
+
+  const minDate = "1970-01-01T00:00:00+00:00";
+  const deleteResults = await Promise.all([
+    supabase.from("positions").delete().gte("updated_at", minDate),
+    supabase.from("model_setups").delete().gte("updated_at", minDate),
+    supabase.from("daily_model_pnl").delete().gte("updated_at", minDate),
+    supabase.from("model_runtime_tunes").delete().gte("updated_at", minDate),
+  ]);
+
+  const deleteErrors = collectMutationErrors(deleteResults);
+  if (deleteErrors.length) {
+    throw new Error(deleteErrors[0] || "service_demo_reset_failed");
+  }
+
+  return {
+    ok: true,
+    seedUsdt: seed,
+    resetAt,
+    runtimeConfig,
+    clearedTables: ["positions", "model_setups", "daily_model_pnl", "model_runtime_tunes"],
+  };
 }

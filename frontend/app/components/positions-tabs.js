@@ -28,7 +28,7 @@ function tradeTone(row) {
 
 function positionFillLabel(row) {
   const fillMode = String(row?.position_meta?.fill_mode || "").toLowerCase();
-  return fillMode === "intrabar" ? "intrabar 체결" : "spot 체결";
+  return fillMode === "intrabar" ? "intrabar 체결" : "배치 체결";
 }
 
 export default function PositionsTabs({ openPositions, setupRows, recentTradeRows }) {

@@ -732,6 +732,12 @@ textarea {
   border-color: var(--line-strong);
 }
 
+.action-button.danger {
+  border-color: rgba(255, 140, 140, 0.28);
+  color: #ffd2d2;
+  background: linear-gradient(180deg, rgba(42, 12, 16, 0.98), rgba(24, 8, 11, 0.98));
+}
+
 .action-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
