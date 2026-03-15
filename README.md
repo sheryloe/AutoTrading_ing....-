@@ -1,157 +1,175 @@
-﻿# AI_Auto
+# AI_Auto
 
-Execution-first crypto trading lab focused on planner-based entries, provider-vaulted service control, daily PnL persistence, and weekly autotune.
+AI_Auto는 상시 자동매매 엔진을 무작정 한 화면에 붙이는 프로젝트가 아니라, 운영자가 상태를 읽고 설정을 분리해 관리할 수 있도록 재구성한 서비스형 콘솔입니다.
 
-![AI_Auto landing preview](docs/assets/screenshots/auto-trading-cover.png)
+![AI_Auto 운영 화면](docs/assets/screenshots/auto-trading-cover.png)
 
-## What This Repo Is Now
+## 프로젝트 소개
 
-As of `2026-03-15`, the project is being reshaped around a simpler operating profile:
+현재 구조는 다음 전제를 기준으로 정리되어 있습니다.
 
-- `meme` flow removed from the active trading direction
-- `Top 5` major Bybit pairs only: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `XRPUSDT`, `BNBUSDT`
-- `4` crypto planner models that generate `entry / SL / TP`
-- `10-minute` analysis cycle
-- `daily` model PnL snapshots and git report files
-- `weekly` parameter autotune based on accumulated results
+- 메이저 5개 코인만 추적: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `XRPUSDT`, `BNBUSDT`
+- 밈 코인 제외
+- 4개 모델이 각각 `entry / stop loss / target price`를 생성
+- 10분 주기 분석
+- 일별 PnL 기록
+- 주간 autotune
+- `Vercel + Supabase + Python 배치` 구조
 
-This repository is not trying to look like a generic AI-generated trading demo. The direction is an operations-grade trading lab: signal planning, execution discipline, reporting, and parameter feedback loops.
+## 현재 운영 구조
 
-## Current Trading Profile
+### 프론트
 
-| Item | Current direction |
-| --- | --- |
-| Market | Crypto majors only |
-| Universe | `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `XRPUSDT`, `BNBUSDT` |
-| Cycle | Every `10m` |
-| Leverage band | `15x ~ 30x` by model |
-| Models | `A/B/C/D` planner models |
-| Review layer | No LLM review |
-| Service console | Bybit + Binance + CoinGecko |
-| Learning loop | Daily PnL + weekly autotune |
-| Reports | `reports/daily_pnl/*.json`, `*.csv`, `summary.csv` |
+- `Vercel`에 운영자 콘솔 배포
+- 콘솔 화면은 4개로 분리
+  - `개요`
+  - `모델 성과`
+  - `포지션`
+  - `설정`
 
-## Model Matrix
+### 저장소
 
-| Model | Role | Planning output |
-| --- | --- | --- |
-| `A` | Range reversion planner | mean reversion entry zone, defensive stop, staged targets |
-| `B` | Support reclaim planner | reclaim entry, invalidation stop, recovery targets |
-| `C` | Compression breakout planner | breakout retest entry, range stop, expansion targets |
-| `D` | Reset bounce planner | washout bounce entry, reset stop, rebound targets |
+- `Supabase`에 운영 상태 저장
+- 저장 대상
+  - 엔진 heartbeat
+  - 최신 setup
+  - 포지션 상태
+  - 일별 PnL
+  - runtime tune 상태
+  - provider vault
 
-All four models are expected to output:
+### 실행
 
-- `entry_price`
-- `entry_zone_low`
-- `entry_zone_high`
-- `stop_loss_price`
-- `target_price_1/2/3`
-- `risk_reward`
-- `recommended_leverage`
-- `setup_expiry_ts`
+- `Python` 배치 러너가 주기적으로 실행
+- `GitHub Actions` 또는 별도 워커가 실행 주체
+- 실행 전 설정과 provider 키는 Supabase에서 읽음
 
-## Operating Loop
+## 화면 구조 안내
 
-1. Every `10 minutes`: generate fresh crypto setups for the fixed top-5 universe.
-2. Every `24 hours`: aggregate model-level daily PnL and persist report files.
-3. Every `7 days`: adjust thresholds and TP/SL multipliers from observed performance.
+### 1. 개요
 
-This is the core loop. No narrative review layer is required for it.
+개요 화면은 지금 무슨 일이 벌어지고 있는지 빠르게 확인하는 용도입니다.
 
-## Runtime and Deployment Direction
+- 엔진 heartbeat
+- 최근 PnL 합계
+- 최근 사이클 상태
+- 오픈 포지션 수
+- 최근 signal 수
 
-### Current runtime
+### 2. 모델 성과
 
-- `Flask` still exists for local diagnostics, but the cloud direction is now a service console plus batch runner split.
-- The batch runner can hydrate runtime config and provider credentials from Supabase before executing.
-- GitHub Pages is used for the public-facing project landing.
+모델 화면은 성과 비교에만 집중합니다.
 
-### Target cloud split
+- 모델별 PnL
+- 승률
+- 종료 거래 수
+- autotune 상태
+- 현재 튜닝 파라미터
 
-- `Vercel`: dashboard + operator console
-- `Supabase`: setups, positions, daily PnL, autotune history, heartbeat, encrypted provider vault, runtime config blob
-- `GitHub Actions`: `10m` analysis, daily report commit, weekly autotune
-- `Python engine`: batch-oriented execution layer that fetches config and keys from Supabase at runtime
+### 3. 포지션
 
-### Service console scope
+포지션 화면은 실행 데이터를 모읍니다.
 
-- `Bybit`: single execution account in service mode v1
-- `Binance`: preferred realtime quote source for planner models
-- `CoinGecko`: universe and market-cap source
-- `Execution target`: `paper` or `bybit-live`
-- `Live safety`: explicit two-step arm, separate from credential storage
+- 오픈 포지션
+- 최신 setup
+- entry / SL / TP
+- 최근 cycle 상태
 
-Important:
+### 4. 설정
 
-- saving `Bybit` keys only marks the execution provider as configured
-- it does not auto-enable real crypto orders
-- this phase still keeps the current crypto execution path in demo mode while the service model is being hardened
+설정 화면은 운영 입력 전용입니다.
 
-Useful files:
+- `Service control`
+- provider vault
+- execution target
+- live arm
+- runtime profile
 
-- [Core Supabase schema](docs/SUPABASE_CORE_SCHEMA_20260315.sql)
-- [Vercel and Supabase operator guide](docs/VERCEL_SUPABASE_SETUP_20260315.md)
-- [Strategy refactor notes](docs/strategy_refactor_20260308.md)
+## 실행 흐름
 
-## Quick Start
+현재 실행 흐름은 아래와 같습니다.
 
-### Local Python
+1. 10분마다 배치가 메이저 5개 코인을 분석
+2. 모델 A/B/C/D가 각각 진입 계획을 생성
+3. 결과를 Supabase에 기록
+4. 일별 PnL을 별도 리포트로 저장
+5. 누적 성과를 기준으로 주간 autotune 수행
 
-```powershell
-cd d:\AI_Auto
-py -3 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-Copy-Item runtime_settings.example.json runtime_settings.local.json
-py -3 web_app.py
+즉 `실시간 차트만 보는 UI`가 아니라 `신호 생성 -> 상태 기록 -> 결과 분석` 흐름을 운영하는 구조입니다.
+
+## 배포 구조
+
+### Vercel
+
+- 운영자 콘솔 배포
+- Service control 화면 제공
+- Supabase 읽기/쓰기 API 라우트 제공
+
+### Supabase
+
+- 상태 저장
+- provider vault 암호화 저장
+- runtime profile 저장
+- 대시보드 조회 원장 역할
+
+### Python 배치
+
+- 10분 주기 분석
+- signal / setup 생성
+- position 상태 갱신
+- Supabase 동기화
+
+## 빠른 시작
+
+### 1. 저장소 준비
+
+```bash
+git clone <repo-url>
+cd AI_Auto
 ```
 
-### Docker
+### 2. Supabase 스키마 적용
 
-```powershell
-cd d:\AI_Auto
-Copy-Item .env.example .env
-docker compose up -d --build
-```
+- [Supabase 코어 스키마](docs/SUPABASE_CORE_SCHEMA_20260315.sql) 내용을 SQL Editor에 실행
 
-Default local dashboard:
+### 3. Vercel 환경 변수 설정
 
-```txt
-http://localhost:8099
-```
+필수 값:
 
-## Repository Map
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `SERVICE_MASTER_KEY`
+- `SERVICE_ADMIN_TOKEN`
 
-- `src/`: engine, config, providers, runtime feedback, reporting
-- `web_app.py`: Flask app entrypoint
-- `templates/`, `static/`: current dashboard UI
-- `docs/`: GitHub Pages landing, setup notes, strategy documents
-- `reports/`: generated runtime and daily report outputs
-- `scripts/`: local maintenance and helper scripts
+### 4. GitHub Actions Secrets 설정
 
-## Safety Notes
+서비스형 구조 기준으로 필요한 값:
 
-- `runtime_settings.local.json` and `.env` are local runtime files and should stay out of git.
-- `publishable` Supabase keys can be used in the frontend.
-- `secret` or `service_role` keys must stay server-side only.
-- provider exchange keys now belong in the Vercel service console, not in GitHub Secrets, for the service path.
-- `SERVICE_MASTER_KEY` must match between Vercel and GitHub Actions because Vercel encrypts and Actions decrypts the same provider vault rows.
-- `SERVICE_ADMIN_TOKEN` protects writes to the service console.
-- The current design direction assumes no LLM review dependency for the core trading loop.
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `SERVICE_MASTER_KEY`
 
-## GitHub Pages
+거래소 키는 GitHub Secrets에 직접 넣지 않고, 서비스 콘솔에서 저장합니다.
 
-The GitHub Pages source lives under `docs/`.
-The landing page is intentionally separate from the Flask dashboard UI so the repository presentation does not look like a duplicated app shell.
+## 운영 시 주의사항
 
-## Status
+- `Service control`에서 Bybit 키를 저장해도 바로 실거래가 시작되지는 않습니다.
+- `execution target`, `live execution flag`, `live crypto`, `arm`은 별도 단계입니다.
+- 현재 단계는 `future crypto live order routing` 전 준비 구조이며, UI와 저장 흐름을 먼저 고정한 상태입니다.
+- `SERVICE_MASTER_KEY`는 Vercel과 GitHub Actions에 같은 값으로 넣어야 합니다.
 
-Active focus right now:
+## 관련 문서
 
-- planner-based crypto execution
-- daily PnL reporting
-- weekly autotune
-- Supabase persistence
-- Vercel frontend split
+- [Supabase 코어 스키마](docs/SUPABASE_CORE_SCHEMA_20260315.sql)
+- [Vercel + Supabase 운영 가이드](docs/VERCEL_SUPABASE_SETUP_20260315.md)
+- [전략 리팩토링 기록](docs/strategy_refactor_20260308.md)
+
+## 다음 단계 후보
+
+- 서비스 콘솔 추가 개선
+- 실제 라이브 라우팅 가드 강화
+- 모델/포지션 차트 보강
+- 운영 로그 상세화
+- Supabase Realtime 연결 고도화

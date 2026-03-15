@@ -1,49 +1,35 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AI_Auto | Planner-Based Crypto Execution Lab</title>
+    <title>AI_Auto | 운영형 트레이딩 콘솔</title>
     <meta
       name="description"
-      content="Top-5 major crypto pairs, 10-minute planner cycles, daily PnL persistence, and weekly autotune. AI_Auto is being rebuilt as an execution-first trading lab."
+      content="개요, 모델 성과, 포지션, 설정 화면으로 분리된 운영형 자동매매 콘솔 AI_Auto 소개 페이지"
     >
-    <meta
-      name="keywords"
-      content="crypto execution lab, planner based trading, bybit major pairs, supabase trading dashboard, vercel trading frontend, 자동매매 대시보드, 크립토 플래너 모델"
-    >
-    <meta name="robots" content="index, follow, max-image-preview:large">
-    <meta name="theme-color" content="#081019">
     <meta property="og:type" content="website">
-    <meta property="og:locale" content="ko_KR">
-    <meta property="og:title" content="AI_Auto | Planner-Based Crypto Execution Lab">
+    <meta property="og:title" content="AI_Auto | 운영형 트레이딩 콘솔">
     <meta
       property="og:description"
-      content="LLM review 없이, 상위 5개 메이저 코인과 4개 플래너 모델로 10분 단위 분석과 일별 PnL, 주간 autotune을 운영하는 트레이딩 랩."
+      content="한 화면에 모든 것을 넣지 않고, 역할별 화면과 운영 흐름으로 재구성한 자동매매 프로젝트"
     >
     <meta property="og:image" content="assets/screenshots/auto-trading-cover.png">
-    <meta property="og:image:alt" content="AI_Auto dark trading landing preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="AI_Auto | Planner-Based Crypto Execution Lab">
+    <meta name="twitter:title" content="AI_Auto | 운영형 트레이딩 콘솔">
     <meta
       name="twitter:description"
-      content="Top-5 majors, 10-minute setups, daily PnL reports, and weekly autotune."
+      content="운영 구조, 모델 운영 방식, 배포 스택을 한글로 정리한 AI_Auto 랜딩 페이지"
     >
-    <meta name="twitter:image" content="assets/screenshots/auto-trading-cover.png">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-    <link rel="manifest" href="site.webmanifest">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="styles.css">
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <div class="bg-grid"></div>
-    <div class="bg-orb bg-orb-a"></div>
-    <div class="bg-orb bg-orb-b"></div>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
 
     <div class="page-shell">
       <header class="topbar">
@@ -51,313 +37,224 @@
           <span class="brand-mark"></span>
           <span class="brand-copy">
             <strong>AI_Auto</strong>
-            <span>Execution Lab / Major Pairs Only</span>
+            <span>운영형 트레이딩 콘솔</span>
           </span>
         </a>
-        <nav class="topnav" aria-label="Sections">
-          <a href="#profile">Profile</a>
-          <a href="#models">Models</a>
-          <a href="#loop">Loop</a>
-          <a href="#deploy">Deploy</a>
-          <a href="#faq">FAQ</a>
+        <nav class="topnav" aria-label="문서 이동">
+          <a href="#why">왜 재구성했나</a>
+          <a href="#screens">화면 구조</a>
+          <a href="#models">모델 운영</a>
+          <a href="#stack">배포 구조</a>
+          <a href="#links">문서</a>
         </nav>
-        <a class="ghost-button" href="./VERCEL_SUPABASE_SETUP_20260315.md">Deploy Notes</a>
+        <a class="ghost-button" href="./VERCEL_SUPABASE_SETUP_20260315.md">운영 가이드</a>
       </header>
 
       <main id="top">
         <section class="hero">
           <div class="hero-copy">
-            <p class="eyebrow">TOP 5 MAJORS / SERVICE CONSOLE / 10M CYCLE / WEEKLY AUTOTUNE</p>
+            <p class="eyebrow">Operator-first automation</p>
             <h1>
-              Planner-based entries for
-              <span>execution-first crypto ops</span>
+              한 화면에 다 넣지 않고,
+              <span>운영 흐름에 맞게 나눈 자동매매 콘솔</span>
             </h1>
             <p class="hero-body">
-              AI_Auto is being reshaped into a tighter trading system: no meme flow, no LLM review gate,
-              and no generic showcase layout. The focus is on four planner models that produce entry, stop-loss,
-              and target levels for a fixed major-coin universe, while a service console manages Bybit, Binance,
-              and CoinGecko credentials through an encrypted Supabase vault.
+              AI_Auto는 상시 자동매매 화면을 단순히 예쁘게 포장한 프로젝트가 아닙니다. 개요, 모델 성과,
+              포지션, 설정을 분리해 운영자가 실제로 읽고 판단하기 쉬운 구조로 다시 설계했습니다.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" href="./SUPABASE_CORE_SCHEMA_20260315.sql">Supabase Schema</a>
-              <a class="button button-secondary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Service Console Guide</a>
+              <a class="button button-primary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Vercel + Supabase 가이드</a>
+              <a class="button button-secondary" href="./SUPABASE_CORE_SCHEMA_20260315.sql">Supabase 스키마</a>
             </div>
-            <ul class="chip-row">
-              <li>BTC / ETH / SOL / XRP / BNB</li>
-              <li>15x - 30x model bands</li>
-              <li>Daily git reports</li>
-              <li>7-day autotune cycle</li>
+            <ul class="hero-chips">
+              <li>개요 / 모델 성과 / 포지션 / 설정</li>
+              <li>Top 5 메이저 코인</li>
+              <li>10분 주기 분석</li>
+              <li>일별 PnL / 주간 autotune</li>
             </ul>
           </div>
 
           <div class="hero-visual">
-            <section class="terminal-card board-card">
-              <div class="terminal-head">
-                <span>live profile</span>
-                <span>execution preset</span>
-              </div>
-              <div class="board-grid">
-                <article>
-                  <label>Universe</label>
-                  <strong>5 majors</strong>
-                  <p>Bybit-listed, liquid, fixed watchlist</p>
-                </article>
-                <article>
-                  <label>Cadence</label>
-                  <strong>10m</strong>
-                  <p>planner refresh and setup expiry checks</p>
-                </article>
-                <article>
-                  <label>Reports</label>
-                  <strong>24h</strong>
-                  <p>PnL snapshot, csv/json export, git commit</p>
-                </article>
-                <article>
-                  <label>Retune</label>
-                  <strong>7d</strong>
-                  <p>threshold and tp/sl multiplier adjustment</p>
-                </article>
-              </div>
-            </section>
-
-            <figure class="screenshot-card">
-              <img src="assets/screenshots/auto-trading-dashboard.png" alt="AI_Auto dashboard screenshot" loading="eager">
+            <figure class="hero-shot">
+              <img src="assets/screenshots/auto-trading-cover.png" alt="AI_Auto 운영형 콘솔 커버">
               <figcaption>
-                <span class="caption-kicker">Current dashboard runtime</span>
-                <strong>Vercel console + Python batch runner</strong>
-                <p>The engine still lives in Python, but the operating surface is now being rebuilt around a Vercel service console and Supabase vault.</p>
+                <span>Operator surface</span>
+                <strong>운영자가 읽기 쉽게 쪼갠 하이퍼리퀴드형 다크 UI</strong>
               </figcaption>
             </figure>
-
-            <section class="terminal-card tape-card">
-              <div class="terminal-head">
-                <span>market tape</span>
-                <span>major pairs only</span>
-              </div>
-              <div class="tape-track">
-                <span>BTCUSDT</span>
-                <span>ETHUSDT</span>
-                <span>SOLUSDT</span>
-                <span>XRPUSDT</span>
-                <span>BNBUSDT</span>
-                <span>BTCUSDT</span>
-                <span>ETHUSDT</span>
-                <span>SOLUSDT</span>
-                <span>XRPUSDT</span>
-                <span>BNBUSDT</span>
-              </div>
-            </section>
+            <div class="hero-panel-grid">
+              <article>
+                <label>추적 범위</label>
+                <strong>메이저 5종</strong>
+                <p>유동성과 실행 안정성이 높은 심볼에 집중합니다.</p>
+              </article>
+              <article>
+                <label>분석 주기</label>
+                <strong>10분</strong>
+                <p>상시 루프 대신 운영 가능한 배치 구조로 정리했습니다.</p>
+              </article>
+              <article>
+                <label>성과 관리</label>
+                <strong>일별 PnL / 주간 튜닝</strong>
+                <p>성과 기록과 파라미터 튜닝을 운영 흐름에 포함했습니다.</p>
+              </article>
+              <article>
+                <label>설정 방식</label>
+                <strong>서비스 콘솔</strong>
+                <p>거래소 키와 runtime profile을 운영 화면에서 분리 관리합니다.</p>
+              </article>
+            </div>
           </div>
         </section>
 
-        <section class="profile-grid" id="profile">
-          <article class="profile-card accent-cyan">
-            <span class="card-index">01</span>
-            <h2>Execution profile</h2>
-            <p>No meme rotation, no trend-chasing social layer. Only major-pair setup planning with explicit risk levels.</p>
-          </article>
-          <article class="profile-card accent-green">
-            <span class="card-index">02</span>
-            <h2>Data loop</h2>
-            <p>Every cycle writes structured data that can be reused for daily PnL, weekly autotune, and dashboard state.</p>
-          </article>
-          <article class="profile-card accent-amber">
-            <span class="card-index">03</span>
-            <h2>Presentation split</h2>
-            <p>The public page should not look like the in-app UI. GitHub Pages acts like a brand and operating brief, not a cloned dashboard.</p>
-          </article>
-        </section>
-
-        <section class="section-shell section-surface">
+        <section id="why" class="section-card">
           <div class="section-head">
-            <p class="eyebrow">Surface map</p>
-            <h2>What the system now optimizes for</h2>
+            <p class="eyebrow">왜 재구성했나</p>
+            <h2>대시보드, 성과, 설정이 섞이면 운영 화면이 아니라 잡탕이 됩니다.</h2>
           </div>
-          <div class="surface-grid">
-            <article class="surface-card">
-              <label>Universe</label>
-              <strong>Top 5 majors</strong>
-              <p>BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT</p>
+          <div class="why-grid">
+            <article>
+              <strong>역할 분리</strong>
+              <p>운영 상태 확인, 성과 비교, 포지션 점검, 설정 입력은 같은 순간에 같은 밀도로 보여줄 필요가 없습니다.</p>
             </article>
-            <article class="surface-card">
-              <label>Signal shape</label>
-              <strong>Entry / SL / TP</strong>
-              <p>Each model outputs a plan, not just a score.</p>
+            <article>
+              <strong>판단 속도</strong>
+              <p>지표를 보다가 설정 폼을 만나는 구조는 운영 판단을 느리게 만듭니다. 그래서 화면을 기능별로 분리했습니다.</p>
             </article>
-            <article class="surface-card">
-              <label>Feedback loop</label>
-              <strong>Result-driven tuning</strong>
-              <p>Retune depends on observed performance, not manual review prompts.</p>
-            </article>
-            <article class="surface-card">
-              <label>Storage target</label>
-              <strong>Supabase</strong>
-              <p>Setups, positions, daily pnl, tune history, heartbeat, runtime config blob, provider vault.</p>
+            <article>
+              <strong>제품 인상</strong>
+              <p>GitHub Pages는 앱 복제본이 아니라 브랜드 랜딩으로 두고, 실제 콘솔은 Vercel 앱으로 역할을 나눴습니다.</p>
             </article>
           </div>
         </section>
 
-        <section class="section-shell" id="models">
+        <section id="screens" class="section-card">
           <div class="section-head">
-            <p class="eyebrow">Model matrix</p>
-            <h2>Four planner models, four execution attitudes</h2>
-            <p class="section-copy">The models are meant to disagree in useful ways. They should create different entry zones, different invalidation logic, and different target pacing.</p>
+            <p class="eyebrow">화면 구조</p>
+            <h2>운영자 시선에 맞춘 4개 화면 구조</h2>
+          </div>
+          <div class="screen-grid">
+            <article class="screen-card">
+              <span>01</span>
+              <strong>개요</strong>
+              <p>핵심 KPI, heartbeat, 최근 사이클 요약, 오픈 포지션 수만 보여줍니다.</p>
+            </article>
+            <article class="screen-card">
+              <span>02</span>
+              <strong>모델 성과</strong>
+              <p>모델별 PnL, 승률, 종료 거래 수, autotune 상태를 비교합니다.</p>
+            </article>
+            <article class="screen-card">
+              <span>03</span>
+              <strong>포지션</strong>
+              <p>오픈 포지션, 최신 setup, entry / SL / TP 상태를 실행 기준으로 모읍니다.</p>
+            </article>
+            <article class="screen-card">
+              <span>04</span>
+              <strong>설정</strong>
+              <p>Service control, provider vault, execution target, runtime profile은 설정 화면에만 둡니다.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-card media-section">
+          <div class="section-head">
+            <p class="eyebrow">화면 분위기</p>
+            <h2>하이퍼리퀴드 계열의 다크 운영 도구 인상</h2>
+          </div>
+          <div class="media-grid">
+            <figure class="media-shot">
+              <img src="assets/screenshots/auto-trading-dashboard.png" alt="AI_Auto 운영 화면 미리보기">
+            </figure>
+            <div class="media-copy">
+              <p>
+                검은 배경, 민트와 시안 포인트, 데이터 패널 중심 레이아웃을 사용했습니다. 과한 소개 문구보다
+                운영 도구처럼 보이는 질감을 우선했습니다.
+              </p>
+              <ul>
+                <li>페이지별 책임 분리</li>
+                <li>데이터 카드와 표 중심 레이아웃</li>
+                <li>설정 입력은 별도 화면으로 격리</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="models" class="section-card">
+          <div class="section-head">
+            <p class="eyebrow">모델 운영</p>
+            <h2>4개 모델이 신호와 계획 가격을 생성합니다.</h2>
           </div>
           <div class="model-grid">
-            <article class="model-card">
-              <div class="model-head">
-                <span>A</span>
-                <strong>Range Reversion</strong>
-              </div>
-              <p>Mean reversion around stretched local ranges. Defensive leverage band and fast invalidation.</p>
-              <ul>
-                <li>Entry: support-side reversion zone</li>
-                <li>Stop: range breakdown</li>
-                <li>Targets: mid-band to opposite edge</li>
-              </ul>
+            <article>
+              <span>A</span>
+              <strong>반전형</strong>
+              <p>되돌림 구간과 평균 회귀를 중심으로 진입 가격을 계산합니다.</p>
             </article>
-            <article class="model-card">
-              <div class="model-head">
-                <span>B</span>
-                <strong>Support Reclaim</strong>
-              </div>
-              <p>Recovery trades that wait for price to reclaim structure before taking risk.</p>
-              <ul>
-                <li>Entry: reclaim confirmation band</li>
-                <li>Stop: failed reclaim</li>
-                <li>Targets: swing recovery ladder</li>
-              </ul>
+            <article>
+              <span>B</span>
+              <strong>유동성 회수형</strong>
+              <p>스윕 후 회복되는 패턴에서 entry / stop 구조를 만듭니다.</p>
             </article>
-            <article class="model-card">
-              <div class="model-head">
-                <span>C</span>
-                <strong>Compression Breakout</strong>
-              </div>
-              <p>Expansion trades built from squeezed volatility and retest behavior.</p>
-              <ul>
-                <li>Entry: breakout retest</li>
-                <li>Stop: box re-entry</li>
-                <li>Targets: expansion multiples</li>
-              </ul>
+            <article>
+              <span>C</span>
+              <strong>압축 돌파형</strong>
+              <p>변동성 수축 이후의 breakout retest를 기준으로 설정합니다.</p>
             </article>
-            <article class="model-card">
-              <div class="model-head">
-                <span>D</span>
-                <strong>Reset Bounce</strong>
-              </div>
-              <p>Washout and rebound setups that prioritize a clean reset before re-entry.</p>
-              <ul>
-                <li>Entry: bounce after local reset</li>
-                <li>Stop: reset low failure</li>
-                <li>Targets: rebound levels</li>
-              </ul>
+            <article>
+              <span>D</span>
+              <strong>실패 돌파형</strong>
+              <p>실패한 돌파 이후 반대 방향으로 복귀하는 구간을 활용합니다.</p>
             </article>
           </div>
         </section>
 
-        <section class="section-shell loop-shell" id="loop">
+        <section id="stack" class="section-card">
           <div class="section-head">
-            <p class="eyebrow">Operating loop</p>
-            <h2>Three cadences define the whole system</h2>
+            <p class="eyebrow">배포 구조</p>
+            <h2>프론트, 저장소, 배치를 분리해 운영합니다.</h2>
           </div>
-          <div class="loop-grid">
-            <article class="loop-card">
-              <label>Every 10 minutes</label>
-              <strong>Generate setups</strong>
-              <p>Refresh feature packs, emit planner outputs, and validate entry-readiness against the fixed symbol set.</p>
+          <div class="stack-grid">
+            <article>
+              <strong>Vercel</strong>
+              <p>운영자 콘솔과 Service control 화면을 제공합니다.</p>
             </article>
-            <article class="loop-card">
-              <label>Every 24 hours</label>
-              <strong>Persist model PnL</strong>
-              <p>Write json/csv reports, update summaries, and capture the daily operating state for later analysis.</p>
+            <article>
+              <strong>Supabase</strong>
+              <p>상태 저장, runtime profile, provider vault, 대시보드 원장을 담당합니다.</p>
             </article>
-            <article class="loop-card">
-              <label>Every 7 days</label>
-              <strong>Autotune parameters</strong>
-              <p>Adjust thresholds and tp/sl multipliers from closed-trade outcomes instead of narrative review.</p>
+            <article>
+              <strong>Python 배치</strong>
+              <p>10분 분석, 일별 리포트, 주간 autotune 작업을 처리합니다.</p>
             </article>
           </div>
         </section>
 
-        <section class="section-shell" id="deploy">
+        <section id="links" class="section-card">
           <div class="section-head">
-            <p class="eyebrow">Deployment topology</p>
-            <h2>Separate presentation, storage, and scheduling</h2>
-            <p class="section-copy">Vercel should not host the always-on Flask engine. The cleaner split is frontend on Vercel, storage on Supabase, and timed execution on GitHub Actions.</p>
+            <p class="eyebrow">문서</p>
+            <h2>바로 이동할 문서와 운영 링크</h2>
           </div>
-          <div class="deploy-grid">
-            <article class="deploy-card">
-              <span>Vercel</span>
-              <strong>Frontend dashboard</strong>
-              <p>Read-only presentation, auth-gated views, realtime subscriptions.</p>
-            </article>
-            <article class="deploy-card">
-              <span>Supabase</span>
-              <strong>Source of truth</strong>
-              <p>Setups, positions, daily pnl, autotune history, heartbeat, encrypted provider vault, and report commit state.</p>
-            </article>
-            <article class="deploy-card">
-              <span>GitHub Actions</span>
-              <strong>Timed execution</strong>
-              <p>10-minute analysis, daily report snapshots, weekly autotune jobs.</p>
-            </article>
-            <article class="deploy-card">
-              <span>Python runtime</span>
-              <strong>Execution engine</strong>
-              <p>Planner logic, exchange integration, report generation, and state maintenance.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="section-shell resources-shell">
-          <div class="section-head">
-            <p class="eyebrow">Repo surfaces</p>
-            <h2>Use the repo as an operating brief</h2>
-          </div>
-          <div class="resources-grid">
-            <a class="resource-card" href="./SUPABASE_CORE_SCHEMA_20260315.sql">
-              <span>SQL</span>
-              <strong>Supabase schema</strong>
-              <p>Tables for setups, positions, daily pnl, tune history, and heartbeat.</p>
+          <div class="link-grid">
+            <a class="link-card" href="./SUPABASE_CORE_SCHEMA_20260315.sql">
+              <strong>Supabase 코어 스키마</strong>
+              <p>provider vault와 운영 상태 저장에 필요한 SQL입니다.</p>
             </a>
-            <a class="resource-card" href="./VERCEL_SUPABASE_SETUP_20260315.md">
-              <span>Setup</span>
-              <strong>Service console operator guide</strong>
-              <p>Provider key purpose, env mapping, execution target flow, and redeploy sequence.</p>
+            <a class="link-card" href="./VERCEL_SUPABASE_SETUP_20260315.md">
+              <strong>운영 가이드</strong>
+              <p>Vercel, Supabase, GitHub Actions 설정 순서를 단계별로 설명합니다.</p>
             </a>
-            <a class="resource-card" href="./strategy_refactor_20260308.md">
-              <span>Notes</span>
-              <strong>Strategy refactor log</strong>
-              <p>Background context for why the system is being simplified and hardened.</p>
+            <a class="link-card" href="https://github.com/sheryloe/AI_Auto">
+              <strong>GitHub 저장소</strong>
+              <p>전체 코드와 문서, 변경 이력을 확인할 수 있습니다.</p>
             </a>
-          </div>
-        </section>
-
-        <section class="section-shell faq-shell" id="faq">
-          <div class="section-head">
-            <p class="eyebrow">FAQ</p>
-            <h2>Operational questions first</h2>
-          </div>
-          <div class="faq-list">
-            <details open>
-              <summary>Is Vercel supposed to run the Flask engine?</summary>
-              <p>No. The current direction is to split the frontend from the Python runtime. Vercel should host the frontend, not the always-on engine loop.</p>
-            </details>
-            <details>
-              <summary>Do provider keys still belong in GitHub Secrets?</summary>
-              <p>No for service mode. Bybit, Binance, and CoinGecko keys are intended to be saved in the Vercel service console and encrypted into Supabase.</p>
-            </details>
-            <details>
-              <summary>Does saving Bybit keys mean live orders are running?</summary>
-              <p>No. Saving Bybit keys only marks the execution provider as configured. Live intent is a separate target plus arm flow, and the current crypto path is still prepared for future live routing rather than active live order placement.</p>
-            </details>
           </div>
         </section>
       </main>
 
       <footer class="footer">
-        <span>Updated 2026-03-15</span>
-        <span>AI_Auto / Planner-based crypto execution lab</span>
+        <span>AI_Auto / 운영형 트레이딩 콘솔</span>
+        <span>Dark operator surface for automation</span>
       </footer>
     </div>
   </body>

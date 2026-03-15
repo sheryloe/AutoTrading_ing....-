@@ -1,289 +1,124 @@
-import { getSupabaseAdmin } from "../lib/supabase-admin";
-import ControlConsole from "./components/control-console";
-import { loadServiceControlData } from "../lib/service-control";
+import EmptyState from "./components/empty-state";
+import MetricCard from "./components/metric-card";
+import PageHeader from "./components/page-header";
+import SectionCard from "./components/section-card";
+import StatusBadge from "./components/status-badge";
+import { loadOverviewPageData } from "../lib/dashboard-data";
+import { formatMoney, formatTs } from "../lib/formatters";
 
 export const dynamic = "force-dynamic";
 
-function fmtMoney(value) {
-  const num = Number(value || 0);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
-function fmtPct(value) {
-  return `${(Number(value || 0) * 100).toFixed(2)}%`;
-}
-
-function fmtTs(value) {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return String(value);
-  return new Intl.DateTimeFormat("ko-KR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(dt);
-}
-
-async function loadDashboardData() {
-  const supabase = getSupabaseAdmin();
-  if (!supabase) {
-    return {
-      ready: false,
-      errors: ["Missing SUPABASE_URL and server-side secret key env vars."],
-      heartbeat: null,
-      daily: [],
-      setups: [],
-      positions: [],
-      tunes: [],
-    };
-  }
-
-  const [heartbeatRes, dailyRes, setupsRes, positionsRes, tunesRes] = await Promise.all([
-    supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
-    supabase.from("daily_model_pnl").select("*").order("day", { ascending: false }).limit(8),
-    supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(10),
-    supabase.from("positions").select("*").eq("status", "open").order("opened_at", { ascending: false }).limit(8),
-    supabase.from("model_runtime_tunes").select("*").order("model_id", { ascending: true }),
-  ]);
-
-  const errors = [heartbeatRes, dailyRes, setupsRes, positionsRes, tunesRes]
-    .map((res) => res.error?.message)
-    .filter(Boolean);
-
-  return {
-    ready: errors.length === 0,
-    errors,
-    heartbeat: heartbeatRes.data?.[0] || null,
-    daily: dailyRes.data || [],
-    setups: setupsRes.data || [],
-    positions: positionsRes.data || [],
-    tunes: tunesRes.data || [],
-  };
-}
-
-function StatCard({ label, value, meta, tone = "default" }) {
-  return (
-    <article className={`stat-card ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{meta}</p>
-    </article>
-  );
-}
-
 export default async function HomePage() {
-  const [data, control] = await Promise.all([loadDashboardData(), loadServiceControlData()]);
-  const latestDay = data.daily[0]?.day || "-";
-  const totalRealized = data.daily.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
-  const totalClosedTrades = data.daily.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0);
+  const data = await loadOverviewPageData();
+  const snapshot = data.snapshot;
 
   return (
-    <main className="dashboard-shell">
-      <div className="grid-backdrop" />
-      <header className="hero-bar">
-        <div>
-          <p className="eyebrow">AI_AUTO / VERCEL FRONTEND / SUPABASE READ MODEL</p>
-          <h1>Execution dashboard for planner-based crypto ops</h1>
-          <p className="hero-copy">
-            Top-5 majors, 10-minute setups, daily model PnL, weekly autotune status,
-            and a service console for Bybit, Binance, and CoinGecko provider vaulting.
-            This frontend is meant for Vercel. The Python engine stays outside Vercel.
-          </p>
-        </div>
-        <div className="hero-actions">
-          <a href="#service-control">Service Control</a>
-          <a href="#setup-stream">Latest Setups</a>
-          <a href="#autotune-state">Autotune State</a>
-        </div>
-      </header>
-
-      {!data.ready ? (
-        <section className="warning-panel">
-          <h2>Supabase connection not ready</h2>
-          <p>Set these server-side env vars in Vercel or local `.env.local`:</p>
-          <code>SUPABASE_URL</code>
-          <code>SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY</code>
-          {data.errors.map((msg) => (
-            <p key={msg} className="error-line">{msg}</p>
-          ))}
-        </section>
-      ) : null}
-
-      {control.errors?.length ? (
-        <section className="warning-panel">
-          <h2>Service control partially unavailable</h2>
-          {control.errors.map((msg) => (
-            <p key={msg} className="error-line">{msg}</p>
-          ))}
-        </section>
-      ) : null}
-
-      <ControlConsole
-        initialConfig={control.runtimeConfig}
-        runtimeUpdatedAt={control.runtimeUpdatedAt}
-        providerStatuses={control.providerStatuses}
-        writeReady={control.writeReady}
+    <>
+      <PageHeader
+        eyebrow="운영 개요"
+        title="한눈에 보는 오늘의 운영 상태"
+        description="메인 화면에서는 핵심 지표와 최근 사이클만 확인합니다. 상세한 성과, 포지션, 설정 입력은 각 전용 화면으로 분리했습니다."
+        actions={[
+          { href: "/models", label: "모델 성과 보기", tone: "primary" },
+          { href: "/positions", label: "포지션 보기", tone: "ghost" },
+        ]}
       />
 
-      <section className="stats-grid">
-        <StatCard
-          label="Heartbeat"
-          value={data.heartbeat ? fmtTs(data.heartbeat.last_seen_at) : "No data"}
-          meta={data.heartbeat?.engine_name || "engine offline"}
+      {!data.ready ? (
+        <section className="warning-card">
+          <strong>Supabase 연결 상태를 먼저 확인해 주세요.</strong>
+          {data.errors.map((msg) => (
+            <p key={msg}>{msg}</p>
+          ))}
+        </section>
+      ) : null}
+
+      <section className="kpi-row">
+        <MetricCard
+          label="엔진 하트비트"
+          value={snapshot?.heartbeat ? formatTs(snapshot.heartbeat.last_seen_at) : "데이터 없음"}
+          meta={snapshot?.heartbeat?.engine_name || "엔진 오프라인"}
           tone="cyan"
         />
-        <StatCard
-          label="Latest PnL Day"
-          value={String(latestDay)}
-          meta={`${data.daily.length} row snapshots loaded`}
+        <MetricCard
+          label="최근 실현 PnL"
+          value={formatMoney(snapshot?.totalRealizedUsd || 0)}
+          meta={`최신 ${data.dailyRows.length}개 일자 기준`}
           tone="green"
         />
-        <StatCard
-          label="Realized PnL"
-          value={fmtMoney(totalRealized)}
-          meta={`Across ${data.daily.length} daily rows`}
+        <MetricCard
+          label="집계된 거래 수"
+          value={String(snapshot?.totalClosedTrades || 0)}
+          meta={`기준 일자 ${snapshot?.latestPnlDay || "-"}`}
           tone="amber"
         />
-        <StatCard
-          label="Closed Trades"
-          value={String(totalClosedTrades)}
-          meta="Model-level daily aggregate"
+        <MetricCard
+          label="오픈 포지션"
+          value={String(snapshot?.openPositionCount || 0)}
+          meta={`최근 신호 ${snapshot?.latestSignalCount || 0}건`}
         />
       </section>
 
-      <section className="panel-grid two-up">
-        <section className="panel wide" id="setup-stream">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Latest setups</p>
-              <h2>Planner output stream</h2>
-            </div>
-            <span>{data.setups.length} rows</span>
+      <section className="content-grid content-grid-two">
+        <SectionCard
+          eyebrow="사이클 상태"
+          title="최근 사이클 요약"
+          meta={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
+        >
+          <div className="status-row">
+            <StatusBadge tone={snapshot?.heartbeat ? "success" : "muted"}>
+              {snapshot?.heartbeat ? "엔진 연결됨" : "엔진 미확인"}
+            </StatusBadge>
+            <StatusBadge tone={snapshot?.latestSignalCount ? "info" : "muted"}>
+              최근 신호 {snapshot?.latestSignalCount || 0}건
+            </StatusBadge>
+            <StatusBadge tone={snapshot?.openPositionCount ? "warning" : "success"}>
+              오픈 포지션 {snapshot?.openPositionCount || 0}
+            </StatusBadge>
           </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Cycle</th>
-                  <th>Symbol</th>
-                  <th>Model</th>
-                  <th>Entry</th>
-                  <th>SL</th>
-                  <th>TP1</th>
-                  <th>RR</th>
-                  <th>Ready</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.setups.length ? data.setups.map((row) => (
-                  <tr key={row.id}>
-                    <td>{fmtTs(row.cycle_at)}</td>
-                    <td>{row.symbol}</td>
-                    <td>{row.model_id}</td>
-                    <td>{fmtMoney(row.entry_price)}</td>
-                    <td>{fmtMoney(row.stop_loss_price)}</td>
-                    <td>{fmtMoney(row.target_price_1)}</td>
-                    <td>{Number(row.risk_reward || 0).toFixed(2)}</td>
-                    <td>{row.entry_ready ? "YES" : "NO"}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan="8">No setup rows yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
-        <section className="panel" id="autotune-state">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Open positions</p>
-              <h2>Live exposure</h2>
+          {data.recentSetups.length ? (
+            <div className="mini-list">
+              {data.recentSetups.slice(0, 5).map((row) => (
+                <article key={row.id} className="mini-card">
+                  <div>
+                    <strong>{row.symbol}</strong>
+                    <p>
+                      {row.model_id} / {formatTs(row.cycle_at)}
+                    </p>
+                  </div>
+                  <div className="mini-metrics">
+                    <span>{formatMoney(row.entry_price)}</span>
+                    <span>{row.entry_ready ? "진입 준비" : "대기"}</span>
+                  </div>
+                </article>
+              ))}
             </div>
-            <span>{data.positions.length} open</span>
+          ) : (
+            <EmptyState
+              title="최근 신호가 없습니다"
+              description="아직 Supabase에 setup 데이터가 들어오지 않았습니다."
+            />
+          )}
+        </SectionCard>
+
+        <SectionCard eyebrow="빠른 이동" title="역할별 화면 바로가기" meta="한 화면 한 역할">
+          <div className="quick-link-grid">
+            <a href="/models" className="quick-link-card">
+              <strong>모델 성과</strong>
+              <p>모델별 PnL, 승률, autotune 상태를 따로 확인합니다.</p>
+            </a>
+            <a href="/positions" className="quick-link-card">
+              <strong>포지션</strong>
+              <p>오픈 포지션과 최신 setup, entry / SL / TP를 점검합니다.</p>
+            </a>
+            <a href="/settings" className="quick-link-card">
+              <strong>설정</strong>
+              <p>Provider vault, execution target, runtime profile은 여기서만 다룹니다.</p>
+            </a>
           </div>
-          <div className="mini-list">
-            {data.positions.length ? data.positions.map((row) => (
-              <article key={row.id} className="mini-card">
-                <div>
-                  <strong>{row.symbol}</strong>
-                  <p>{row.model_id} / {row.side} / {row.status}</p>
-                </div>
-                <div className="mini-metrics">
-                  <span>{fmtMoney(row.actual_entry_price || row.planned_entry_price)}</span>
-                  <span>{fmtMoney(row.realized_pnl_usd)}</span>
-                </div>
-              </article>
-            )) : <p className="empty-line">No open positions.</p>}
-          </div>
-        </section>
+        </SectionCard>
       </section>
-
-      <section className="panel-grid two-up">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Daily model PnL</p>
-              <h2>Snapshot table</h2>
-            </div>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Model</th>
-                  <th>Equity</th>
-                  <th>Realized</th>
-                  <th>Win Rate</th>
-                  <th>Closed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.daily.length ? data.daily.map((row) => (
-                  <tr key={`${row.day}-${row.model_id}`}>
-                    <td>{String(row.day)}</td>
-                    <td>{row.model_id}</td>
-                    <td>{fmtMoney(row.equity_usd)}</td>
-                    <td>{fmtMoney(row.realized_pnl_usd)}</td>
-                    <td>{fmtPct(row.win_rate)}</td>
-                    <td>{row.closed_trades}</td>
-                  </tr>
-                )) : <tr><td colSpan="6">No daily PnL rows yet.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Autotune state</p>
-              <h2>Current runtime parameters</h2>
-            </div>
-          </div>
-          <div className="mini-list tune-list">
-            {data.tunes.length ? data.tunes.map((row) => (
-              <article key={row.model_id} className="mini-card tune-card">
-                <div>
-                  <strong>Model {row.model_id}</strong>
-                  <p>{row.active_variant_id || "base variant"}</p>
-                </div>
-                <div className="tune-metric-grid">
-                  <span>thr {Number(row.threshold || 0).toFixed(4)}</span>
-                  <span>tp {Number(row.tp_mul || 0).toFixed(2)}</span>
-                  <span>sl {Number(row.sl_mul || 0).toFixed(2)}</span>
-                  <span>note {row.last_eval_note_code || "-"}</span>
-                </div>
-              </article>
-            )) : <p className="empty-line">No autotune rows yet.</p>}
-          </div>
-        </section>
-      </section>
-    </main>
+    </>
   );
 }
-

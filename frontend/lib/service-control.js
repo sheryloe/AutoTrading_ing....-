@@ -87,7 +87,7 @@ function normalizeProviderStatus(provider, row) {
     configured: Boolean(row),
     updated_at: row?.updated_at || null,
     meta_json: meta,
-    api_key_hint: String(meta.api_key_hint || "not configured"),
+    api_key_hint: String(meta.api_key_hint || "설정 안 됨"),
   };
 }
 
@@ -98,11 +98,12 @@ function computeLiveStatus(runtimeConfig, providerStatuses) {
   const armed = Boolean(runtimeConfig.LIVE_EXECUTION_ARMED && bybitConfigured);
   const futureLiveEligible = Boolean(
     executionTarget === "bybit-live" &&
-    runtimeConfig.TRADE_MODE === "live" &&
-    liveFlagsReady &&
-    armed &&
-    bybitConfigured
+      runtimeConfig.TRADE_MODE === "live" &&
+      liveFlagsReady &&
+      armed &&
+      bybitConfigured
   );
+
   return {
     executionTarget,
     bybitConfigured,
@@ -123,7 +124,7 @@ export function normalizeRuntimeConfig(raw = {}) {
   const autotuneHours = toInt(
     raw.MODEL_AUTOTUNE_INTERVAL_HOURS,
     DEFAULT_RUNTIME_CONFIG.MODEL_AUTOTUNE_INTERVAL_HOURS,
-    6,
+    6
   );
   const sourceOrder = normalizeSourceOrder(raw.CRYPTO_DATA_SOURCE_ORDER || raw.MARKET_DATA_SOURCE_ORDER);
   const flags = {
@@ -147,7 +148,7 @@ export function normalizeRuntimeConfig(raw = {}) {
     SIGNAL_COOLDOWN_MINUTES: toInt(
       raw.SIGNAL_COOLDOWN_MINUTES,
       DEFAULT_RUNTIME_CONFIG.SIGNAL_COOLDOWN_MINUTES,
-      1,
+      1
     ),
     MODEL_AUTOTUNE_INTERVAL_HOURS: [6, 12, 24, 168].includes(autotuneHours) ? autotuneHours : 168,
     BYBIT_SYMBOLS: (symbols.length ? symbols : DEFAULT_SYMBOLS.split(",")).join(","),
@@ -164,13 +165,13 @@ export async function loadServiceControlData() {
   const supabase = getSupabaseAdmin();
   const writeReady = Boolean(
     process.env.SERVICE_ADMIN_TOKEN &&
-    process.env.SERVICE_MASTER_KEY &&
-    (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
+      process.env.SERVICE_MASTER_KEY &&
+      (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)
   );
 
   if (!supabase) {
     const providerStatuses = Object.fromEntries(
-      SERVICE_PROVIDER_ORDER.map((provider) => [provider, normalizeProviderStatus(provider, null)]),
+      SERVICE_PROVIDER_ORDER.map((provider) => [provider, normalizeProviderStatus(provider, null)])
     );
     return {
       writeReady: false,
@@ -178,6 +179,7 @@ export async function loadServiceControlData() {
       runtimeUpdatedAt: null,
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
+      errors: ["Supabase 서버 연결이 준비되지 않았습니다."],
     };
   }
 
@@ -187,10 +189,7 @@ export async function loadServiceControlData() {
       .select("payload_json,updated_at")
       .eq("blob_key", SERVICE_RUNTIME_BLOB_KEY)
       .maybeSingle(),
-    supabase
-      .from("service_secrets")
-      .select("provider,updated_at,meta_json")
-      .order("provider", { ascending: true }),
+    supabase.from("service_secrets").select("provider,updated_at,meta_json").order("provider", { ascending: true }),
   ]);
 
   const runtimePayload = runtimeRes.data?.payload_json;
@@ -199,9 +198,11 @@ export async function loadServiceControlData() {
     SERVICE_PROVIDER_ORDER.map((provider) => {
       const row = rows.find((item) => item.provider === provider) || null;
       return [provider, normalizeProviderStatus(provider, row)];
-    }),
+    })
   );
-  const runtimeConfig = normalizeRuntimeConfig(runtimePayload && typeof runtimePayload === "object" ? runtimePayload : {});
+  const runtimeConfig = normalizeRuntimeConfig(
+    runtimePayload && typeof runtimePayload === "object" ? runtimePayload : {}
+  );
 
   return {
     writeReady,
@@ -218,6 +219,7 @@ export async function upsertRuntimeConfig(config) {
   if (!supabase) {
     throw new Error("supabase_admin_not_ready");
   }
+
   const payload = normalizeRuntimeConfig(config);
   const { error } = await supabase.from("engine_state_blobs").upsert(
     [
@@ -226,29 +228,34 @@ export async function upsertRuntimeConfig(config) {
         payload_json: payload,
       },
     ],
-    { onConflict: "blob_key" },
+    { onConflict: "blob_key" }
   );
+
   if (error) {
     throw new Error(error.message || "runtime_config_upsert_failed");
   }
+
   return payload;
 }
 
 export async function upsertProviderSecret(provider, payload, meta = {}) {
   const supabase = getSupabaseAdmin();
   const masterKey = String(process.env.SERVICE_MASTER_KEY || "").trim();
+
   if (!supabase) {
     throw new Error("supabase_admin_not_ready");
   }
   if (!masterKey) {
     throw new Error("service_master_key_missing");
   }
+
   const { error } = await supabase.rpc("upsert_service_secret", {
     p_provider: provider,
     p_payload: payload,
     p_passphrase: masterKey,
     p_meta: meta,
   });
+
   if (error) {
     throw new Error(error.message || "service_secret_upsert_failed");
   }
@@ -259,9 +266,11 @@ export async function deleteProviderSecret(provider) {
   if (!supabase) {
     throw new Error("supabase_admin_not_ready");
   }
+
   const { error } = await supabase.rpc("delete_service_secret", {
     p_provider: provider,
   });
+
   if (error) {
     throw new Error(error.message || "service_secret_delete_failed");
   }
