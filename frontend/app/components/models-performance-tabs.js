@@ -17,6 +17,83 @@ function pickDefaultModel(modelSummaries, dailyRows, tunes) {
   return MODEL_ORDER.find((id) => ids.has(id)) || "A";
 }
 
+function buildTrendPoints(rows, valueKey, cumulative = false) {
+  const ordered = [...rows].sort((a, b) => String(a.day).localeCompare(String(b.day)));
+  let running = 0;
+  return ordered.map((row) => {
+    const nextValue = Number(row[valueKey] || 0);
+    running = cumulative ? running + nextValue : nextValue;
+    return {
+      label: String(row.day || ""),
+      value: running,
+    };
+  });
+}
+
+function buildPolyline(points) {
+  if (!points.length) return "";
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  return points
+    .map((point, index) => {
+      const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+      const y = 44 - ((point.value - min) / span) * 36;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
+
+function TrendChart({ title, caption, points, money = false }) {
+  if (!points.length) {
+    return (
+      <article className="chart-card">
+        <div className="chart-head">
+          <strong>{title}</strong>
+          <span>{caption}</span>
+        </div>
+        <div className="chart-empty">표시할 데이터가 아직 없습니다.</div>
+      </article>
+    );
+  }
+
+  const values = points.map((point) => point.value);
+  const first = points[0];
+  const last = points[points.length - 1];
+  const delta = last.value - first.value;
+  const deltaClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "flat";
+  const formatter = money ? formatMoney : (value) => formatNumber(value, 2);
+
+  return (
+    <article className="chart-card">
+      <div className="chart-head">
+        <strong>{title}</strong>
+        <span>{caption}</span>
+      </div>
+      <svg className="trend-chart" viewBox="0 0 100 48" preserveAspectRatio="none" aria-hidden="true">
+        <polyline className="trend-grid" points="0,44 100,44" />
+        <polyline className="trend-grid" points="0,26 100,26" />
+        <polyline className={`trend-line ${deltaClass}`} points={buildPolyline(points)} />
+      </svg>
+      <div className="trend-stats">
+        <div>
+          <span>시작</span>
+          <strong>{formatter(first.value)}</strong>
+        </div>
+        <div>
+          <span>최근</span>
+          <strong>{formatter(last.value)}</strong>
+        </div>
+        <div>
+          <span>변화</span>
+          <strong className={`trend-delta ${deltaClass}`}>{formatter(delta)}</strong>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes }) {
   const [activeModel, setActiveModel] = useState(() => pickDefaultModel(modelSummaries, dailyRows, tunes));
 
@@ -32,11 +109,13 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
     () => tunes.find((item) => String(item.model_id || "").toUpperCase() === activeModel) || null,
     [activeModel, tunes]
   );
+  const realizedTrend = useMemo(() => buildTrendPoints(activeRows, "realized_pnl_usd", true), [activeRows]);
+  const equityTrend = useMemo(() => buildTrendPoints(activeRows, "equity_usd", false), [activeRows]);
   const meta = getModelMeta(activeModel);
 
   return (
     <section className="tab-shell">
-      <div className="tab-strip" role="tablist" aria-label="모델 선택">
+      <div className="tab-strip" role="tablist" aria-label="모델 성과 선택">
         {MODEL_ORDER.map((modelId) => {
           const item = getModelMeta(modelId);
           const active = activeModel === modelId;
@@ -62,7 +141,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
             <div className="status-row compact">
               <StatusBadge tone="info">최근 일자 {activeSummary?.latestDay || "-"}</StatusBadge>
               <StatusBadge tone="success">승률 {formatPct(activeSummary?.latestWinRate || 0)}</StatusBadge>
-              <StatusBadge tone="warning">거래 {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
+              <StatusBadge tone="warning">종료 거래 {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
             </div>
           </div>
 
@@ -82,6 +161,11 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
           </div>
         </div>
       </SectionCard>
+
+      <section className="chart-grid">
+        <TrendChart title="누적 실현 PnL" caption="일별 실현 손익 누적 추이" points={realizedTrend} money />
+        <TrendChart title="자산 추이" caption="일별 equity 변화" points={equityTrend} money />
+      </section>
 
       <section className="content-grid content-grid-two">
         <TablePanel eyebrow="일별 성과" title={`${meta.name} PnL 테이블`} meta={`${activeRows.length}건`}>
@@ -115,7 +199,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
           </table>
         </TablePanel>
 
-        <SectionCard eyebrow="운영 메모" title={`${meta.name} 상태`} meta={activeTune?.last_eval_note_code || "-"}>
+        <SectionCard eyebrow="운영 메모" title={`${meta.name} 현재 상태`} meta={activeTune?.last_eval_note_code || "-"}>
           {activeTune ? (
             <div className="mini-list">
               <article className="mini-card">

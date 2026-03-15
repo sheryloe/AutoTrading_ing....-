@@ -5,7 +5,7 @@ import EmptyState from "./empty-state";
 import SectionCard from "./section-card";
 import StatusBadge from "./status-badge";
 import TablePanel from "./table-panel";
-import { formatMoney, formatPct, formatTs } from "../../lib/formatters";
+import { formatMoney, formatNumber, formatPct, formatTs } from "../../lib/formatters";
 import { getModelMeta, MODEL_ORDER } from "../../lib/model-meta";
 
 function pickDefaultModel(openPositions, setupRows, recentTradeRows) {
@@ -26,9 +26,32 @@ function tradeTone(row) {
   return mode === "intrabar" ? "success" : "muted";
 }
 
-function positionFillLabel(row) {
-  const fillMode = String(row?.position_meta?.fill_mode || "").toLowerCase();
-  return fillMode === "intrabar" ? "intrabar 체결" : "배치 체결";
+function leverageLabel(value) {
+  const leverage = Number(value || 0);
+  return leverage > 0 ? `${formatNumber(leverage, 2)}x` : "-";
+}
+
+function pnlToneClass(value) {
+  const pnl = Number(value || 0);
+  if (pnl > 0) return "positive";
+  if (pnl < 0) return "negative";
+  return "flat";
+}
+
+function tradeKindLabel(row) {
+  return String(row.side || "").toLowerCase() === "buy" ? "진입" : "종료";
+}
+
+function realizedPnlLabel(row) {
+  return String(row.side || "").toLowerCase() === "sell" && row.pnl_usd !== null && row.pnl_usd !== undefined
+    ? formatMoney(row.pnl_usd)
+    : "-";
+}
+
+function realizedPctLabel(row) {
+  return String(row.side || "").toLowerCase() === "sell" && row.pnl_pct !== null && row.pnl_pct !== undefined
+    ? formatPct(row.pnl_pct, 2)
+    : "-";
 }
 
 export default function PositionsTabs({ openPositions, setupRows, recentTradeRows }) {
@@ -92,7 +115,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
             </article>
             <article className="focus-metric-card">
               <span>최신 사이클</span>
-              <strong>{latestCycleAt ? formatTs(latestCycleAt) : "사이클 대기"}</strong>
+              <strong>{latestCycleAt ? formatTs(latestCycleAt) : "대기 중"}</strong>
             </article>
           </div>
         </div>
@@ -103,19 +126,19 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
           {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
-                <article key={row.id} className="mini-card">
+                <article key={row.id} className="mini-card position-card">
                   <div>
                     <strong>{row.symbol}</strong>
                     <p>
                       {row.side} / {row.status}
                     </p>
-                    <div className="status-row compact">
-                      <StatusBadge tone="info">{positionFillLabel(row)}</StatusBadge>
-                    </div>
                   </div>
-                  <div className="mini-metrics">
-                    <span>진입 {formatMoney(row.actual_entry_price || row.planned_entry_price)}</span>
-                    <span>미실현 {formatMoney(row.unrealized_pnl_usd)}</span>
+                  <div className="mini-metrics position-metrics">
+                    <span className="position-secondary">레버리지 {leverageLabel(row.leverage)}</span>
+                    <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
+                      {formatMoney(row.unrealized_pnl_usd)}
+                    </strong>
+                    <span className="position-secondary">현재 PnL</span>
                   </div>
                 </article>
               ))}
@@ -125,7 +148,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
           )}
         </SectionCard>
 
-        <SectionCard eyebrow="최근 체결" title={`${meta.name} 체결 로그`} meta={`${activeTrades.length}건`}>
+        <SectionCard eyebrow="최근 체결" title={`${meta.name} 최근 체결 이벤트`} meta={`${activeTrades.length}건`}>
           {activeTrades.length ? (
             <div className="mini-list">
               {activeTrades.slice(0, 6).map((row, idx) => (
@@ -138,14 +161,15 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                     </div>
                   </div>
                   <div className="mini-metrics">
-                    <span>{formatMoney(row.price_usd)}</span>
-                    <span>{String(row.side || "").toLowerCase() === "sell" ? formatMoney(row.pnl_usd) : "-"}</span>
+                    <span>레버리지 {leverageLabel(row.leverage)}</span>
+                    <span>{realizedPnlLabel(row)}</span>
+                    <span className="position-secondary">실현 PnL</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="최근 체결 로그가 없습니다" description="선택한 모델에 아직 체결 이벤트가 기록되지 않았습니다." />
+            <EmptyState title="최근 체결 로그가 없습니다" description="선택한 모델에 아직 기록된 체결 이벤트가 없습니다." />
           )}
         </SectionCard>
       </section>
@@ -186,6 +210,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
       </TablePanel>
 
       <TablePanel eyebrow="체결 상세" title={`${meta.name} 최근 체결 이벤트`} meta={`${activeTrades.length}건`}>
+        <p className="panel-note">실현 PnL과 실현 수익률은 종료 이벤트에만 기록됩니다.</p>
         <table>
           <thead>
             <tr>
@@ -193,9 +218,10 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               <th>심볼</th>
               <th>구분</th>
               <th>방식</th>
+              <th>레버리지</th>
               <th>가격</th>
-              <th>PnL</th>
-              <th>수익률</th>
+              <th>실현 PnL</th>
+              <th>실현 수익률</th>
             </tr>
           </thead>
           <tbody>
@@ -204,16 +230,17 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                 <tr key={`${row.ts}-${row.symbol}-${idx}`}>
                   <td>{formatTs(row.ts)}</td>
                   <td>{row.symbol}</td>
-                  <td>{String(row.side || "").toLowerCase() === "buy" ? "체결" : "종료"}</td>
+                  <td>{tradeKindLabel(row)}</td>
                   <td>{row.event_label}</td>
+                  <td>{leverageLabel(row.leverage)}</td>
                   <td>{formatMoney(row.price_usd)}</td>
-                  <td>{String(row.side || "").toLowerCase() === "sell" ? formatMoney(row.pnl_usd) : "-"}</td>
-                  <td>{String(row.side || "").toLowerCase() === "sell" ? formatPct(row.pnl_pct || 0) : "-"}</td>
+                  <td>{realizedPnlLabel(row)}</td>
+                  <td>{realizedPctLabel(row)}</td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="7">데이터가 없습니다.</td>
+                <td colSpan="8">데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>

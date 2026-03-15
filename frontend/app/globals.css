@@ -584,6 +584,41 @@ textarea {
   justify-items: end;
 }
 
+.position-card {
+  align-items: center;
+}
+
+.position-metrics {
+  min-width: 180px;
+}
+
+.position-secondary {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.position-pnl {
+  font-family: var(--font-display), "Space Grotesk", sans-serif;
+  font-size: 1.34rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.position-pnl.positive,
+.trend-delta.positive {
+  color: var(--green);
+}
+
+.position-pnl.negative,
+.trend-delta.negative {
+  color: var(--danger);
+}
+
+.position-pnl.flat,
+.trend-delta.flat {
+  color: var(--text);
+}
+
 .summary-line {
   display: flex;
   justify-content: space-between;
@@ -779,6 +814,97 @@ textarea {
   gap: 22px;
 }
 
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.chart-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(8, 17, 27, 0.82);
+}
+
+.chart-head,
+.trend-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.chart-head {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.chart-head strong {
+  font-family: var(--font-display), "Space Grotesk", sans-serif;
+  font-size: 1rem;
+}
+
+.chart-head span,
+.trend-stats span,
+.chart-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.trend-chart {
+  width: 100%;
+  height: 168px;
+  margin-bottom: 12px;
+}
+
+.trend-grid {
+  fill: none;
+  stroke: rgba(124, 162, 191, 0.18);
+  stroke-width: 0.8;
+}
+
+.trend-line {
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-line.positive {
+  stroke: var(--green);
+}
+
+.trend-line.negative {
+  stroke: var(--danger);
+}
+
+.trend-line.flat {
+  stroke: var(--cyan);
+}
+
+.trend-stats {
+  align-items: start;
+}
+
+.trend-stats div {
+  display: grid;
+  gap: 6px;
+}
+
+.trend-stats strong {
+  font-family: var(--font-display), "Space Grotesk", sans-serif;
+  font-size: 0.98rem;
+}
+
+.chart-empty {
+  min-height: 168px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  background: rgba(5, 11, 18, 0.72);
+}
+
 .tab-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -913,6 +1039,7 @@ textarea {
 @media (max-width: 1080px) {
   .kpi-row,
   .content-grid-two,
+  .chart-grid,
   .model-summary-grid,
   .tab-strip,
   .model-focus-grid,

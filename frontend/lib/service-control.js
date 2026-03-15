@@ -24,7 +24,7 @@ const DEFAULT_RUNTIME_CONFIG = {
   BYBIT_SYMBOLS: DEFAULT_SYMBOLS,
   BYBIT_MAX_POSITIONS: 3,
   BYBIT_ORDER_PCT: 0.2,
-  BYBIT_ORDER_PCT_MIN: 0.1,
+  BYBIT_ORDER_PCT_MIN: 0.15,
   BYBIT_ORDER_PCT_MAX: 0.3,
   INTRABAR_CONFLICT_POLICY: "conservative",
   CRYPTO_DATA_SOURCE_ORDER: DEFAULT_SOURCE_ORDER,
@@ -180,7 +180,7 @@ export function normalizeRuntimeConfig(raw = {}) {
   };
   const demoSeedUsdt = toFloat(raw.DEMO_SEED_USDT, DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT, 50, 1_000_000);
   const maxPositions = toInt(raw.BYBIT_MAX_POSITIONS, DEFAULT_RUNTIME_CONFIG.BYBIT_MAX_POSITIONS, 1, 10);
-  const orderPctMin = toFloat(raw.BYBIT_ORDER_PCT_MIN, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MIN, 0.1, 0.3);
+  const orderPctMin = toFloat(raw.BYBIT_ORDER_PCT_MIN, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MIN, 0.15, 0.3);
   const orderPctMax = toFloat(raw.BYBIT_ORDER_PCT_MAX, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MAX, orderPctMin, 0.3);
   const orderPctMid = Number((((orderPctMin + orderPctMax) * 0.5).toFixed(4)));
 

@@ -344,9 +344,9 @@ class Settings:
             bybit_api_secret=_to_str(data.get("BYBIT_API_SECRET"), ""),
             bybit_base_url=_to_str(data.get("BYBIT_BASE_URL"), "https://api.bybit.com"),
             bybit_recv_window=max(1000, _to_int(data.get("BYBIT_RECV_WINDOW"), 5000)),
-            bybit_order_pct=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT"), 0.20))),
-            bybit_order_pct_min=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.10))),
-            bybit_order_pct_max=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.30))),
+            bybit_order_pct=min(0.30, max(0.15, _to_float(data.get("BYBIT_ORDER_PCT"), 0.20))),
+            bybit_order_pct_min=min(0.30, max(0.15, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.15))),
+            bybit_order_pct_max=min(0.30, max(0.15, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.30))),
             intrabar_conflict_policy=(
                 _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower()
                 if _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower() in {"conservative", "neutral", "aggressive"}

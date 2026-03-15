@@ -2084,8 +2084,9 @@ class TradingEngine:
                         "symbol": str((tr or {}).get("symbol") or ""),
                         "price_usd": float((tr or {}).get("price_usd") or 0.0),
                         "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
-                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0),
-                        "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0),
+                        "leverage": float((tr or {}).get("leverage") or 0.0),
+                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0) if side == "sell" else None,
+                        "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0) if side == "sell" else None,
                         "reason": str((tr or {}).get("reason") or ""),
                         "fill_mode": fill_mode if side == "buy" else "",
                         "close_mode": close_mode if side == "sell" else "",
@@ -7789,7 +7790,7 @@ class TradingEngine:
     def _demo_order_pct_for_entry(self, market: str, score: float, threshold: float) -> float:
         if str(market).lower() == "crypto":
             min_pct = _clamp(float(getattr(self.settings, "bybit_order_pct_min", 0.15) or 0.15), 0.01, 0.95)
-            max_pct = _clamp(float(getattr(self.settings, "bybit_order_pct_max", 0.40) or 0.40), min_pct, 0.95)
+            max_pct = _clamp(float(getattr(self.settings, "bybit_order_pct_max", 0.30) or 0.30), min_pct, 0.95)
             gap = float(score) - float(threshold)
             confidence = _clamp(gap / 0.22, 0.0, 1.0)
             return float(min_pct + ((max_pct - min_pct) * confidence))
