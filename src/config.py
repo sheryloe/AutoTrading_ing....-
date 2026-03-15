@@ -149,6 +149,8 @@ class Settings:
     bybit_base_url: str
     bybit_recv_window: int
     bybit_order_pct: float
+    bybit_order_pct_min: float
+    bybit_order_pct_max: float
     bybit_leverage_min: float
     bybit_leverage_max: float
     bybit_max_positions: int
@@ -230,7 +232,7 @@ class Settings:
             enable_meme_market=_to_bool(data.get("ENABLE_MEME_MARKET"), False),
             live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
             live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
-            scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 600)),
+            scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 480)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),
             take_profit_pct=max(0.01, _to_float(data.get("TAKE_PROFIT_PCT"), 0.18)),
@@ -342,6 +344,8 @@ class Settings:
             bybit_base_url=_to_str(data.get("BYBIT_BASE_URL"), "https://api.bybit.com"),
             bybit_recv_window=max(1000, _to_int(data.get("BYBIT_RECV_WINDOW"), 5000)),
             bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.30))),
+            bybit_order_pct_min=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.15))),
+            bybit_order_pct_max=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.40))),
             bybit_leverage_min=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 15.0))),
             bybit_leverage_max=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 30.0))),
             bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 3)),
@@ -369,7 +373,7 @@ class Settings:
             ui_refresh_seconds=max(2, _to_int(data.get("UI_REFRESH_SECONDS"), 4)),
             app_host=_to_str(data.get("APP_HOST"), "0.0.0.0"),
             app_port=max(1, _to_int(data.get("APP_PORT"), 5050)),
-            demo_seed_usdt=max(50.0, _to_float(data.get("DEMO_SEED_USDT"), 1000.0)),
+            demo_seed_usdt=max(50.0, _to_float(data.get("DEMO_SEED_USDT"), 10000.0)),
             allow_demo_reset=_to_bool(data.get("ALLOW_DEMO_RESET"), False),
             demo_reset_block_until_ts=max(0, _to_int(data.get("DEMO_RESET_BLOCK_UNTIL_TS"), 0)),
             model_autotune_interval_hours=(

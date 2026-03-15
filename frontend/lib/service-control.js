@@ -17,16 +17,22 @@ const DEFAULT_RUNTIME_CONFIG = {
   LIVE_ENABLE_MEME: false,
   OPENAI_REVIEW_ENABLED: false,
   GOOGLE_TREND_ENABLED: false,
-  SCAN_INTERVAL_SECONDS: 600,
+  DEMO_SEED_USDT: 10000,
+  SCAN_INTERVAL_SECONDS: 480,
   SIGNAL_COOLDOWN_MINUTES: 10,
   MODEL_AUTOTUNE_INTERVAL_HOURS: 168,
   BYBIT_SYMBOLS: DEFAULT_SYMBOLS,
+  BYBIT_MAX_POSITIONS: 3,
+  BYBIT_ORDER_PCT: 0.275,
+  BYBIT_ORDER_PCT_MIN: 0.15,
+  BYBIT_ORDER_PCT_MAX: 0.4,
   CRYPTO_DATA_SOURCE_ORDER: DEFAULT_SOURCE_ORDER,
   CRYPTO_USE_BINANCE_DATA: true,
   CRYPTO_USE_BYBIT_DATA: true,
   CRYPTO_USE_COINGECKO_DATA: true,
   MACRO_REALTIME_SOURCES: "binance,bybit",
   MACRO_UNIVERSE_SOURCE: "coingecko",
+  DEMO_ENABLE_MACRO: true,
 };
 
 function toBool(value, fallback) {
@@ -35,10 +41,16 @@ function toBool(value, fallback) {
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
 }
 
-function toInt(value, fallback, minValue = 0) {
+function toInt(value, fallback, minValue = 0, maxValue = Number.POSITIVE_INFINITY) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   if (Number.isNaN(parsed)) return fallback;
-  return Math.max(minValue, parsed);
+  return Math.max(minValue, Math.min(maxValue, parsed));
+}
+
+function toFloat(value, fallback, minValue = 0, maxValue = Number.POSITIVE_INFINITY) {
+  const parsed = Number.parseFloat(String(value ?? ""));
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.max(minValue, Math.min(maxValue, parsed));
 }
 
 function normalizeExecutionTarget(raw) {
@@ -55,14 +67,10 @@ function normalizeSourceOrder(raw) {
   const ordered = [];
   for (const provider of requested) {
     if (!SERVICE_PROVIDER_ORDER.includes(provider)) continue;
-    if (!ordered.includes(provider)) {
-      ordered.push(provider);
-    }
+    if (!ordered.includes(provider)) ordered.push(provider);
   }
   for (const provider of SERVICE_PROVIDER_ORDER) {
-    if (!ordered.includes(provider)) {
-      ordered.push(provider);
-    }
+    if (!ordered.includes(provider)) ordered.push(provider);
   }
   return ordered;
 }
@@ -87,7 +95,7 @@ function normalizeProviderStatus(provider, row) {
     configured: Boolean(row),
     updated_at: row?.updated_at || null,
     meta_json: meta,
-    api_key_hint: String(meta.api_key_hint || "설정 안 됨"),
+    api_key_hint: String(meta.api_key_hint || "미설정"),
   };
 }
 
@@ -132,6 +140,11 @@ export function normalizeRuntimeConfig(raw = {}) {
     bybit: toBool(raw.CRYPTO_USE_BYBIT_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_BYBIT_DATA),
     coingecko: toBool(raw.CRYPTO_USE_COINGECKO_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_COINGECKO_DATA),
   };
+  const demoSeedUsdt = toFloat(raw.DEMO_SEED_USDT, DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT, 50, 1_000_000);
+  const maxPositions = toInt(raw.BYBIT_MAX_POSITIONS, DEFAULT_RUNTIME_CONFIG.BYBIT_MAX_POSITIONS, 1, 10);
+  const orderPctMin = toFloat(raw.BYBIT_ORDER_PCT_MIN, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MIN, 0.05, 0.95);
+  const orderPctMax = toFloat(raw.BYBIT_ORDER_PCT_MAX, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MAX, orderPctMin, 0.95);
+  const orderPctMid = Number((((orderPctMin + orderPctMax) * 0.5).toFixed(4)));
 
   return {
     EXECUTION_TARGET: executionTarget,
@@ -144,14 +157,21 @@ export function normalizeRuntimeConfig(raw = {}) {
     LIVE_ENABLE_MEME: false,
     OPENAI_REVIEW_ENABLED: false,
     GOOGLE_TREND_ENABLED: false,
+    DEMO_ENABLE_MACRO: true,
+    DEMO_SEED_USDT: demoSeedUsdt,
     SCAN_INTERVAL_SECONDS: toInt(raw.SCAN_INTERVAL_SECONDS, DEFAULT_RUNTIME_CONFIG.SCAN_INTERVAL_SECONDS, 300),
     SIGNAL_COOLDOWN_MINUTES: toInt(
       raw.SIGNAL_COOLDOWN_MINUTES,
       DEFAULT_RUNTIME_CONFIG.SIGNAL_COOLDOWN_MINUTES,
-      1
+      1,
+      240
     ),
     MODEL_AUTOTUNE_INTERVAL_HOURS: [6, 12, 24, 168].includes(autotuneHours) ? autotuneHours : 168,
     BYBIT_SYMBOLS: (symbols.length ? symbols : DEFAULT_SYMBOLS.split(",")).join(","),
+    BYBIT_MAX_POSITIONS: maxPositions,
+    BYBIT_ORDER_PCT: orderPctMid,
+    BYBIT_ORDER_PCT_MIN: orderPctMin,
+    BYBIT_ORDER_PCT_MAX: orderPctMax,
     CRYPTO_DATA_SOURCE_ORDER: sourceOrder.join(","),
     CRYPTO_USE_BINANCE_DATA: flags.binance,
     CRYPTO_USE_BYBIT_DATA: flags.bybit,

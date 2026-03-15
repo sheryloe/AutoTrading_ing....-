@@ -7733,7 +7733,11 @@ class TradingEngine:
 
     def _demo_order_pct_for_entry(self, market: str, score: float, threshold: float) -> float:
         if str(market).lower() == "crypto":
-            return _clamp(float(self.settings.bybit_order_pct or 0.30), 0.01, 0.95)
+            min_pct = _clamp(float(getattr(self.settings, "bybit_order_pct_min", 0.15) or 0.15), 0.01, 0.95)
+            max_pct = _clamp(float(getattr(self.settings, "bybit_order_pct_max", 0.40) or 0.40), min_pct, 0.95)
+            gap = float(score) - float(threshold)
+            confidence = _clamp(gap / 0.22, 0.0, 1.0)
+            return float(min_pct + ((max_pct - min_pct) * confidence))
         min_pct = _clamp(float(self.settings.demo_order_pct_min), 0.01, 0.95)
         max_pct = _clamp(float(self.settings.demo_order_pct_max), min_pct, 0.95)
         gap = float(score) - float(threshold)
@@ -7742,7 +7746,12 @@ class TradingEngine:
         confidence = _clamp(gap / max(1e-6, scale), 0.0, 1.0)
         return float(min_pct + ((max_pct - min_pct) * confidence))
 
-    def _crypto_target_order_usd(self, run: dict[str, Any], prices: dict[str, float] | None = None) -> float:
+    def _crypto_target_order_usd(
+        self,
+        run: dict[str, Any],
+        order_pct: float,
+        prices: dict[str, float] | None = None,
+    ) -> float:
         cash = float(run.get("bybit_cash_usd") or 0.0)
         positions = list((run.get("bybit_positions") or {}).values())
         position_equity = 0.0
@@ -7754,8 +7763,8 @@ class TradingEngine:
             marked = self._mark_crypto_position(pos, current)
             position_equity += float(marked.get("position_equity_usd") or 0.0)
         total_equity = max(0.0, cash + position_equity)
-        fixed_pct = _clamp(float(self.settings.bybit_order_pct or 0.30), 0.01, 0.95)
-        return float(total_equity * fixed_pct)
+        alloc_pct = _clamp(float(order_pct or self.settings.bybit_order_pct or 0.30), 0.01, 0.95)
+        return float(total_equity * alloc_pct)
 
     @staticmethod
     def _record_last_entry_alloc(
@@ -10756,7 +10765,7 @@ class TradingEngine:
                 break
             order_pct = self._demo_order_pct_for_entry("crypto", score, entry_threshold)
             order_pct = _clamp(order_pct, 0.01, 0.95)
-            target_order_usd = self._crypto_target_order_usd(run, prices)
+            target_order_usd = self._crypto_target_order_usd(run, order_pct, prices)
             order_usd = min(cash, max(min_order, target_order_usd))
             if order_usd < min_order:
                 continue

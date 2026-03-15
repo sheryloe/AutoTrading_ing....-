@@ -14,7 +14,7 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="설정"
         title="운영 입력과 서비스 콘솔"
-        description="실행 타깃, provider vault, runtime profile은 이 화면에서만 관리합니다. 입력 화면을 별도 페이지로 분리해 운영 화면과 섞이지 않도록 정리했습니다."
+        description="실행 키, 데이터 provider vault, runtime profile은 이 화면에서만 관리합니다. 개요나 포지션 화면에는 입력 폼을 두지 않고 운영 콘솔로 분리했습니다."
         actions={[
           { href: "/", label: "개요로 이동", tone: "ghost" },
           { href: "/positions", label: "포지션 보기", tone: "primary" },
@@ -43,11 +43,16 @@ export default async function SettingsPage() {
           meta={`arm ${control.runtimeConfig?.LIVE_EXECUTION_ARMED ? "on" : "off"}`}
           tone="cyan"
         />
-        <MetricCard label="설정된 provider" value={String(configuredProviderCount)} meta="Bybit / Binance / CoinGecko 기준" tone="amber" />
+        <MetricCard
+          label="설정된 provider"
+          value={String(configuredProviderCount)}
+          meta="Bybit / Binance / CoinGecko 기준"
+          tone="amber"
+        />
         <MetricCard
           label="Runtime 반영 시각"
           value={control.runtimeUpdatedAt ? "저장됨" : "기본값"}
-          meta={control.runtimeUpdatedAt || "Supabase blob 미저장"}
+          meta={control.runtimeUpdatedAt || "Supabase blob 미생성"}
         />
       </section>
 

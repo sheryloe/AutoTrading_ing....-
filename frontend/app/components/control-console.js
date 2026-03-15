@@ -9,7 +9,7 @@ const PROVIDERS = [
     label: "Bybit",
     role: "실행 계정",
     description:
-      "실거래 실행용 자격증명입니다. 키를 저장하는 것만으로는 live가 켜지지 않고 execution target과 arm 단계가 별도로 필요합니다.",
+      "실제 거래소 연결용 자격증명입니다. 키를 저장하는 것만으로는 live가 켜지지 않고 execution target과 arm 단계가 따로 필요합니다.",
     requiresSecret: true,
     keyLabel: "Bybit API Key",
     secretLabel: "Bybit API Secret",
@@ -18,7 +18,7 @@ const PROVIDERS = [
     id: "binance",
     label: "Binance",
     role: "실시간 시세 소스",
-    description: "가격, 호가, 단기 흐름 확인에 쓰는 실시간 데이터 소스입니다.",
+    description: "상위 코인 가격 흐름과 단기 캔들 판단에 쓰는 실시간 데이터 소스입니다.",
     requiresSecret: true,
     keyLabel: "Binance API Key",
     secretLabel: "Binance API Secret",
@@ -27,7 +27,7 @@ const PROVIDERS = [
     id: "coingecko",
     label: "CoinGecko",
     role: "유니버스/메타 소스",
-    description: "시가총액과 코인 메타데이터를 보강하는 보조 데이터 소스입니다.",
+    description: "시총, 코인 메타 정보, 보조 참조 데이터를 보강하는 소스입니다.",
     requiresSecret: false,
     keyLabel: "CoinGecko API Key",
     secretLabel: "",
@@ -56,9 +56,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     enableLiveExecution: boolToString(Boolean(initialConfig?.ENABLE_LIVE_EXECUTION)),
     liveEnableCrypto: boolToString(Boolean(initialConfig?.LIVE_ENABLE_CRYPTO)),
     liveExecutionArmed: boolToString(Boolean(initialConfig?.LIVE_EXECUTION_ARMED)),
-    scanIntervalSeconds: String(initialConfig?.SCAN_INTERVAL_SECONDS || 600),
+    demoSeedUsdt: String(initialConfig?.DEMO_SEED_USDT || 10000),
+    scanIntervalSeconds: String(initialConfig?.SCAN_INTERVAL_SECONDS || 480),
     signalCooldownMinutes: String(initialConfig?.SIGNAL_COOLDOWN_MINUTES || 10),
     autotuneHours: String(initialConfig?.MODEL_AUTOTUNE_INTERVAL_HOURS || 168),
+    bybitMaxPositions: String(initialConfig?.BYBIT_MAX_POSITIONS || 3),
+    bybitOrderPctMin: String(initialConfig?.BYBIT_ORDER_PCT_MIN || 0.15),
+    bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.4),
     bybitSymbols: String(initialConfig?.BYBIT_SYMBOLS || "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
     cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
     useBinanceData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BINANCE_DATA ?? true)),
@@ -79,18 +83,18 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     const armed = config.liveExecutionArmed === "true" && bybitConfigured;
 
     if (target === "paper") {
-      return "현재는 paper 실행 모드입니다. Bybit 키가 저장되어 있어도 주문은 나가지 않고 설정만 준비됩니다.";
+      return "현재는 paper 실행 모드입니다. Bybit 키를 저장해도 데모 포지션/PnL만 관리하고 실주문은 열리지 않습니다.";
     }
     if (!bybitConfigured) {
-      return "bybit-live가 선택되어 있지만 Bybit 자격증명이 아직 비어 있습니다.";
+      return "bybit-live가 선택되어 있지만 Bybit 실행 키가 아직 비어 있습니다.";
     }
     if (!liveFlagsReady) {
       return "bybit-live가 선택되어 있지만 live execution 관련 플래그가 아직 꺼져 있습니다.";
     }
     if (!armed) {
-      return "live 조건은 대부분 준비됐지만 arm 단계가 꺼져 있어 future live 준비 상태로만 유지됩니다.";
+      return "live 실행 조건은 거의 준비됐지만 arm 단계가 꺼져 있어서 future live 준비 상태로만 유지됩니다.";
     }
-    return "future live execution 준비 상태입니다. 현재 빌드는 crypto 실주문을 즉시 켜지 않고, 안전한 설정 흐름을 먼저 고정합니다.";
+    return "future live execution 준비 상태입니다. 현재 빌드는 crypto 실주문을 바로 켜지 않고, 먼저 설정/가드 흐름을 고정합니다.";
   }, [config, providerStatuses]);
 
   const statusBadges = useMemo(() => {
@@ -135,9 +139,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             ENABLE_LIVE_EXECUTION: config.enableLiveExecution === "true",
             LIVE_ENABLE_CRYPTO: config.liveEnableCrypto === "true",
             LIVE_EXECUTION_ARMED: config.liveExecutionArmed === "true",
-            SCAN_INTERVAL_SECONDS: Number(config.scanIntervalSeconds || 600),
+            DEMO_SEED_USDT: Number(config.demoSeedUsdt || 10000),
+            SCAN_INTERVAL_SECONDS: Number(config.scanIntervalSeconds || 480),
             SIGNAL_COOLDOWN_MINUTES: Number(config.signalCooldownMinutes || 10),
             MODEL_AUTOTUNE_INTERVAL_HOURS: Number(config.autotuneHours || 168),
+            BYBIT_MAX_POSITIONS: Number(config.bybitMaxPositions || 3),
+            BYBIT_ORDER_PCT_MIN: Number(config.bybitOrderPctMin || 0.15),
+            BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.4),
             BYBIT_SYMBOLS: config.bybitSymbols,
             CRYPTO_DATA_SOURCE_ORDER: config.cryptoDataSourceOrder,
             CRYPTO_USE_BINANCE_DATA: config.useBinanceData === "true",
@@ -150,7 +158,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "runtime_save_failed");
       }
-      setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 배치 사이클부터 반영됩니다.");
+      setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 8분 배치부터 새 규칙이 반영됩니다.");
       router.refresh();
     } catch (error) {
       setRuntimeError(error instanceof Error ? error.message : "runtime_save_failed");
@@ -244,7 +252,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
         <section className="control-card">
           <h3>운영자 토큰</h3>
           <p className="control-copy">
-            토큰은 저장 시점에만 검증합니다. 브라우저에 별도 저장하지 않고, 설정 변경 권한 확인용으로만 사용합니다.
+            이 토큰은 설정 저장 시점에만 검증합니다. 브라우저에 별도로 저장하지 않고, 서비스 운영자만 설정을 바꿀 수 있게 막는 용도입니다.
           </p>
           <label className="field-label" htmlFor="admin-token">
             관리자 토큰
@@ -259,7 +267,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
           {!writeReady ? (
             <p className="error-line">
-              먼저 Vercel에 SERVICE_ADMIN_TOKEN, SERVICE_MASTER_KEY, Supabase 서버 환경변수를 넣어 주세요.
+              먼저 Vercel에 SERVICE_ADMIN_TOKEN, SERVICE_MASTER_KEY, SUPABASE_SECRET_KEY를 모두 넣어야 저장이 활성화됩니다.
             </p>
           ) : null}
         </section>
@@ -270,7 +278,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             <span>{config.executionTarget}</span>
           </div>
           <p className="control-copy">
-            v1에서는 지갑 선택을 execution target으로 해석합니다. 키 저장과 arm 단계는 별도로 관리합니다.
+            v1에서는 지갑 선택을 execution target으로 해석합니다. Bybit 키를 저장해도 live가 바로 켜지지 않도록 arm 단계를 별도로 분리해뒀습니다.
           </p>
           <div className="badge-row">
             <span className={`status-badge ${statusBadges.safe ? "active safe" : "inactive"}`}>safe</span>
@@ -280,13 +288,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           <p className="status-line">{liveSummary}</p>
           <div className="status-stack compact">
             <p className="status-line">
-              등록된 실행 키: <strong>{providerStatuses?.bybit?.api_key_hint || "설정 안 됨"}</strong>
+              등록된 실행 키: <strong>{providerStatuses?.bybit?.api_key_hint || "미설정"}</strong>
             </p>
             <p className="status-line">
               마지막 업데이트: <strong>{providerStatuses?.bybit?.updated_at || "-"}</strong>
             </p>
             <p className="status-line">
-              future live 가능 상태: <strong>{statusBadges.futureLiveEligible ? "yes" : "no"}</strong>
+              future live 준비: <strong>{statusBadges.futureLiveEligible ? "yes" : "no"}</strong>
             </p>
           </div>
         </section>
@@ -295,10 +303,10 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       <section className="control-card provider-section">
         <div className="control-head">
           <h3>Provider 자격증명</h3>
-          <span>provider별 암호화 저장</span>
+          <span>거래/데이터 키 분리</span>
         </div>
         <p className="control-copy">
-          거래소 키와 데이터 API 키는 GitHub Secrets가 아니라 여기서 저장합니다. GitHub Actions는 실행 시 Supabase vault를 읽어 복호화합니다.
+          거래소와 데이터 API 키는 GitHub Secrets가 아니라 여기서 저장합니다. 저장된 키는 Supabase 암호화 vault에 들어가고, 배치 러너는 실행 직전에 읽어서 씁니다.
         </p>
         <div className="provider-grid">
           {PROVIDERS.map((provider) => {
@@ -316,7 +324,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
                     역할: <strong>{provider.role}</strong>
                   </p>
                   <p className="status-line">
-                    키 힌트: <strong>{status?.api_key_hint || "설정 안 됨"}</strong>
+                    키 힌트: <strong>{status?.api_key_hint || "미설정"}</strong>
                   </p>
                   <p className="status-line">
                     업데이트 시각: <strong>{status?.updated_at || "-"}</strong>
@@ -374,10 +382,10 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       <section className="control-card runtime-card">
         <div className="control-head">
           <h3>Runtime profile</h3>
-          <span>{runtimeUpdatedAt ? "Supabase에 저장됨" : "기본 프로필"}</span>
+          <span>{runtimeUpdatedAt ? "Supabase에 반영됨" : "기본 프로필"}</span>
         </div>
         <p className="control-copy">
-          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. execution target, live flag, arm 상태를 분리해서 관리합니다.
+          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. Top 5 기준 데모 시드, 포지션 수, 점수별 진입 비중, 분석 주기를 여기서 관리합니다.
         </p>
         <form className="control-form runtime-form" onSubmit={saveRuntime}>
           <label className="field-label" htmlFor="execution-target">
@@ -445,6 +453,61 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             <option value="false">false</option>
             <option value="true">true</option>
           </select>
+
+          <label className="field-label" htmlFor="demo-seed">
+            모델별 데모 시드(USDT)
+          </label>
+          <input
+            id="demo-seed"
+            className="control-input"
+            type="number"
+            min="1000"
+            step="500"
+            value={config.demoSeedUsdt}
+            onChange={(event) => setConfig((prev) => ({ ...prev, demoSeedUsdt: event.target.value }))}
+          />
+
+          <label className="field-label" htmlFor="max-positions">
+            최대 포지션 수
+          </label>
+          <input
+            id="max-positions"
+            className="control-input"
+            type="number"
+            min="1"
+            max="10"
+            step="1"
+            value={config.bybitMaxPositions}
+            onChange={(event) => setConfig((prev) => ({ ...prev, bybitMaxPositions: event.target.value }))}
+          />
+
+          <label className="field-label" htmlFor="order-pct-min">
+            진입 비중 최소값
+          </label>
+          <input
+            id="order-pct-min"
+            className="control-input"
+            type="number"
+            min="0.05"
+            max="0.95"
+            step="0.01"
+            value={config.bybitOrderPctMin}
+            onChange={(event) => setConfig((prev) => ({ ...prev, bybitOrderPctMin: event.target.value }))}
+          />
+
+          <label className="field-label" htmlFor="order-pct-max">
+            진입 비중 최대값
+          </label>
+          <input
+            id="order-pct-max"
+            className="control-input"
+            type="number"
+            min="0.05"
+            max="0.95"
+            step="0.01"
+            value={config.bybitOrderPctMax}
+            onChange={(event) => setConfig((prev) => ({ ...prev, bybitOrderPctMax: event.target.value }))}
+          />
 
           <label className="field-label" htmlFor="autotune-hours">
             튜닝 주기(시간)
