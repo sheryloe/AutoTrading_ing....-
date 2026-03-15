@@ -3,7 +3,7 @@ name: cloud-cycle
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/8 * * * *"
 
 permissions:
   contents: write
@@ -40,7 +40,7 @@ jobs:
           LIVE_EXECUTION_ARMED: "false"
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
-          SCAN_INTERVAL_SECONDS: "600"
+          SCAN_INTERVAL_SECONDS: "480"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT
