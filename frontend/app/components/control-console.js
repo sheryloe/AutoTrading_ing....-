@@ -74,8 +74,8 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     signalCooldownMinutes: String(initialConfig?.SIGNAL_COOLDOWN_MINUTES || 10),
     autotuneHours: String(initialConfig?.MODEL_AUTOTUNE_INTERVAL_HOURS || 168),
     bybitMaxPositions: String(initialConfig?.BYBIT_MAX_POSITIONS || 3),
-    bybitOrderPctMin: String(initialConfig?.BYBIT_ORDER_PCT_MIN || 0.15),
-    bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.4),
+    bybitOrderPctMin: String(initialConfig?.BYBIT_ORDER_PCT_MIN || 0.1),
+    bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.3),
     intrabarConflictPolicy: String(initialConfig?.INTRABAR_CONFLICT_POLICY || "conservative"),
     bybitSymbols: String(initialConfig?.BYBIT_SYMBOLS || "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
     cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
@@ -179,8 +179,8 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             SIGNAL_COOLDOWN_MINUTES: Number(config.signalCooldownMinutes || 10),
             MODEL_AUTOTUNE_INTERVAL_HOURS: Number(config.autotuneHours || 168),
             BYBIT_MAX_POSITIONS: Number(config.bybitMaxPositions || 3),
-            BYBIT_ORDER_PCT_MIN: Number(config.bybitOrderPctMin || 0.15),
-            BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.4),
+            BYBIT_ORDER_PCT_MIN: Number(config.bybitOrderPctMin || 0.1),
+            BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.3),
             INTRABAR_CONFLICT_POLICY: config.intrabarConflictPolicy,
             BYBIT_SYMBOLS: config.bybitSymbols,
             CRYPTO_DATA_SOURCE_ORDER: config.cryptoDataSourceOrder,
@@ -528,8 +528,8 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             id="order-pct-min"
             className="control-input"
             type="number"
-            min="0.05"
-            max="0.95"
+            min="0.10"
+            max="0.30"
             step="0.01"
             value={config.bybitOrderPctMin}
             onChange={(event) => setConfig((prev) => ({ ...prev, bybitOrderPctMin: event.target.value }))}
@@ -542,8 +542,8 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             id="order-pct-max"
             className="control-input"
             type="number"
-            min="0.05"
-            max="0.95"
+            min="0.10"
+            max="0.30"
             step="0.01"
             value={config.bybitOrderPctMax}
             onChange={(event) => setConfig((prev) => ({ ...prev, bybitOrderPctMax: event.target.value }))}

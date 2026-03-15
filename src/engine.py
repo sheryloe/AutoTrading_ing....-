@@ -2094,9 +2094,9 @@ class TradingEngine:
                             "intrabar 체결"
                             if side == "buy" and fill_mode == "intrabar"
                             else (
-                                "spot 체결"
+                                "배치 체결"
                                 if side == "buy"
-                                else ("intrabar 종료" if close_mode == "intrabar" else "spot 종료")
+                                else ("intrabar 종료" if close_mode == "intrabar" else "배치 종료")
                             )
                         ),
                         "is_intrabar": bool((fill_mode if side == "buy" else close_mode) == "intrabar"),
@@ -10315,45 +10315,45 @@ class TradingEngine:
         return float(threshold)
 
     def _crypto_leverage_bounds(self) -> tuple[float, float]:
-        lev_min = _clamp(float(self.settings.bybit_leverage_min), 1.0, 30.0)
-        lev_max = _clamp(float(self.settings.bybit_leverage_max), lev_min, 30.0)
+        lev_min = _clamp(float(self.settings.bybit_leverage_min), 1.0, 25.0)
+        lev_max = _clamp(float(self.settings.bybit_leverage_max), lev_min, 25.0)
         return (lev_min, lev_max)
 
     @staticmethod
     def _crypto_model_risk_profile(model_id: str) -> dict[str, float]:
         if model_id == "A":
             return {
-                "lev_min": 15.0,
-                "lev_max": 18.0,
-                "order_pct_mul": 0.22,
+                "lev_min": 5.0,
+                "lev_max": 9.0,
+                "order_pct_mul": 0.18,
                 "hard_roe_cut": -0.26,
             }
         if model_id == "B":
             return {
-                "lev_min": 18.0,
-                "lev_max": 22.0,
-                "order_pct_mul": 0.24,
+                "lev_min": 8.0,
+                "lev_max": 14.0,
+                "order_pct_mul": 0.22,
                 "hard_roe_cut": -0.28,
             }
         if model_id == "C":
             return {
-                "lev_min": 24.0,
-                "lev_max": 30.0,
-                "order_pct_mul": 0.18,
+                "lev_min": 14.0,
+                "lev_max": 25.0,
+                "order_pct_mul": 0.16,
                 "hard_roe_cut": -0.32,
             }
         return {
-            "lev_min": 15.0,
-            "lev_max": 20.0,
-            "order_pct_mul": 0.20,
+            "lev_min": 6.0,
+            "lev_max": 12.0,
+            "order_pct_mul": 0.18,
             "hard_roe_cut": -0.24,
         }
 
     def _compute_crypto_leverage(self, model_id: str, score: float, threshold: float, volatility: float) -> float:
         lev_min_cfg, lev_max_cfg = self._crypto_leverage_bounds()
         prof = self._crypto_model_risk_profile(model_id)
-        lev_min = _clamp(float(prof.get("lev_min") or 1.0), 1.0, 30.0)
-        lev_max = _clamp(float(prof.get("lev_max") or lev_max_cfg), lev_min, 30.0)
+        lev_min = _clamp(float(prof.get("lev_min") or 1.0), 1.0, 25.0)
+        lev_max = _clamp(float(prof.get("lev_max") or lev_max_cfg), lev_min, 25.0)
         lev_min = max(lev_min, lev_min_cfg)
         lev_max = min(lev_max, lev_max_cfg)
         if lev_max < lev_min:

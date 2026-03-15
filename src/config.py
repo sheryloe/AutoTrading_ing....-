@@ -344,16 +344,16 @@ class Settings:
             bybit_api_secret=_to_str(data.get("BYBIT_API_SECRET"), ""),
             bybit_base_url=_to_str(data.get("BYBIT_BASE_URL"), "https://api.bybit.com"),
             bybit_recv_window=max(1000, _to_int(data.get("BYBIT_RECV_WINDOW"), 5000)),
-            bybit_order_pct=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT"), 0.30))),
-            bybit_order_pct_min=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.15))),
-            bybit_order_pct_max=min(1.0, max(0.01, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.40))),
+            bybit_order_pct=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT"), 0.20))),
+            bybit_order_pct_min=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT_MIN"), 0.10))),
+            bybit_order_pct_max=min(0.30, max(0.10, _to_float(data.get("BYBIT_ORDER_PCT_MAX"), 0.30))),
             intrabar_conflict_policy=(
                 _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower()
                 if _to_str(data.get("INTRABAR_CONFLICT_POLICY"), "conservative").lower() in {"conservative", "neutral", "aggressive"}
                 else "conservative"
             ),
-            bybit_leverage_min=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 15.0))),
-            bybit_leverage_max=min(30.0, max(1.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 30.0))),
+            bybit_leverage_min=min(25.0, max(5.0, _to_float(data.get("BYBIT_LEVERAGE_MIN"), 5.0))),
+            bybit_leverage_max=min(25.0, max(5.0, _to_float(data.get("BYBIT_LEVERAGE_MAX"), 25.0))),
             bybit_max_positions=max(1, _to_int(data.get("BYBIT_MAX_POSITIONS"), 3)),
             bybit_min_order_usd=max(5.0, _to_float(data.get("BYBIT_MIN_ORDER_USD"), 10.0)),
             crypto_min_entry_score=min(1.0, max(0.0, _to_float(data.get("CRYPTO_MIN_ENTRY_SCORE"), 0.30))),

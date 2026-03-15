@@ -48,7 +48,7 @@ export default async function PositionsPage() {
         <MetricCard
           label="최근 체결 로그"
           value={String(snapshot?.recentTradeCount || 0)}
-          meta="intrabar / spot 포함"
+          meta="intrabar / 배치 포함"
         />
       </section>
 
