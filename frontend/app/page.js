@@ -1,23 +1,35 @@
-import EmptyState from "./components/empty-state";
 import MetricCard from "./components/metric-card";
 import PageHeader from "./components/page-header";
 import SectionCard from "./components/section-card";
 import StatusBadge from "./components/status-badge";
 import { loadOverviewPageData } from "../lib/dashboard-data";
-import { formatMoney, formatTs } from "../lib/formatters";
+import { getModelMeta, MODEL_ORDER } from "../lib/model-meta";
+import { formatMoney, formatPct, formatTs } from "../lib/formatters";
+
+function buildOverviewModelCards(dailyRows = []) {
+  return MODEL_ORDER.map((modelId) => {
+    const latest = dailyRows.find((row) => String(row.model_id || "").toUpperCase() === modelId) || null;
+    return {
+      modelId,
+      meta: getModelMeta(modelId),
+      latest,
+    };
+  });
+}
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const data = await loadOverviewPageData();
   const snapshot = data.snapshot;
+  const modelCards = buildOverviewModelCards(data.dailyRows);
 
   return (
     <>
       <PageHeader
         eyebrow="운영 개요"
-        title="한눈에 보는 오늘의 운영 상태"
-        description="메인 화면에서는 핵심 지표와 최근 사이클만 확인합니다. 상세한 성과, 포지션, 설정 입력은 각 전용 화면으로 분리했습니다."
+        title="오늘의 상태를 먼저 읽는 대시보드"
+        description="개요는 핵심 지표와 최근 사이클만 보여줍니다. 빠른 이동 카드 대신 모델 스냅샷을 별도 전시해 각 모델 상태를 바로 읽을 수 있게 바꿨습니다."
         actions={[
           { href: "/models", label: "모델 성과 보기", tone: "primary" },
           { href: "/positions", label: "포지션 보기", tone: "ghost" },
@@ -59,66 +71,51 @@ export default async function HomePage() {
         />
       </section>
 
-      <section className="content-grid content-grid-two">
-        <SectionCard
-          eyebrow="사이클 상태"
-          title="최근 사이클 요약"
-          meta={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
-        >
-          <div className="status-row">
-            <StatusBadge tone={snapshot?.heartbeat ? "success" : "muted"}>
-              {snapshot?.heartbeat ? "엔진 연결됨" : "엔진 미확인"}
-            </StatusBadge>
-            <StatusBadge tone={snapshot?.latestSignalCount ? "info" : "muted"}>
-              최근 신호 {snapshot?.latestSignalCount || 0}건
-            </StatusBadge>
-            <StatusBadge tone={snapshot?.openPositionCount ? "warning" : "success"}>
-              오픈 포지션 {snapshot?.openPositionCount || 0}
-            </StatusBadge>
-          </div>
+      <SectionCard
+        eyebrow="최근 사이클"
+        title="현재 엔진 상태"
+        meta={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
+      >
+        <div className="status-row">
+          <StatusBadge tone={snapshot?.heartbeat ? "success" : "muted"}>
+            {snapshot?.heartbeat ? "엔진 연결됨" : "엔진 미확인"}
+          </StatusBadge>
+          <StatusBadge tone={snapshot?.latestSignalCount ? "info" : "muted"}>
+            최근 신호 {snapshot?.latestSignalCount || 0}건
+          </StatusBadge>
+          <StatusBadge tone={snapshot?.openPositionCount ? "warning" : "success"}>
+            오픈 포지션 {snapshot?.openPositionCount || 0}
+          </StatusBadge>
+        </div>
+      </SectionCard>
 
-          {data.recentSetups.length ? (
-            <div className="mini-list">
-              {data.recentSetups.slice(0, 5).map((row) => (
-                <article key={row.id} className="mini-card">
-                  <div>
-                    <strong>{row.symbol}</strong>
-                    <p>
-                      {row.model_id} / {formatTs(row.cycle_at)}
-                    </p>
-                  </div>
-                  <div className="mini-metrics">
-                    <span>{formatMoney(row.entry_price)}</span>
-                    <span>{row.entry_ready ? "진입 준비" : "대기"}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="최근 신호가 없습니다"
-              description="아직 Supabase에 setup 데이터가 들어오지 않았습니다."
-            />
-          )}
-        </SectionCard>
-
-        <SectionCard eyebrow="빠른 이동" title="역할별 화면 바로가기" meta="한 화면 한 역할">
-          <div className="quick-link-grid">
-            <a href="/models" className="quick-link-card">
-              <strong>모델 성과</strong>
-              <p>모델별 PnL, 승률, autotune 상태를 따로 확인합니다.</p>
-            </a>
-            <a href="/positions" className="quick-link-card">
-              <strong>포지션</strong>
-              <p>오픈 포지션과 최신 setup, entry / SL / TP를 점검합니다.</p>
-            </a>
-            <a href="/settings" className="quick-link-card">
-              <strong>설정</strong>
-              <p>Provider vault, execution target, runtime profile은 여기서만 다룹니다.</p>
-            </a>
-          </div>
-        </SectionCard>
-      </section>
+      <SectionCard eyebrow="모델 스냅샷" title="모델별 오늘의 흐름" meta="개요 화면 전용 요약">
+        <div className="overview-model-grid">
+          {modelCards.map(({ modelId, meta, latest }) => (
+            <article key={modelId} className="overview-model-card">
+              <div className="overview-model-head">
+                <span>{`MODEL ${modelId}`}</span>
+                <strong>{meta.name}</strong>
+              </div>
+              <p className="overview-model-copy">{meta.subtitle}</p>
+              <div className="overview-model-metrics">
+                <div>
+                  <label>실현 PnL</label>
+                  <strong>{formatMoney(latest?.realized_pnl_usd || 0)}</strong>
+                </div>
+                <div>
+                  <label>승률</label>
+                  <strong>{formatPct(latest?.win_rate || 0)}</strong>
+                </div>
+                <div>
+                  <label>종료 거래</label>
+                  <strong>{latest?.closed_trades || 0}</strong>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </SectionCard>
     </>
   );
 }

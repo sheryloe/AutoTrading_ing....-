@@ -713,6 +713,125 @@ textarea {
   background: rgba(73, 243, 172, 0.08);
 }
 
+.tab-shell {
+  display: grid;
+  gap: 22px;
+}
+
+.tab-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tab-button {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  color: var(--text);
+  text-align: left;
+  background: linear-gradient(180deg, rgba(10, 19, 30, 0.92), rgba(5, 11, 18, 0.96));
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.tab-button:hover {
+  border-color: rgba(71, 230, 255, 0.36);
+  transform: translateY(-1px);
+}
+
+.tab-button.active {
+  border-color: rgba(71, 230, 255, 0.48);
+  background: linear-gradient(180deg, rgba(10, 26, 39, 0.98), rgba(5, 15, 24, 0.98));
+  box-shadow: 0 0 0 1px rgba(71, 230, 255, 0.14) inset;
+}
+
+.tab-button strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.1rem;
+}
+
+.tab-button small,
+.tab-eyebrow,
+.overview-model-copy,
+.overview-model-metrics label {
+  color: var(--muted);
+}
+
+.tab-eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.model-focus-grid,
+.overview-model-grid,
+.focus-metric-grid,
+.overview-model-metrics {
+  display: grid;
+  gap: 16px;
+}
+
+.model-focus-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  align-items: start;
+}
+
+.model-focus-copy p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.focus-metric-grid,
+.overview-model-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.focus-metric-card,
+.overview-model-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(8, 17, 27, 0.82);
+}
+
+.focus-metric-card span,
+.overview-model-head span {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--cyan);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.focus-metric-card strong,
+.overview-model-head strong {
+  display: block;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.2rem;
+}
+
+.overview-model-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.overview-model-copy {
+  margin: 10px 0 18px;
+}
+
+.overview-model-metrics div {
+  display: grid;
+  gap: 6px;
+}
+
+.overview-model-metrics strong {
+  font-size: 1rem;
+}
+
 @media (max-width: 1200px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -731,6 +850,11 @@ textarea {
   .kpi-row,
   .content-grid-two,
   .model-summary-grid,
+  .tab-strip,
+  .model-focus-grid,
+  .overview-model-grid,
+  .focus-metric-grid,
+  .overview-model-metrics,
   .quick-link-grid,
   .provider-grid,
   .runtime-form,
