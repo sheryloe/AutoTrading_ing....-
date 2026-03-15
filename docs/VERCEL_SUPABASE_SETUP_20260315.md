@@ -1,31 +1,44 @@
-# Vercel + Supabase Setup Checklist
+# Vercel + Supabase Service Console Setup
 
-This project no longer needs any LLM review key for the core crypto flow.
-The current target flow is:
+This repo now supports a service-style flow:
 
-- 10-minute crypto analysis
-- daily PnL persistence
-- weekly parameter autotune
-- Vercel dashboard
-- Supabase storage + realtime
-- GitHub Actions batch execution
+- Vercel hosts the dashboard and the operator console
+- the operator console stores exchange keys encrypted in Supabase
+- GitHub Actions runs the batch engine every 10 minutes
+- the batch runner reads encrypted provider keys from Supabase at runtime
+- provider keys do not need to live in GitHub Secrets anymore
 
-## 1. What values are required
+## 1. Core architecture
 
-### Required for Supabase
+### Vercel
 
-Use the current key naming if available:
+- serves the dashboard
+- serves the operator console UI
+- accepts the admin token and provider keys through a server route
+- encrypts provider keys into Supabase using `SERVICE_MASTER_KEY`
+
+### Supabase
+
+- stores runtime tables like setups, positions, pnl, heartbeat
+- stores encrypted provider credentials in `service_secrets`
+- stores runtime profile overrides in `engine_state_blobs` with key `service_runtime_config`
+
+### GitHub Actions
+
+- runs `python scripts/run_batch_cycle.py`
+- loads runtime profile from Supabase
+- decrypts Bybit credentials from Supabase using `SERVICE_MASTER_KEY`
+- writes snapshots back to Supabase
+
+## 2. What values are required
+
+### Supabase project values
 
 - `Project URL`
 - `Publishable key`
 - `Secret key`
 
-Legacy equivalents still commonly appear in existing projects:
-
-- `anon key` == frontend public key
-- `service_role key` == backend server key
-
-Examples:
+Example:
 
 ```txt
 Project URL
@@ -38,216 +51,146 @@ Secret key
 sb_secret_xxxxxxxxxxxxxxxxx
 ```
 
-If the dashboard or docs show legacy keys instead:
+### Service console values
+
+- `SERVICE_MASTER_KEY`
+- `SERVICE_ADMIN_TOKEN`
+
+Generate them as random long strings.
+
+Example:
 
 ```txt
-anon key
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SERVICE_MASTER_KEY
+replace-with-random-32-plus-char-string
 
-service_role key
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SERVICE_ADMIN_TOKEN
+replace-with-random-operator-password
 ```
 
-### Required for Vercel
+## 3. What goes where
 
-- GitHub repo
-- branch
-- Vercel project name
+### Vercel Environment Variables
 
-Current repo example:
-
-```txt
-GitHub repo: origin of this repository
-Branch: main
-Vercel project name: ai-auto-dashboard
-```
-
-### Required only if Auth is enabled
-
-- `Site URL`
-- `Redirect URLs`
-
-Examples:
-
-```txt
-Site URL
-https://ai-auto-dashboard.vercel.app
-
-Redirect URLs
-https://ai-auto-dashboard.vercel.app/auth/callback
-http://localhost:3000/auth/callback
-```
-
-## 2. Which values go where
-
-### Vercel frontend env vars
-
-Use only the public frontend key here.
+These are required for the service console and dashboard:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://abcxyz123456.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxx
-NEXT_PUBLIC_APP_NAME=AI_Auto
-```
-
-If you use newer naming in code later, the same value can be stored as:
-
-```env
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxxxxxxxxxx
-```
-
-### Vercel project import choices
-
-For this repository, do not point Vercel at the Flask root.
-Use the dedicated frontend app:
-
-```txt
-Import Git Repository
-Root Directory: frontend
-Framework Preset: Next.js
-Build Command: next build
-Install Command: npm install
-Output setting: default
-```
-
-Server-side env vars may also be added to the same Vercel project if you want
-the Next.js server layer to read Supabase directly:
-
-```env
 SUPABASE_URL=https://abcxyz123456.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
-```
-
-These must not be prefixed with `NEXT_PUBLIC_`.
-
-### GitHub Actions or any backend worker
-
-Use the server-side key here. Never expose it in the browser.
-
-```env
-SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
-```
-
-If you keep older variable naming, map the same values like this:
-
-```env
-SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-```
-
-### GitHub Actions secrets for no-local operation
-
-These are the secrets the batch runner needs when there is no local machine involved:
-
-```env
-SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
-BYBIT_API_KEY=xxxxxxxxxxxxxxxxx
-BYBIT_API_SECRET=xxxxxxxxxxxxxxxxx
-TELEGRAM_BOT_TOKEN=xxxxxxxxxxxxxxxxx
-TELEGRAM_CHAT_ID=xxxxxxxxxxxxxxxxx
-GOOGLE_API_KEY=optional
+SERVICE_MASTER_KEY=replace-with-random-32-plus-char-string
+SERVICE_ADMIN_TOKEN=replace-with-random-operator-password
 ```
 
 Notes:
 
-- `BYBIT_API_KEY` / `BYBIT_API_SECRET` are needed if the engine should pull account and execution data.
-- `TELEGRAM_*` are optional.
-- `GOOGLE_API_KEY` is optional in the current crypto-only path.
-- Repository `Settings > Actions > General > Workflow permissions` should allow `Read and write permissions`
-  because the daily report can commit and push to `main`.
+- `NEXT_PUBLIC_*` values are safe for the browser
+- `SUPABASE_SECRET_KEY`, `SERVICE_MASTER_KEY`, and `SERVICE_ADMIN_TOKEN` must stay server-side only
+- after changing Vercel env vars, redeploy the project
 
-## 3. What is optional
+### GitHub Actions Secrets
 
-These are only needed if you want CLI-driven migrations or admin automation:
+These are required for the batch runner:
 
-- `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_PROJECT_REF`
-- direct Postgres connection string
-- database password
-
-Examples:
-
-```txt
-SUPABASE_PROJECT_REF=abcxyz123456
-SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxxxxxxx
-POSTGRES_URL=postgresql://postgres:[password]@db.abcxyz123456.supabase.co:5432/postgres
+```env
+SUPABASE_URL=https://abcxyz123456.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
+SERVICE_MASTER_KEY=replace-with-random-32-plus-char-string
 ```
 
-## 4. What is not needed now
+Optional:
 
-Not needed for the current crypto-only flow:
+```env
+TELEGRAM_BOT_TOKEN=optional
+TELEGRAM_CHAT_ID=optional
+GOOGLE_API_KEY=optional
+```
 
-- OpenAI API key
-- Google AI Studio key
+Important:
 
-Reason:
+- `BYBIT_API_KEY` and `BYBIT_API_SECRET` no longer need to be stored in GitHub Secrets for the service flow
+- the batch runner will fetch Bybit credentials from Supabase if they were saved through the Vercel console
 
-- no LLM review
-- tuning is based on accumulated trade results and daily/weekly performance
+### GitHub Variables
 
-## 5. Recommended ownership split
+Nothing is required there right now.
 
-### Vercel
+## 4. What the operator does in the service UI
 
-- hosts the dashboard frontend
-- reads from Supabase using the public key
+After Vercel env vars are set and deployed:
 
-### Supabase
+1. Open the Vercel dashboard URL
+2. Go to the `Service control` panel
+3. Enter `SERVICE_ADMIN_TOKEN`
+4. Save the runtime profile
+5. Save Bybit API key and secret
 
-- stores setups, positions, daily pnl, autotune history, heartbeat
-- provides realtime subscriptions
+The Bybit credentials are stored encrypted in Supabase, not in the browser and not in GitHub Secrets.
 
-### GitHub Actions
+## 5. Supabase SQL to run
 
-- runs every 10 minutes for analysis
-- uses the same batch cycle to trigger the daily report and weekly autotune when due
-- writes to Supabase using the server-side key
-- persists engine state/model snapshots into Supabase so the runner does not depend on local files
+Run:
 
-## 6. Fastest path
+- [SUPABASE_CORE_SCHEMA_20260315.sql](D:\AI_Auto\docs\SUPABASE_CORE_SCHEMA_20260315.sql)
 
-If you want the quickest deployment path:
+This schema now includes:
 
-1. Create Supabase project
-2. Run [SUPABASE_CORE_SCHEMA_20260315.sql](D:\AI_Auto\docs\SUPABASE_CORE_SCHEMA_20260315.sql)
-3. Send:
-   - `Project URL`
-   - `Publishable key` or `anon key`
-   - `Secret key` or `service_role key`
-   - `repo`
-   - `branch`
-   - `Vercel project name`
-   - `Auth on/off`
-4. Then the frontend wiring can start
+- runtime tables
+- `engine_state_blobs`
+- `service_secrets`
+- encryption/decryption helper functions:
+  - `upsert_service_secret`
+  - `get_service_secret`
+  - `delete_service_secret`
 
-## 7. Current cloud runner shape
-
-The repo now includes a one-shot batch entrypoint:
-
-- [run_batch_cycle.py](D:\AI_Auto\scripts\run_batch_cycle.py)
-
-And the batch cycle is intended to run on GitHub Actions with:
-
-- checkout
-- Python install
-- `pip install -r requirements.txt`
-- `python scripts/run_batch_cycle.py`
-
-The runner does not start Flask. It runs one cycle, persists state/model into Supabase,
-and exits.
+## 6. GitHub workflow
 
 The workflow file is:
 
 - [.github/workflows/cloud-cycle.yml](D:\AI_Auto\.github\workflows\cloud-cycle.yml)
 
-## 8. Source notes
+It runs:
 
-Official docs to check while setting values:
+- every 10 minutes
+- on manual dispatch
 
-- Supabase API keys
-- Supabase Realtime / Postgres Changes
-- Supabase Auth redirect URLs / Site URL
-- Vercel Git deploy
-- Vercel environment variables
+And executes:
+
+- [run_batch_cycle.py](D:\AI_Auto\scripts\run_batch_cycle.py)
+
+That script now:
+
+- loads runtime config from Supabase
+- loads Bybit credentials from Supabase
+- runs one batch cycle
+- persists state/model snapshots back to Supabase
+
+## 7. Repository permission setting
+
+GitHub repo:
+
+- `Settings`
+- `Actions`
+- `General`
+- `Workflow permissions`
+- `Read and write permissions`
+
+This is needed for the daily report commit/push flow.
+
+## 8. Minimum secure setup
+
+If you want the safest initial rollout:
+
+1. Keep runtime profile on `paper`
+2. Set `ENABLE_LIVE_EXECUTION=false`
+3. Save Bybit credentials only after the service path works end-to-end
+4. Use a dedicated Bybit API key with no withdrawal permission
+
+## 9. Current UI and code entrypoints
+
+- Dashboard page: [page.js](D:\AI_Auto\frontend\app\page.js)
+- Service console UI: [control-console.js](D:\AI_Auto\frontend\app\components\control-console.js)
+- Runtime config helper: [service-control.js](D:\AI_Auto\frontend\lib\service-control.js)
+- Runtime config API: [route.js](D:\AI_Auto\frontend\app\api\service\runtime\route.js)
+- Bybit vault API: [route.js](D:\AI_Auto\frontend\app\api\service\credentials\bybit\route.js)

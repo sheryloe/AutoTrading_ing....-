@@ -130,6 +130,7 @@ body::before {
 .warning-panel p,
 .warning-panel code,
 .error-line,
+.success-line,
 .panel-head span,
 .empty-line,
 .mini-card p,
@@ -202,6 +203,120 @@ body::before {
   font-size: 1.5rem;
 }
 
+.service-panel {
+  margin-top: 18px;
+}
+
+.service-grid,
+.runtime-form {
+  display: grid;
+  gap: 16px;
+}
+
+.service-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.control-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(9, 18, 28, 0.88);
+}
+
+.control-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.control-card h3 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.14rem;
+}
+
+.control-copy,
+.status-line {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.control-form {
+  display: grid;
+  gap: 12px;
+}
+
+.control-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(5, 11, 18, 0.96);
+  font: inherit;
+}
+
+.control-input:focus {
+  outline: none;
+  border-color: rgba(72, 229, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(72, 229, 255, 0.08);
+}
+
+.runtime-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.full-span {
+  grid-column: 1 / -1;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(72, 229, 255, 0.24);
+  border-radius: 999px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(8, 20, 31, 0.98) 0%, rgba(4, 11, 17, 0.98) 100%);
+  font: inherit;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  border-color: rgba(72, 229, 255, 0.44);
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.action-button.ghost {
+  border-color: var(--line-strong);
+}
+
+.success-line {
+  color: var(--green);
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -264,7 +379,9 @@ th {
 
 @media (max-width: 1080px) {
   .stats-grid,
-  .panel-grid.two-up {
+  .panel-grid.two-up,
+  .service-grid,
+  .runtime-form {
     grid-template-columns: 1fr;
   }
 }

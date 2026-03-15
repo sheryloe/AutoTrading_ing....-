@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from "../lib/supabase-admin";
+import ControlConsole from "./components/control-console";
+import { loadServiceControlData } from "../lib/service-control";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +75,7 @@ function StatCard({ label, value, meta, tone = "default" }) {
 }
 
 export default async function HomePage() {
-  const data = await loadDashboardData();
+  const [data, control] = await Promise.all([loadDashboardData(), loadServiceControlData()]);
   const latestDay = data.daily[0]?.day || "-";
   const totalRealized = data.daily.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
   const totalClosedTrades = data.daily.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0);
@@ -91,6 +93,7 @@ export default async function HomePage() {
           </p>
         </div>
         <div className="hero-actions">
+          <a href="#service-control">Service Control</a>
           <a href="#setup-stream">Latest Setups</a>
           <a href="#autotune-state">Autotune State</a>
         </div>
@@ -107,6 +110,22 @@ export default async function HomePage() {
           ))}
         </section>
       ) : null}
+
+      {control.errors?.length ? (
+        <section className="warning-panel">
+          <h2>Service control partially unavailable</h2>
+          {control.errors.map((msg) => (
+            <p key={msg} className="error-line">{msg}</p>
+          ))}
+        </section>
+      ) : null}
+
+      <ControlConsole
+        initialConfig={control.runtimeConfig}
+        runtimeUpdatedAt={control.runtimeUpdatedAt}
+        bybitStatus={control.bybitStatus}
+        writeReady={control.writeReady}
+      />
 
       <section className="stats-grid">
         <StatCard

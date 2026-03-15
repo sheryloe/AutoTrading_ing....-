@@ -36,6 +36,9 @@ class SupabaseSyncClient:
     def _table_url(self, table: str) -> str:
         return f"{self.url}/rest/v1/{str(table).strip()}"
 
+    def _rpc_url(self, fn_name: str) -> str:
+        return f"{self.url}/rest/v1/rpc/{str(fn_name).strip()}"
+
     def upsert_rows(self, table: str, rows: list[dict[str, Any]], *, on_conflict: str) -> dict[str, Any]:
         if not self.enabled:
             return {"ok": False, "error": "disabled"}
@@ -101,6 +104,36 @@ class SupabaseSyncClient:
         if not isinstance(payload, dict):
             payload = {}
         return {"ok": True, "payload": payload, "updated_at": row.get("updated_at")}
+
+    def call_rpc(self, fn_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.enabled:
+            return {"ok": False, "error": "disabled"}
+        resp = self.session.post(
+            self._rpc_url(fn_name),
+            headers=self._headers(),
+            data=json.dumps(dict(payload or {}), ensure_ascii=True, separators=(",", ":")),
+            timeout=self.timeout_seconds,
+        )
+        if not resp.ok:
+            return {"ok": False, "status": resp.status_code, "error": resp.text[:400]}
+        if not resp.text.strip():
+            return {"ok": True, "data": None}
+        try:
+            return {"ok": True, "data": resp.json()}
+        except Exception:
+            return {"ok": False, "status": resp.status_code, "error": "invalid_json"}
+
+    def fetch_service_secret(self, provider: str, passphrase: str) -> dict[str, Any]:
+        result = self.call_rpc(
+            "get_service_secret",
+            {"p_provider": str(provider or "").strip(), "p_passphrase": str(passphrase or "")},
+        )
+        if not result.get("ok"):
+            return result
+        payload = result.get("data")
+        if not isinstance(payload, dict):
+            payload = {}
+        return {"ok": True, "payload": payload}
 
     def replace_open_positions(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not self.enabled:

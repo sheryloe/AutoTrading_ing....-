@@ -46,6 +46,102 @@ create table if not exists public.engine_state_blobs (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.service_secrets (
+  provider text primary key,
+  secret_ciphertext text not null,
+  meta_json jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create or replace function public.upsert_service_secret(
+  p_provider text,
+  p_payload jsonb,
+  p_passphrase text,
+  p_meta jsonb default '{}'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(trim(p_provider), '') = '' then
+    raise exception 'provider_required';
+  end if;
+  if coalesce(trim(p_passphrase), '') = '' then
+    raise exception 'passphrase_required';
+  end if;
+  if p_payload is null then
+    raise exception 'payload_required';
+  end if;
+
+  insert into public.service_secrets (
+    provider,
+    secret_ciphertext,
+    meta_json,
+    updated_at
+  )
+  values (
+    trim(p_provider),
+    encode(pgp_sym_encrypt(p_payload::text, p_passphrase, 'cipher-algo=aes256'), 'base64'),
+    coalesce(p_meta, '{}'::jsonb),
+    timezone('utc', now())
+  )
+  on conflict (provider) do update
+  set
+    secret_ciphertext = excluded.secret_ciphertext,
+    meta_json = excluded.meta_json,
+    updated_at = excluded.updated_at;
+end;
+$$;
+
+create or replace function public.get_service_secret(
+  p_provider text,
+  p_passphrase text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cipher text;
+  v_plain text;
+begin
+  if coalesce(trim(p_provider), '') = '' then
+    raise exception 'provider_required';
+  end if;
+  if coalesce(trim(p_passphrase), '') = '' then
+    raise exception 'passphrase_required';
+  end if;
+
+  select secret_ciphertext
+  into v_cipher
+  from public.service_secrets
+  where provider = trim(p_provider);
+
+  if v_cipher is null then
+    return '{}'::jsonb;
+  end if;
+
+  v_plain := pgp_sym_decrypt(decode(v_cipher, 'base64'), p_passphrase);
+  return coalesce(v_plain::jsonb, '{}'::jsonb);
+end;
+$$;
+
+create or replace function public.delete_service_secret(
+  p_provider text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.service_secrets where provider = trim(coalesce(p_provider, ''));
+end;
+$$;
+
 create table if not exists public.model_runtime_tunes (
   model_id text primary key,
   market text not null default 'crypto',

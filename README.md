@@ -62,20 +62,20 @@ This is the core loop. No narrative review layer is required for it.
 
 ### Current runtime
 
-- `Flask` dashboard and Python trading engine still run together locally or on a persistent host.
-- The current Flask app starts the engine immediately at boot.
+- `Flask` still exists for local diagnostics, but the cloud direction is now a service console plus batch runner split.
+- The batch runner can hydrate runtime config and provider credentials from Supabase before executing.
 - GitHub Pages is used for the public-facing project landing.
 
 ### Target cloud split
 
-- `Vercel`: frontend dashboard only
-- `Supabase`: setups, positions, daily PnL, autotune history, heartbeat
+- `Vercel`: dashboard + operator console
+- `Supabase`: setups, positions, daily PnL, autotune history, heartbeat, encrypted provider vault, runtime config blob
 - `GitHub Actions`: `10m` analysis, daily report commit, weekly autotune
-- `Python engine`: batch-oriented execution layer
+- `Python engine`: batch-oriented execution layer that fetches config and keys from Supabase at runtime
 
 Useful files:
 
-- [Supabase schema](docs/SUPABASE_SCHEMA_20260315.sql)
+- [Core Supabase schema](docs/SUPABASE_CORE_SCHEMA_20260315.sql)
 - [Vercel and Supabase setup checklist](docs/VERCEL_SUPABASE_SETUP_20260315.md)
 - [Strategy refactor notes](docs/strategy_refactor_20260308.md)
 
