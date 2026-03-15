@@ -88,7 +88,8 @@ export default async function HomePage() {
           <p className="eyebrow">AI_AUTO / VERCEL FRONTEND / SUPABASE READ MODEL</p>
           <h1>Execution dashboard for planner-based crypto ops</h1>
           <p className="hero-copy">
-            Top-5 majors, 10-minute setups, daily model PnL, and weekly autotune status.
+            Top-5 majors, 10-minute setups, daily model PnL, weekly autotune status,
+            and a service console for Bybit, Binance, and CoinGecko provider vaulting.
             This frontend is meant for Vercel. The Python engine stays outside Vercel.
           </p>
         </div>
@@ -123,7 +124,7 @@ export default async function HomePage() {
       <ControlConsole
         initialConfig={control.runtimeConfig}
         runtimeUpdatedAt={control.runtimeUpdatedAt}
-        bybitStatus={control.bybitStatus}
+        providerStatuses={control.providerStatuses}
         writeReady={control.writeReady}
       />
 

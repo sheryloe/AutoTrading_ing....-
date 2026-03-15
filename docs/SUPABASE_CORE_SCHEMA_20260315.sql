@@ -53,6 +53,9 @@ create table if not exists public.service_secrets (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+comment on table public.service_secrets is
+  'Encrypted provider vault for service console v1. Supported provider ids: bybit, binance, coingecko.';
+
 create or replace function public.upsert_service_secret(
   p_provider text,
   p_payload jsonb,

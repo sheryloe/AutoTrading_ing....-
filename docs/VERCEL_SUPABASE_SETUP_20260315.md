@@ -1,102 +1,145 @@
-# Vercel + Supabase Service Console Setup
+# Vercel + Supabase Service Console Operator Guide
 
-This repo now supports a service-style flow:
+This repo now follows a service-console pattern instead of a `store all exchange keys in GitHub Secrets` pattern.
 
-- Vercel hosts the dashboard and the operator console
-- the operator console stores exchange keys encrypted in Supabase
-- GitHub Actions runs the batch engine every 10 minutes
-- the batch runner reads encrypted provider keys from Supabase at runtime
-- provider keys do not need to live in GitHub Secrets anymore
+## 1. What changed
 
-## 1. Core architecture
+The operator flow is now:
 
-### Vercel
+1. `Vercel` hosts the dashboard and service console.
+2. You enter provider keys in the service console.
+3. Vercel encrypts those provider keys into `Supabase`.
+4. `GitHub Actions` reads the encrypted provider keys from Supabase at runtime.
+5. The Python batch runner uses the hydrated credentials for data access and future execution readiness.
 
-- serves the dashboard
-- serves the operator console UI
-- accepts the admin token and provider keys through a server route
-- encrypts provider keys into Supabase using `SERVICE_MASTER_KEY`
+This means:
 
-### Supabase
+- `Bybit`, `Binance`, and `CoinGecko` keys belong in the service console.
+- `GitHub Secrets` only keep shared infrastructure secrets.
+- Saving `Bybit` keys is not the same as enabling live trading.
 
-- stores runtime tables like setups, positions, pnl, heartbeat
-- stores encrypted provider credentials in `service_secrets`
-- stores runtime profile overrides in `engine_state_blobs` with key `service_runtime_config`
+## 2. Provider split
 
-### GitHub Actions
+### Bybit
 
-- runs `python scripts/run_batch_cycle.py`
-- loads runtime profile from Supabase
-- decrypts Bybit credentials from Supabase using `SERVICE_MASTER_KEY`
-- writes snapshots back to Supabase
+Use for:
 
-## 2. What values are required
+- the single execution account in service mode v1
+- future live crypto execution routing
+- account-specific exchange operations
 
-### Supabase project values
+Important:
 
-- `Project URL`
-- `Publishable key`
-- `Secret key`
+- `Bybit` credentials being stored only means the execution provider is `configured`
+- it does **not** mean the engine is armed for live trading
 
-Example:
+### Binance
 
-```txt
-Project URL
-https://abcxyz123456.supabase.co
+Use for:
 
-Publishable key
-sb_publishable_xxxxxxxxxxxxxxxxx
+- realtime quote and market-data reads for planner models
+- preferred price source in the default source order
 
-Secret key
-sb_secret_xxxxxxxxxxxxxxxxx
+### CoinGecko
+
+Use for:
+
+- market-cap and universe data
+- top-market source in service mode v1
+
+## 3. Execution target model
+
+Service mode v1 treats "wallet selection" as **execution target selection**.
+
+Available targets:
+
+- `paper`
+- `bybit-live`
+
+### `paper`
+
+- safest default
+- provider keys may still be stored
+- crypto cycles remain non-live
+
+### `bybit-live`
+
+- means you are selecting the `Bybit` execution account as the future live target
+- still does **not** enable live trading by itself
+
+## 4. 2-step live safety model
+
+Live eligibility only becomes true when **all** of these are true:
+
+- `EXECUTION_TARGET == bybit-live`
+- `TRADE_MODE == live` (derived from execution target)
+- `ENABLE_LIVE_EXECUTION == true`
+- `LIVE_ENABLE_CRYPTO == true`
+- `LIVE_EXECUTION_ARMED == true`
+- valid `Bybit` credentials exist in the provider vault
+
+And even then, this phase still keeps the current crypto execution path in demo mode. The UI will say the system is `configured for future live execution`, not that orders are already active.
+
+## 5. Where each secret goes
+
+### 5-1. Vercel Environment Variables
+
+Path:
+
+1. `Vercel`
+2. project
+3. `Settings`
+4. `Environment Variables`
+
+Add these values:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxx
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxx
+SERVICE_MASTER_KEY=replace-with-long-random-string
+SERVICE_ADMIN_TOKEN=replace-with-long-random-string
 ```
 
-### Service console values
+### What each Vercel variable does
 
+- `NEXT_PUBLIC_SUPABASE_URL`
+  - browser-safe
+  - frontend Supabase URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - browser-safe
+  - frontend publishable key
+- `SUPABASE_URL`
+  - server-side read/write access target for Vercel routes
+- `SUPABASE_SECRET_KEY`
+  - server-side Supabase secret key
 - `SERVICE_MASTER_KEY`
+  - encrypts and decrypts provider vault payloads
 - `SERVICE_ADMIN_TOKEN`
+  - operator token required to save or clear service-console values
 
-Generate them as random long strings.
+### Important
 
-Example:
+- anything starting with `NEXT_PUBLIC_` is exposed to the browser
+- do **not** put `SUPABASE_SECRET_KEY`, `SERVICE_MASTER_KEY`, or `SERVICE_ADMIN_TOKEN` under `NEXT_PUBLIC_*`
 
-```txt
-SERVICE_MASTER_KEY
-replace-with-random-32-plus-char-string
+## 5-2. GitHub Actions Secrets
 
-SERVICE_ADMIN_TOKEN
-replace-with-random-operator-password
-```
+Path:
 
-## 3. What goes where
+1. GitHub repo
+2. `Settings`
+3. `Secrets and variables`
+4. `Actions`
+5. `Secrets`
 
-### Vercel Environment Variables
-
-These are required for the service console and dashboard:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://abcxyz123456.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxx
-SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
-SERVICE_MASTER_KEY=replace-with-random-32-plus-char-string
-SERVICE_ADMIN_TOKEN=replace-with-random-operator-password
-```
-
-Notes:
-
-- `NEXT_PUBLIC_*` values are safe for the browser
-- `SUPABASE_SECRET_KEY`, `SERVICE_MASTER_KEY`, and `SERVICE_ADMIN_TOKEN` must stay server-side only
-- after changing Vercel env vars, redeploy the project
-
-### GitHub Actions Secrets
-
-These are required for the batch runner:
+Only these are required for service mode:
 
 ```env
-SUPABASE_URL=https://abcxyz123456.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxxxxxxxxxx
-SERVICE_MASTER_KEY=replace-with-random-32-plus-char-string
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_xxxxxxxxx
+SERVICE_MASTER_KEY=replace-with-the-same-master-key-used-in-vercel
 ```
 
 Optional:
@@ -107,90 +150,135 @@ TELEGRAM_CHAT_ID=optional
 GOOGLE_API_KEY=optional
 ```
 
-Important:
+### Important
 
-- `BYBIT_API_KEY` and `BYBIT_API_SECRET` no longer need to be stored in GitHub Secrets for the service flow
-- the batch runner will fetch Bybit credentials from Supabase if they were saved through the Vercel console
+Do **not** store these in GitHub Secrets for the service path:
 
-### GitHub Variables
+- `BYBIT_API_KEY`
+- `BYBIT_API_SECRET`
+- `BINANCE_API_KEY`
+- `BINANCE_API_SECRET`
+- `COINGECKO_API_KEY`
 
-Nothing is required there right now.
+Those now belong in the Vercel service console.
 
-## 4. What the operator does in the service UI
+## 6. Supabase schema to run
 
-After Vercel env vars are set and deployed:
+Run this file in `Supabase > SQL Editor`:
 
-1. Open the Vercel dashboard URL
-2. Go to the `Service control` panel
-3. Enter `SERVICE_ADMIN_TOKEN`
-4. Save the runtime profile
-5. Save Bybit API key and secret
+- [SUPABASE_CORE_SCHEMA_20260315.sql](./SUPABASE_CORE_SCHEMA_20260315.sql)
 
-The Bybit credentials are stored encrypted in Supabase, not in the browser and not in GitHub Secrets.
+It creates:
 
-## 5. Supabase SQL to run
-
-Run:
-
-- [SUPABASE_CORE_SCHEMA_20260315.sql](D:\AI_Auto\docs\SUPABASE_CORE_SCHEMA_20260315.sql)
-
-This schema now includes:
-
-- runtime tables
+- `instruments`
+- `engine_heartbeat`
 - `engine_state_blobs`
 - `service_secrets`
-- encryption/decryption helper functions:
-  - `upsert_service_secret`
-  - `get_service_secret`
-  - `delete_service_secret`
+- `model_runtime_tunes`
+- `model_setups`
+- `positions`
+- `daily_model_pnl`
 
-## 6. GitHub workflow
+It also creates encrypted provider-vault RPC helpers:
 
-The workflow file is:
+- `upsert_service_secret`
+- `get_service_secret`
+- `delete_service_secret`
 
-- [.github/workflows/cloud-cycle.yml](D:\AI_Auto\.github\workflows\cloud-cycle.yml)
+Supported provider ids in the service console are:
 
-It runs:
+- `bybit`
+- `binance`
+- `coingecko`
 
-- every 10 minutes
-- on manual dispatch
+## 7. Service console workflow
 
-And executes:
+After Vercel env vars are saved and the project is redeployed:
 
-- [run_batch_cycle.py](D:\AI_Auto\scripts\run_batch_cycle.py)
+1. open the Vercel app URL
+2. go to `Service control`
+3. enter `SERVICE_ADMIN_TOKEN`
+4. choose an `Execution target`
+5. save the `Runtime profile`
+6. save `Bybit` credentials if you want future live execution readiness
+7. save `Binance` credentials if you want the preferred realtime data source configured
+8. save `CoinGecko` API key for universe data
 
-That script now:
+### Recommended first rollout
 
-- loads runtime config from Supabase
-- loads Bybit credentials from Supabase
-- runs one batch cycle
-- persists state/model snapshots back to Supabase
+1. `Execution target = paper`
+2. `ENABLE_AUTOTRADE = true`
+3. `ENABLE_LIVE_EXECUTION = false`
+4. `LIVE_ENABLE_CRYPTO = false`
+5. `LIVE_EXECUTION_ARMED = false`
+6. save all provider keys only after the dashboard is confirmed healthy
 
-## 7. Repository permission setting
+## 8. Deployment and redeploy order
 
-GitHub repo:
+### First deployment
 
-- `Settings`
-- `Actions`
-- `General`
-- `Workflow permissions`
-- `Read and write permissions`
+1. push repo changes to GitHub
+2. run the Supabase SQL schema
+3. create or update the Vercel project
+4. set Vercel env vars
+5. deploy or redeploy Vercel
+6. add the GitHub Actions secrets
+7. set `GitHub > Settings > Actions > General > Workflow permissions > Read and write permissions`
+8. run `cloud-cycle` manually once
 
-This is needed for the daily report commit/push flow.
+### When env vars change
 
-## 8. Minimum secure setup
+1. update Vercel env vars
+2. redeploy Vercel
+3. if `SERVICE_MASTER_KEY` changes, update the same value in GitHub Secrets too
 
-If you want the safest initial rollout:
+### When provider keys change
 
-1. Keep runtime profile on `paper`
-2. Set `ENABLE_LIVE_EXECUTION=false`
-3. Save Bybit credentials only after the service path works end-to-end
-4. Use a dedicated Bybit API key with no withdrawal permission
+1. open the Vercel service console
+2. enter the admin token
+3. save or clear the provider card
+4. no GitHub secret change is needed
 
-## 9. Current UI and code entrypoints
+## 9. Batch runner behavior
 
-- Dashboard page: [page.js](D:\AI_Auto\frontend\app\page.js)
-- Service console UI: [control-console.js](D:\AI_Auto\frontend\app\components\control-console.js)
-- Runtime config helper: [service-control.js](D:\AI_Auto\frontend\lib\service-control.js)
-- Runtime config API: [route.js](D:\AI_Auto\frontend\app\api\service\runtime\route.js)
-- Bybit vault API: [route.js](D:\AI_Auto\frontend\app\api\service\credentials\bybit\route.js)
+Workflow file:
+
+- [.github/workflows/cloud-cycle.yml](../.github/workflows/cloud-cycle.yml)
+
+Batch entrypoint:
+
+- [scripts/run_batch_cycle.py](../scripts/run_batch_cycle.py)
+
+What the runner does:
+
+1. loads runtime config from `engine_state_blobs` key `service_runtime_config`
+2. decrypts provider vault entries from `service_secrets`
+3. hydrates `Bybit`, `Binance`, and `CoinGecko` credentials into runtime env
+4. runs one Python engine cycle
+5. syncs heartbeat, setups, positions, and PnL back to Supabase
+
+## 10. Current limitation in this phase
+
+This refactor prepares the service model, vault, safety semantics, and deployment flow.
+
+It does **not** yet switch the crypto engine into real Bybit market-order execution.
+
+So even if the service console shows:
+
+- `configured`
+- `armed`
+- `bybit-live`
+
+that still means:
+
+- `future live execution target is prepared`
+- not `real crypto orders are already firing`
+
+## 11. Main repo entrypoints
+
+- Dashboard page: [frontend/app/page.js](../frontend/app/page.js)
+- Service console UI: [frontend/app/components/control-console.js](../frontend/app/components/control-console.js)
+- Provider/runtime helpers: [frontend/lib/service-control.js](../frontend/lib/service-control.js)
+- Provider definitions: [frontend/lib/service-provider.js](../frontend/lib/service-provider.js)
+- Generic provider API route: [frontend/app/api/service/credentials/[provider]/route.js](../frontend/app/api/service/credentials/%5Bprovider%5D/route.js)
+- Runtime API route: [frontend/app/api/service/runtime/route.js](../frontend/app/api/service/runtime/route.js)

@@ -1,6 +1,6 @@
 ﻿# AI_Auto
 
-Execution-first crypto trading lab focused on planner-based entries, daily PnL persistence, and weekly autotune.
+Execution-first crypto trading lab focused on planner-based entries, provider-vaulted service control, daily PnL persistence, and weekly autotune.
 
 ![AI_Auto landing preview](docs/assets/screenshots/auto-trading-cover.png)
 
@@ -27,6 +27,7 @@ This repository is not trying to look like a generic AI-generated trading demo. 
 | Leverage band | `15x ~ 30x` by model |
 | Models | `A/B/C/D` planner models |
 | Review layer | No LLM review |
+| Service console | Bybit + Binance + CoinGecko |
 | Learning loop | Daily PnL + weekly autotune |
 | Reports | `reports/daily_pnl/*.json`, `*.csv`, `summary.csv` |
 
@@ -73,10 +74,24 @@ This is the core loop. No narrative review layer is required for it.
 - `GitHub Actions`: `10m` analysis, daily report commit, weekly autotune
 - `Python engine`: batch-oriented execution layer that fetches config and keys from Supabase at runtime
 
+### Service console scope
+
+- `Bybit`: single execution account in service mode v1
+- `Binance`: preferred realtime quote source for planner models
+- `CoinGecko`: universe and market-cap source
+- `Execution target`: `paper` or `bybit-live`
+- `Live safety`: explicit two-step arm, separate from credential storage
+
+Important:
+
+- saving `Bybit` keys only marks the execution provider as configured
+- it does not auto-enable real crypto orders
+- this phase still keeps the current crypto execution path in demo mode while the service model is being hardened
+
 Useful files:
 
 - [Core Supabase schema](docs/SUPABASE_CORE_SCHEMA_20260315.sql)
-- [Vercel and Supabase setup checklist](docs/VERCEL_SUPABASE_SETUP_20260315.md)
+- [Vercel and Supabase operator guide](docs/VERCEL_SUPABASE_SETUP_20260315.md)
 - [Strategy refactor notes](docs/strategy_refactor_20260308.md)
 
 ## Quick Start
@@ -121,6 +136,9 @@ http://localhost:8099
 - `runtime_settings.local.json` and `.env` are local runtime files and should stay out of git.
 - `publishable` Supabase keys can be used in the frontend.
 - `secret` or `service_role` keys must stay server-side only.
+- provider exchange keys now belong in the Vercel service console, not in GitHub Secrets, for the service path.
+- `SERVICE_MASTER_KEY` must match between Vercel and GitHub Actions because Vercel encrypts and Actions decrypts the same provider vault rows.
+- `SERVICE_ADMIN_TOKEN` protects writes to the service console.
 - The current design direction assumes no LLM review dependency for the core trading loop.
 
 ## GitHub Pages

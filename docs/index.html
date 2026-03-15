@@ -67,7 +67,7 @@
       <main id="top">
         <section class="hero">
           <div class="hero-copy">
-            <p class="eyebrow">TOP 5 MAJORS / 10M CYCLE / WEEKLY AUTOTUNE</p>
+            <p class="eyebrow">TOP 5 MAJORS / SERVICE CONSOLE / 10M CYCLE / WEEKLY AUTOTUNE</p>
             <h1>
               Planner-based entries for
               <span>execution-first crypto ops</span>
@@ -75,11 +75,12 @@
             <p class="hero-body">
               AI_Auto is being reshaped into a tighter trading system: no meme flow, no LLM review gate,
               and no generic showcase layout. The focus is on four planner models that produce entry, stop-loss,
-              and target levels for a fixed major-coin universe, then learn from daily reports and weekly retunes.
+              and target levels for a fixed major-coin universe, while a service console manages Bybit, Binance,
+              and CoinGecko credentials through an encrypted Supabase vault.
             </p>
             <div class="hero-actions">
               <a class="button button-primary" href="./SUPABASE_CORE_SCHEMA_20260315.sql">Supabase Schema</a>
-              <a class="button button-secondary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Vercel + Supabase Setup</a>
+              <a class="button button-secondary" href="./VERCEL_SUPABASE_SETUP_20260315.md">Service Console Guide</a>
             </div>
             <ul class="chip-row">
               <li>BTC / ETH / SOL / XRP / BNB</li>
@@ -123,8 +124,8 @@
               <img src="assets/screenshots/auto-trading-dashboard.png" alt="AI_Auto dashboard screenshot" loading="eager">
               <figcaption>
                 <span class="caption-kicker">Current dashboard runtime</span>
-                <strong>Flask runtime today, Vercel frontend split next</strong>
-                <p>The engine still lives in Python, but the presentation layer is being rebuilt into a cleaner deployment split.</p>
+                <strong>Vercel console + Python batch runner</strong>
+                <p>The engine still lives in Python, but the operating surface is now being rebuilt around a Vercel service console and Supabase vault.</p>
               </figcaption>
             </figure>
 
@@ -191,7 +192,7 @@
             <article class="surface-card">
               <label>Storage target</label>
               <strong>Supabase</strong>
-              <p>Setups, positions, daily pnl, tune history, heartbeat.</p>
+              <p>Setups, positions, daily pnl, tune history, heartbeat, runtime config blob, provider vault.</p>
             </article>
           </div>
         </section>
@@ -293,7 +294,7 @@
             <article class="deploy-card">
               <span>Supabase</span>
               <strong>Source of truth</strong>
-              <p>Setups, positions, daily pnl, autotune history, heartbeat, report commit state.</p>
+              <p>Setups, positions, daily pnl, autotune history, heartbeat, encrypted provider vault, and report commit state.</p>
             </article>
             <article class="deploy-card">
               <span>GitHub Actions</span>
@@ -321,8 +322,8 @@
             </a>
             <a class="resource-card" href="./VERCEL_SUPABASE_SETUP_20260315.md">
               <span>Setup</span>
-              <strong>Vercel + Supabase checklist</strong>
-              <p>Required keys, env mapping, auth notes, and deployment split.</p>
+              <strong>Service console operator guide</strong>
+              <p>Provider key purpose, env mapping, execution target flow, and redeploy sequence.</p>
             </a>
             <a class="resource-card" href="./strategy_refactor_20260308.md">
               <span>Notes</span>
@@ -343,12 +344,12 @@
               <p>No. The current direction is to split the frontend from the Python runtime. Vercel should host the frontend, not the always-on engine loop.</p>
             </details>
             <details>
-              <summary>Do I need an OpenAI or Gemini key for the core loop?</summary>
-              <p>No. The current execution direction is daily-result tracking and weekly parameter tuning, not LLM review.</p>
+              <summary>Do provider keys still belong in GitHub Secrets?</summary>
+              <p>No for service mode. Bybit, Binance, and CoinGecko keys are intended to be saved in the Vercel service console and encrypted into Supabase.</p>
             </details>
             <details>
-              <summary>Why is GitHub Pages styled differently from the in-app dashboard?</summary>
-              <p>Because the project landing should communicate the operating profile and deployment shape, not mirror the Flask app UI one-to-one.</p>
+              <summary>Does saving Bybit keys mean live orders are running?</summary>
+              <p>No. Saving Bybit keys only marks the execution provider as configured. Live intent is a separate target plus arm flow, and the current crypto path is still prepared for future live routing rather than active live order placement.</p>
             </details>
           </div>
         </section>

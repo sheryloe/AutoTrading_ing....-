@@ -15,6 +15,35 @@ from src.engine import TradingEngine
 from src.supabase_sync import SupabaseSyncClient
 
 
+SERVICE_RUNTIME_BLOB_KEY = "service_runtime_config"
+PROVIDER_ENV_MAP = {
+    "bybit": {
+        "api_key": "BYBIT_API_KEY",
+        "api_secret": "BYBIT_API_SECRET",
+    },
+    "binance": {
+        "api_key": "BINANCE_API_KEY",
+        "api_secret": "BINANCE_API_SECRET",
+    },
+    "coingecko": {
+        "api_key": "COINGECKO_API_KEY",
+    },
+}
+
+
+def _hydrate_provider_secrets(client: SupabaseSyncClient, master_key: str) -> None:
+    for provider, env_map in PROVIDER_ENV_MAP.items():
+        result = client.fetch_service_secret(provider, master_key)
+        payload = result.get("payload") if bool(result.get("ok")) else None
+        if not isinstance(payload, dict):
+            continue
+        for payload_key, env_name in env_map.items():
+            current = os.environ.get(env_name) or ""
+            value = str(payload.get(payload_key) or current)
+            if value:
+                os.environ[env_name] = value
+
+
 def _hydrate_runtime_from_supabase() -> None:
     url = str(os.environ.get("SUPABASE_URL") or "").strip()
     secret_key = str(
@@ -29,7 +58,7 @@ def _hydrate_runtime_from_supabase() -> None:
     if not client.enabled:
         return
 
-    runtime_result = client.fetch_blob("service_runtime_config")
+    runtime_result = client.fetch_blob(SERVICE_RUNTIME_BLOB_KEY)
     runtime_payload = runtime_result.get("payload") if bool(runtime_result.get("ok")) else None
     if isinstance(runtime_payload, dict) and runtime_payload:
         runtime_path = Path(str(os.environ.get("RUNTIME_SETTINGS_FILE") or "runtime_settings.json"))
@@ -37,13 +66,7 @@ def _hydrate_runtime_from_supabase() -> None:
 
     master_key = str(os.environ.get("SERVICE_MASTER_KEY") or "").strip()
     if master_key:
-        bybit_result = client.fetch_service_secret("bybit", master_key)
-        bybit_payload = bybit_result.get("payload") if bool(bybit_result.get("ok")) else None
-        if isinstance(bybit_payload, dict):
-            os.environ["BYBIT_API_KEY"] = str(bybit_payload.get("api_key") or os.environ.get("BYBIT_API_KEY") or "")
-            os.environ["BYBIT_API_SECRET"] = str(
-                bybit_payload.get("api_secret") or os.environ.get("BYBIT_API_SECRET") or ""
-            )
+        _hydrate_provider_secrets(client, master_key)
 
 
 def main() -> int:
