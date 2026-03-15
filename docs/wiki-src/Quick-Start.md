@@ -1,0 +1,65 @@
+# 빠른 시작
+
+이 페이지는 AI_Auto를 새 환경에서 다시 붙일 때 가장 먼저 확인해야 하는 순서만 짧게 정리한 문서입니다.
+
+## 1. Supabase 준비
+
+1. Supabase 프로젝트 생성
+2. SQL Editor에서 코어 스키마 실행
+3. `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` 확보
+
+관련 파일:
+- 저장소의 `docs/SUPABASE_CORE_SCHEMA_20260315.sql`
+
+## 2. Vercel 준비
+
+필수 환경 변수:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `SERVICE_MASTER_KEY`
+- `SERVICE_ADMIN_TOKEN`
+
+배포 후 `/settings`에서 다음을 저장합니다.
+
+- runtime profile
+- execution target
+- intrabar 충돌 규칙
+- provider 자격증명
+
+## 3. GitHub Actions 준비
+
+Actions secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `SERVICE_MASTER_KEY`
+
+워크플로우 권한:
+
+- `Read and write permissions`
+
+## 4. Service control 저장
+
+설정 화면 `/settings`에서 아래 순서로 저장합니다.
+
+1. 관리자 토큰 입력
+2. runtime profile 저장
+3. Bybit / Binance / CoinGecko provider 저장
+4. 필요 시 하드 리셋 실행
+
+## 5. 첫 배치 확인
+
+- `cloud-cycle` 수동 실행
+- Supabase `engine_heartbeat` 갱신 확인
+- `/models`, `/positions` 화면 데이터 확인
+
+## 권장 기본값
+
+- execution target: `paper`
+- 분석 주기: `480초`
+- autotune 주기: `168시간`
+- 진입 비중: `0.10 ~ 0.30`
+- 모델별 데모 시드: `10000`
