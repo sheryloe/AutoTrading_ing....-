@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+
+const ADMIN_TOKEN_STORAGE_KEY = "ai_auto_service_admin_token";
 
 const PROVIDERS = [
   {
@@ -9,7 +11,7 @@ const PROVIDERS = [
     label: "Bybit",
     role: "실행 계정",
     description:
-      "실제 거래소 연결용 자격증명입니다. 키를 저장하는 것만으로는 live가 켜지지 않고 execution target과 arm 단계가 따로 필요합니다.",
+      "실제 거래 실행용 계정입니다. 키를 저장해도 바로 라이브 주문이 열리지는 않고, execution target과 arm 단계를 별도로 통과해야 합니다.",
     requiresSecret: true,
     keyLabel: "Bybit API Key",
     secretLabel: "Bybit API Secret",
@@ -18,7 +20,7 @@ const PROVIDERS = [
     id: "binance",
     label: "Binance",
     role: "실시간 시세 소스",
-    description: "상위 코인 가격 흐름과 단기 캔들 판단에 쓰는 실시간 데이터 소스입니다.",
+    description: "Top 5 메이저 코인의 가격과 1분봉 intrabar 판정에 우선으로 쓰는 데이터 소스입니다.",
     requiresSecret: true,
     keyLabel: "Binance API Key",
     secretLabel: "Binance API Secret",
@@ -26,8 +28,8 @@ const PROVIDERS = [
   {
     id: "coingecko",
     label: "CoinGecko",
-    role: "유니버스/메타 소스",
-    description: "시총, 코인 메타 정보, 보조 참조 데이터를 보강하는 소스입니다.",
+    role: "유니버스 / 메타 소스",
+    description: "시총, 코인 메타 정보, 보조 참조 데이터에 사용합니다.",
     requiresSecret: false,
     keyLabel: "CoinGecko API Key",
     secretLabel: "",
@@ -44,6 +46,17 @@ function providerInitialState() {
     binance: { apiKey: "", apiSecret: "" },
     coingecko: { apiKey: "", apiSecret: "" },
   };
+}
+
+function friendlyError(error) {
+  const message = error instanceof Error ? error.message : String(error || "unknown_error");
+  if (message === "unauthorized") {
+    return "관리자 토큰이 비어 있거나 맞지 않습니다. 토큰을 다시 확인해 주세요.";
+  }
+  if (message === "provider_required") {
+    return "provider 정보가 비어 있습니다.";
+  }
+  return message;
 }
 
 export default function ControlConsole({ initialConfig, runtimeUpdatedAt, providerStatuses, writeReady }) {
@@ -77,6 +90,27 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
   const [runtimeSaving, setRuntimeSaving] = useState(false);
   const [providerSaving, setProviderSaving] = useState({});
 
+  const hasAdminToken = adminToken.trim().length > 0;
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+      if (saved) {
+        setAdminToken(saved);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (adminToken.trim()) {
+        window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, adminToken.trim());
+      } else {
+        window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+      }
+    } catch {}
+  }, [adminToken]);
+
   const liveSummary = useMemo(() => {
     const bybitConfigured = Boolean(providerStatuses?.bybit?.configured);
     const target = config.executionTarget;
@@ -84,7 +118,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     const armed = config.liveExecutionArmed === "true" && bybitConfigured;
 
     if (target === "paper") {
-      return "현재는 paper 실행 모드입니다. Bybit 키를 저장해도 데모 포지션/PnL만 관리하고 실주문은 열리지 않습니다.";
+      return "현재는 paper 실행 모드입니다. Bybit 키를 저장해도 데모 포지션과 PnL만 관리하고 실주문은 열리지 않습니다.";
     }
     if (!bybitConfigured) {
       return "bybit-live가 선택되어 있지만 Bybit 실행 키가 아직 비어 있습니다.";
@@ -95,7 +129,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     if (!armed) {
       return "live 실행 조건은 거의 준비됐지만 arm 단계가 꺼져 있어서 future live 준비 상태로만 유지됩니다.";
     }
-    return "future live execution 준비 상태입니다. 현재 빌드는 crypto 실주문을 바로 켜지 않고, 먼저 설정/가드 흐름을 고정합니다.";
+    return "future live execution 준비 상태입니다. 현재 빌드는 crypto 실주문을 바로 켜지 않고, 먼저 설정과 가드를 고정하는 단계입니다.";
   }, [config, providerStatuses]);
 
   const statusBadges = useMemo(() => {
@@ -163,7 +197,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 8분 배치부터 새 규칙이 반영됩니다.");
       router.refresh();
     } catch (error) {
-      setRuntimeError(error instanceof Error ? error.message : "runtime_save_failed");
+      setRuntimeError(friendlyError(error));
     } finally {
       setRuntimeSaving(false);
     }
@@ -202,7 +236,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     } catch (error) {
       setProviderErrors((prev) => ({
         ...prev,
-        [provider]: error instanceof Error ? error.message : "provider_save_failed",
+        [provider]: friendlyError(error),
       }));
     } finally {
       setProviderSaving((prev) => ({ ...prev, [provider]: false }));
@@ -233,7 +267,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     } catch (error) {
       setProviderErrors((prev) => ({
         ...prev,
-        [provider]: error instanceof Error ? error.message : "provider_delete_failed",
+        [provider]: friendlyError(error),
       }));
     } finally {
       setProviderSaving((prev) => ({ ...prev, [provider]: false }));
@@ -254,7 +288,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
         <section className="control-card">
           <h3>운영자 토큰</h3>
           <p className="control-copy">
-            이 토큰은 설정 저장 시점에만 검증합니다. 브라우저에 별도로 저장하지 않고, 서비스 운영자만 설정을 바꿀 수 있게 막는 용도입니다.
+            이 토큰은 설정 저장 시점에만 검증합니다. 이 브라우저에만 로컬로 유지해서, provider 저장 뒤 새로고침이 일어나도 다시 입력하지 않도록 했습니다.
           </p>
           <label className="field-label" htmlFor="admin-token">
             관리자 토큰
@@ -267,11 +301,15 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             onChange={(event) => setAdminToken(event.target.value)}
             placeholder="SERVICE_ADMIN_TOKEN 입력"
           />
+          <p className="status-line">
+            현재 상태: <strong>{hasAdminToken ? "토큰 로드됨" : "토큰 필요"}</strong>
+          </p>
           {!writeReady ? (
             <p className="error-line">
-              먼저 Vercel에 SERVICE_ADMIN_TOKEN, SERVICE_MASTER_KEY, SUPABASE_SECRET_KEY를 모두 넣어야 저장이 활성화됩니다.
+              먼저 Vercel에 `SERVICE_ADMIN_TOKEN`, `SERVICE_MASTER_KEY`, `SUPABASE_SECRET_KEY`를 모두 넣어야 합니다.
             </p>
           ) : null}
+          {writeReady && !hasAdminToken ? <p className="error-line">저장 전에 관리자 토큰을 한 번 입력해 주세요.</p> : null}
         </section>
 
         <section className="control-card execution-card">
@@ -280,7 +318,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             <span>{config.executionTarget}</span>
           </div>
           <p className="control-copy">
-            v1에서는 지갑 선택을 execution target으로 해석합니다. Bybit 키를 저장해도 live가 바로 켜지지 않도록 arm 단계를 별도로 분리해뒀습니다.
+            v1에서는 지갑 선택 대신 execution target으로 해석합니다. Bybit 키를 저장해도 라이브 주문은 자동으로 켜지지 않습니다.
           </p>
           <div className="badge-row">
             <span className={`status-badge ${statusBadges.safe ? "active safe" : "inactive"}`}>safe</span>
@@ -296,7 +334,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
               마지막 업데이트: <strong>{providerStatuses?.bybit?.updated_at || "-"}</strong>
             </p>
             <p className="status-line">
-              future live 준비: <strong>{statusBadges.futureLiveEligible ? "yes" : "no"}</strong>
+              현재 캔들 충돌 규칙: <strong>{config.intrabarConflictPolicy}</strong>
             </p>
           </div>
         </section>
@@ -305,10 +343,10 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       <section className="control-card provider-section">
         <div className="control-head">
           <h3>Provider 자격증명</h3>
-          <span>거래/데이터 키 분리</span>
+          <span>거래 / 데이터 소스 분리</span>
         </div>
         <p className="control-copy">
-          거래소와 데이터 API 키는 GitHub Secrets가 아니라 여기서 저장합니다. 저장된 키는 Supabase 암호화 vault에 들어가고, 배치 러너는 실행 직전에 읽어서 씁니다.
+          거래소 키는 GitHub secrets에 넣지 않고 여기서 저장합니다. 저장된 값은 Supabase 암호화 vault에 들어가고, 배치 실행 직전에만 복호화됩니다.
         </p>
         <div className="provider-grid">
           {PROVIDERS.map((provider) => {
@@ -360,13 +398,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
                     </>
                   ) : null}
                   <div className="button-row">
-                    <button className="action-button" type="submit" disabled={providerSaving[provider.id] || !writeReady}>
+                    <button className="action-button" type="submit" disabled={providerSaving[provider.id] || !writeReady || !hasAdminToken}>
                       {providerSaving[provider.id] ? "저장 중..." : `${provider.label} 저장`}
                     </button>
                     <button
                       className="action-button ghost"
                       type="button"
-                      disabled={providerSaving[provider.id] || !writeReady}
+                      disabled={providerSaving[provider.id] || !writeReady || !hasAdminToken}
                       onClick={() => clearProvider(provider.id)}
                     >
                       비우기
@@ -384,10 +422,10 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       <section className="control-card runtime-card">
         <div className="control-head">
           <h3>Runtime profile</h3>
-          <span>{runtimeUpdatedAt ? "Supabase에 반영됨" : "기본 프로필"}</span>
+          <span>{runtimeUpdatedAt ? "Supabase 반영됨" : "기본 프로필"}</span>
         </div>
         <p className="control-copy">
-          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. Top 5 기준 데모 시드, 포지션 수, 점수별 진입 비중, 분석 주기를 여기서 관리합니다.
+          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. Top 5 범위, 데모 시드, 최대 포지션 수, intrabar 충돌 규칙, 데이터 소스 우선순위를 여기서 관리합니다.
         </p>
         <form className="control-form runtime-form" onSubmit={saveRuntime}>
           <label className="field-label" htmlFor="execution-target">
@@ -521,7 +559,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             onChange={(event) => setConfig((prev) => ({ ...prev, intrabarConflictPolicy: event.target.value }))}
           >
             <option value="conservative">conservative / SL 우선</option>
-            <option value="neutral">neutral / open 기준 근접 우선</option>
+            <option value="neutral">neutral / open 기준 가까운 쪽 우선</option>
             <option value="aggressive">aggressive / TP 우선</option>
           </select>
 
@@ -630,7 +668,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <div className="button-row full-span">
-            <button className="action-button" type="submit" disabled={runtimeSaving || !writeReady}>
+            <button className="action-button" type="submit" disabled={runtimeSaving || !writeReady || !hasAdminToken}>
               {runtimeSaving ? "저장 중..." : "런타임 프로필 저장"}
             </button>
           </div>

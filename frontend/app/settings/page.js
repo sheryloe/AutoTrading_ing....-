@@ -5,6 +5,13 @@ import { loadServiceControlData } from "../../lib/service-control";
 
 export const dynamic = "force-dynamic";
 
+function conflictPolicyLabel(value) {
+  const normalized = String(value || "conservative").toLowerCase();
+  if (normalized === "aggressive") return "TP 우선";
+  if (normalized === "neutral") return "open 기준 근접 우선";
+  return "SL 우선";
+}
+
 export default async function SettingsPage() {
   const control = await loadServiceControlData();
   const configuredProviderCount = Object.values(control.providerStatuses || {}).filter((item) => item?.configured).length;
@@ -14,7 +21,7 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="설정"
         title="운영 입력과 서비스 콘솔"
-        description="실행 키, 데이터 provider vault, runtime profile은 이 화면에서만 관리합니다. 개요나 포지션 화면에는 입력 폼을 두지 않고 운영 콘솔로 분리했습니다."
+        description="실행 키, 데이터 provider vault, runtime profile을 이 화면에서만 관리합니다. 개요나 포지션 화면에는 입력 폼을 두지 않고 운영 콘솔로 분리했습니다."
         actions={[
           { href: "/", label: "개요로 이동", tone: "ghost" },
           { href: "/positions", label: "포지션 보기", tone: "primary" },
@@ -44,15 +51,15 @@ export default async function SettingsPage() {
           tone="cyan"
         />
         <MetricCard
-          label="설정된 provider"
-          value={String(configuredProviderCount)}
-          meta="Bybit / Binance / CoinGecko 기준"
+          label="캔들 충돌 규칙"
+          value={conflictPolicyLabel(control.runtimeConfig?.INTRABAR_CONFLICT_POLICY)}
+          meta={String(control.runtimeConfig?.INTRABAR_CONFLICT_POLICY || "conservative")}
           tone="amber"
         />
         <MetricCard
-          label="Runtime 반영 시각"
-          value={control.runtimeUpdatedAt ? "저장됨" : "기본값"}
-          meta={control.runtimeUpdatedAt || "Supabase blob 미생성"}
+          label="설정된 provider"
+          value={String(configuredProviderCount)}
+          meta="Bybit / Binance / CoinGecko 기준"
         />
       </section>
 
