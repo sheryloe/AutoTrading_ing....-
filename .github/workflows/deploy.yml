@@ -2,35 +2,36 @@ name: Deploy Dashboard with Secrets
 
 on:
   push:
-    branches: [ main ] # 메인 브랜치에 푸시될 때마다 실행
-  workflow_dispatch: # 수동으로 실행 버튼 누를 수도 있음
+    branches: [ main ]
+  workflow_dispatch:
+
+# 1. 명시적 권한 부여 (Exit Code 128 해결책)
+permissions:
+  contents: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # v3 -> v4 업데이트
 
-      # 1. HTML 내의 빈 칸({{...}})을 실제 Secrets 값으로 채웁니다.
-      
+      # 2. HTML 내의 플레이스홀더를 실제 비밀 키로 교체
       - name: Inject Secrets into HTML
         run: |
-          # 1. 파일 경로 확인 (디버깅용)
-          ls -R docs/index.html
+          # 파일 경로가 확실한지 체크 (에러 방지)
+          if [ -f "docs/index.html" ]; then
+            sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
+            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
+            echo "✅ Secrets injected successfully."
+          else
+            echo "❌ Error: docs/index.html not found!"
+            exit 1
+          fi
 
-          # 2. SUPABASE_URL 치환
-          sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
-          
-          # 3. ANON_KEY 자리에 실제 시크릿 이름인 SUPABASE_SECRET_KEY 주입
-          sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
-          
-          # 4. 치환 여부 확인 (민감 정보는 자동으로 마스킹되니 안심하세요)
-          grep "const SUPABASE_URL" docs/index.html
-
-      # 2. 결과물을 GitHub Pages 브랜치로 배포합니다.
+      # 3. GitHub Pages 배포 (v3 -> v4 업데이트)
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs # index.html이 들어있는 폴더 경로
+          publish_dir: ./docs
