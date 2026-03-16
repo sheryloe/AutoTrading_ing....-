@@ -157,10 +157,10 @@ MEME_C_SL_CONFIRM_SECONDS = 90
 MEME_C_SL_RECOVERY_RESET_FACTOR = 0.70
 MEME_C_REENTRY_WAIT_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
-    "A": {"threshold": 0.069, "tp_mul": 1.00, "sl_mul": 0.92},
+    "A": {"threshold": 0.064, "tp_mul": 1.00, "sl_mul": 0.92},
     "B": {"threshold": 0.076, "tp_mul": 1.08, "sl_mul": 0.90},
     "C": {"threshold": 0.080, "tp_mul": 1.18, "sl_mul": 0.86},
-    "D": {"threshold": 0.067, "tp_mul": 1.02, "sl_mul": 0.94},
+    "D": {"threshold": 0.061, "tp_mul": 1.02, "sl_mul": 0.94},
 }
 CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
     "A": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.52, "smallcap_trend_only": False},
@@ -170,17 +170,17 @@ CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
     "A": {
-        "threshold_bias": -0.005,
-        "entry_atr_mul": 1.35,
-        "shallow_pullback_atr": 0.22,
-        "zone_half_atr": 0.58,
-        "bias_gate_min": 0.02,
-        "rebound_min": 0.02,
-        "range_min_pct": 0.002,
-        "atr_pct_max": 0.120,
-        "rsi_max": 72.0,
-        "ema_gap_min": -0.055,
-        "risk_reward_min": 1.02,
+        "threshold_bias": -0.007,
+        "entry_atr_mul": 1.85,
+        "shallow_pullback_atr": 0.05,
+        "zone_half_atr": 0.74,
+        "bias_gate_min": 0.00,
+        "rebound_min": 0.00,
+        "range_min_pct": 0.001,
+        "atr_pct_max": 0.145,
+        "rsi_max": 78.0,
+        "ema_gap_min": -0.080,
+        "risk_reward_min": 0.96,
     },
     "B": {
         "threshold_bias": -0.005,
@@ -195,18 +195,18 @@ CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
         "risk_reward_min": 1.03,
     },
     "D": {
-        "threshold_bias": -0.005,
-        "entry_atr_mul": 1.65,
-        "shallow_pullback_atr": 0.24,
-        "zone_low_atr": 0.60,
-        "zone_high_atr": 0.62,
-        "washout_min": 0.01,
-        "rebound_min": 0.04,
-        "reset_min": 0.08,
-        "lower_bias_min": 0.04,
-        "atr_pct_max": 0.160,
-        "ema_gap_min": -0.065,
-        "risk_reward_min": 1.00,
+        "threshold_bias": -0.007,
+        "entry_atr_mul": 1.95,
+        "shallow_pullback_atr": 0.06,
+        "zone_low_atr": 0.74,
+        "zone_high_atr": 0.72,
+        "washout_min": 0.00,
+        "rebound_min": 0.00,
+        "reset_min": 0.04,
+        "lower_bias_min": 0.00,
+        "atr_pct_max": 0.180,
+        "ema_gap_min": -0.090,
+        "risk_reward_min": 0.95,
     },
 }
 CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
@@ -2297,6 +2297,9 @@ class TradingEngine:
                             "fill_mode": str((pos or {}).get("fill_mode") or "spot"),
                             "reason": str((pos or {}).get("reason") or ""),
                             "setup_state": str((pos or {}).get("setup_state") or ""),
+                            "current_price": float(current or 0.0),
+                            "pnl_pct": float(marked.get("pnl_pct") or 0.0),
+                            "position_equity_usd": float(marked.get("position_equity_usd") or 0.0),
                         },
                     }
                 )

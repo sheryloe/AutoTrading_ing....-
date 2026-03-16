@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw, TimerReset } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UI_REFRESH_MINUTES, UI_REFRESH_SECONDS } from "../../lib/ui-config";
@@ -41,8 +42,11 @@ export default function RefreshBanner() {
         </p>
       </div>
       <div className="refresh-banner-actions">
-        <strong>다음 갱신 {nextLabel}</strong>
+        <strong>
+          <TimerReset size={15} strokeWidth={2.1} aria-hidden="true" /> 다음 갱신 {nextLabel}
+        </strong>
         <button type="button" className="refresh-button" onClick={handleRefreshNow}>
+          <RefreshCw size={14} strokeWidth={2.1} aria-hidden="true" />{" "}
           지금 새로고침
         </button>
       </div>

@@ -7,6 +7,15 @@ export function formatMoney(value) {
   }).format(num);
 }
 
+export function formatPrice(value, digits = 4) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num) || num === 0) return "-";
+  return `$${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(num)}`;
+}
+
 export function formatPct(value, digits = 2) {
   return `${(Number(value || 0) * 100).toFixed(digits)}%`;
 }

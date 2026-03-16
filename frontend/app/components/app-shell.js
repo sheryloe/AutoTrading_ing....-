@@ -1,14 +1,15 @@
 "use client";
 
+import { BriefcaseBusiness, LayoutDashboard, LineChart, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import RefreshBanner from "./refresh-banner";
 
 const NAV_ITEMS = [
-  { href: "/", label: "개요", desc: "오늘의 상태와 핵심 KPI" },
-  { href: "/models", label: "모델 성과", desc: "모델별 PnL과 튜닝 상태" },
-  { href: "/positions", label: "포지션", desc: "오픈 포지션과 최신 진입 계획" },
-  { href: "/settings", label: "설정", desc: "서비스 콘솔과 운영 입력" },
+  { href: "/", label: "개요", desc: "오늘의 상태와 핵심 KPI", icon: LayoutDashboard },
+  { href: "/models", label: "모델 성과", desc: "모델별 PnL과 튜닝 상태", icon: LineChart },
+  { href: "/positions", label: "포지션", desc: "오픈 포지션과 최신 진입 계획", icon: BriefcaseBusiness },
+  { href: "/settings", label: "설정", desc: "서비스 콘솔과 운영 입력", icon: SlidersHorizontal },
 ];
 
 export default function AppShell({ children }) {
@@ -36,9 +37,11 @@ export default function AppShell({ children }) {
         <nav className="shell-nav" aria-label="운영 메뉴">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href;
+            const Icon = item.icon;
             return (
               <Link key={item.href} href={item.href} className={`nav-link ${active ? "active" : ""}`}>
-                <div>
+                <div className="nav-link-copy">
+                  <span className="nav-icon-wrap">{Icon ? <Icon size={16} strokeWidth={2.05} aria-hidden="true" /> : null}</span>
                   <strong>{item.label}</strong>
                   <p>{item.desc}</p>
                 </div>
@@ -65,8 +68,10 @@ export default function AppShell({ children }) {
           <nav className="mobile-nav-links" aria-label="모바일 메뉴">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href;
+              const Icon = item.icon;
               return (
                 <Link key={item.href} href={item.href} className={`mobile-link ${active ? "active" : ""}`}>
+                  {Icon ? <Icon size={14} strokeWidth={2.1} aria-hidden="true" /> : null}
                   {item.label}
                 </Link>
               );

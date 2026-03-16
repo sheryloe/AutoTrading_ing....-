@@ -1,3 +1,4 @@
+import { Activity, Crosshair, TimerReset, Wallet } from "lucide-react";
 import MetricCard from "../components/metric-card";
 import PageHeader from "../components/page-header";
 import PositionsTabs from "../components/positions-tabs";
@@ -37,18 +38,27 @@ export default async function PositionsPage() {
           value={data.heartbeat ? formatTs(data.heartbeat.last_seen_at) : "데이터 없음"}
           meta={data.heartbeat?.engine_name || "엔진 미확인"}
           tone="cyan"
+          icon={Activity}
         />
-        <MetricCard label="오픈 포지션" value={String(snapshot?.openPositionCount || 0)} meta="전체 모델 합계" tone="amber" />
+        <MetricCard
+          label="오픈 포지션"
+          value={String(snapshot?.openPositionCount || 0)}
+          meta="전체 모델 합계"
+          tone="amber"
+          icon={Wallet}
+        />
         <MetricCard
           label="최신 사이클"
           value={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
           meta={`최신 신호 ${snapshot?.latestSignalCount || 0}건`}
           tone="green"
+          icon={TimerReset}
         />
         <MetricCard
           label="최근 체결 로그"
           value={String(snapshot?.recentTradeCount || 0)}
           meta="intrabar / 배치 포함"
+          icon={Crosshair}
         />
       </section>
 

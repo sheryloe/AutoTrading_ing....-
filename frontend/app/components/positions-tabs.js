@@ -5,7 +5,7 @@ import EmptyState from "./empty-state";
 import SectionCard from "./section-card";
 import StatusBadge from "./status-badge";
 import TablePanel from "./table-panel";
-import { formatMoney, formatNumber, formatPct, formatTs } from "../../lib/formatters";
+import { formatMoney, formatNumber, formatPct, formatPrice, formatTs } from "../../lib/formatters";
 import { getModelMeta, MODEL_ORDER } from "../../lib/model-meta";
 
 function pickDefaultModel(openPositions, setupRows, recentTradeRows) {
@@ -56,19 +56,33 @@ function realizedPctLabel(row) {
 
 function entryLabel(row) {
   const actual = Number(row.actual_entry_price || 0);
-  if (actual > 0) return formatMoney(actual);
+  if (actual > 0) return formatPrice(actual);
   const planned = Number(row.planned_entry_price || 0);
-  return planned > 0 ? `${formatMoney(planned)} (plan)` : "-";
+  return planned > 0 ? `${formatPrice(planned)} (plan)` : "-";
 }
 
 function tpLabel(row) {
   const value = Number(row.take_profit_price || row.target_price_2 || row.target_price_1 || 0);
-  return value > 0 ? formatMoney(value) : "-";
+  return value > 0 ? formatPrice(value) : "-";
 }
 
 function slLabel(row) {
   const value = Number(row.stop_loss_price || 0);
-  return value > 0 ? formatMoney(value) : "-";
+  return value > 0 ? formatPrice(value) : "-";
+}
+
+function currentPriceLabel(row) {
+  const metaPrice = Number(row?.position_meta?.current_price || 0);
+  if (metaPrice > 0) return formatPrice(metaPrice);
+  const qty = Number(row.qty || 0);
+  const entry = Number(row.actual_entry_price || row.planned_entry_price || 0);
+  const pnl = Number(row.unrealized_pnl_usd || 0);
+  const side = String(row.side || "long").toLowerCase();
+  if (qty > 0 && entry > 0) {
+    const derived = side === "short" ? entry - pnl / qty : entry + pnl / qty;
+    if (Number.isFinite(derived) && derived > 0) return formatPrice(derived);
+  }
+  return "-";
 }
 
 function openedMeta(row) {
@@ -173,6 +187,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                   </div>
                   <div className="mini-metrics position-metrics">
                     <span className="position-secondary">진입 {entryLabel(row)}</span>
+                    <span className="position-secondary">현재 {currentPriceLabel(row)}</span>
                     <span className="position-secondary">TP {tpLabel(row)}</span>
                     <span className="position-secondary">SL {slLabel(row)}</span>
                     <span className="position-secondary">레버리지 {leverageLabel(row.leverage)}</span>
@@ -222,6 +237,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               <th>심볼</th>
               <th>오픈 시각</th>
               <th>진입가</th>
+              <th>현재가</th>
               <th>TP</th>
               <th>SL</th>
               <th>레버리지</th>
@@ -236,6 +252,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                   <td>{row.symbol}</td>
                   <td>{openedMeta(row)}</td>
                   <td>{entryLabel(row)}</td>
+                  <td>{currentPriceLabel(row)}</td>
                   <td>{tpLabel(row)}</td>
                   <td>{slLabel(row)}</td>
                   <td>{leverageLabel(row.leverage)}</td>
@@ -249,7 +266,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               ))
             ) : (
               <tr>
-                <td colSpan="8">데이터가 없습니다.</td>
+                <td colSpan="9">데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>
@@ -275,9 +292,9 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                 <tr key={row.id}>
                   <td>{formatTs(row.cycle_at)}</td>
                   <td>{row.symbol}</td>
-                  <td>{formatMoney(row.entry_price)}</td>
-                  <td>{formatMoney(row.stop_loss_price)}</td>
-                  <td>{formatMoney(row.target_price_1)}</td>
+                  <td>{formatPrice(row.entry_price)}</td>
+                  <td>{formatPrice(row.stop_loss_price)}</td>
+                  <td>{formatPrice(row.target_price_1)}</td>
                   <td>{Number(row.risk_reward || 0).toFixed(2)}</td>
                   <td>{row.entry_ready ? "진입 가능" : "대기"}</td>
                 </tr>
@@ -315,7 +332,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                   <td>{tradeKindLabel(row)}</td>
                   <td>{row.event_label}</td>
                   <td>{leverageLabel(row.leverage)}</td>
-                  <td>{formatMoney(row.price_usd)}</td>
+                  <td>{formatPrice(row.price_usd)}</td>
                   <td>{realizedPnlLabel(row)}</td>
                   <td>{realizedPctLabel(row)}</td>
                 </tr>
