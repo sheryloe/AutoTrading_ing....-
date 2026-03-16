@@ -1,941 +1,365 @@
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#050b12">
-    <title>AI_Auto | Live Positions & Model PnL</title>
-    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
-    >
-    <link rel="stylesheet" href="styles.css">
+<!DOCTYPE html>
+<html lang="ko" data-theme="night">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automethemoney Pro | Live</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-      .live-shell {
-        width: min(1180px, calc(100% - 24px));
-      }
-
-      .live-hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
-        gap: 18px;
-        margin-top: 20px;
-      }
-
-      .live-hero h1 {
-        margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: clamp(2rem, 4vw, 3.2rem);
-        line-height: 1.04;
-        letter-spacing: -0.05em;
-      }
-
-      .live-hero-copy p {
-        margin: 16px 0 0;
-        color: var(--muted);
-        line-height: 1.8;
-      }
-
-      .hero-status {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 22px;
-      }
-
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        min-height: 38px;
-        padding: 0 14px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        background: rgba(10, 19, 30, 0.82);
-        color: var(--muted);
-        font-size: 0.84rem;
-      }
-
-      .pill strong {
-        color: var(--text);
-        font-weight: 700;
-      }
-
-      .pill::before {
-        content: "";
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: rgba(125, 164, 192, 0.55);
-        box-shadow: 0 0 0 6px rgba(125, 164, 192, 0.08);
-      }
-
-      .pill.success::before {
-        background: var(--green);
-        box-shadow: 0 0 0 6px rgba(74, 243, 172, 0.1);
-      }
-
-      .pill.warn::before {
-        background: var(--amber);
-        box-shadow: 0 0 0 6px rgba(242, 193, 92, 0.1);
-      }
-
-      .pill.error::before {
-        background: #ff8d8d;
-        box-shadow: 0 0 0 6px rgba(255, 141, 141, 0.1);
-      }
-
-      .kpi-grid,
-      .model-grid-live {
-        display: grid;
-        gap: 14px;
-      }
-
-      .kpi-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .kpi-card,
-      .model-card,
-      .table-shell,
-      .status-banner {
-        border: 1px solid var(--line);
-        border-radius: var(--radius-lg);
-        background: rgba(9, 17, 27, 0.88);
-      }
-
-      .kpi-card,
-      .model-card {
-        padding: 18px;
-      }
-
-      .kpi-card span,
-      .model-card span,
-      .section-meta,
-      .table-label {
-        display: inline-block;
-        color: var(--cyan);
-        font-size: 0.72rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-      }
-
-      .kpi-card strong,
-      .model-card strong {
-        display: block;
-        margin-top: 10px;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: clamp(1.3rem, 2.4vw, 1.95rem);
-        letter-spacing: -0.04em;
-      }
-
-      .kpi-card p,
-      .model-card p,
-      .section-copy,
-      .empty-state {
-        margin: 10px 0 0;
-        color: var(--muted);
-        line-height: 1.7;
-      }
-
-      .status-banner {
-        margin-top: 18px;
-        padding: 14px 16px;
-      }
-
-      .status-banner strong {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 0.94rem;
-      }
-
-      .status-banner.success strong {
-        color: var(--green);
-      }
-
-      .status-banner.warn strong {
-        color: var(--amber);
-      }
-
-      .status-banner.error strong {
-        color: #ff8d8d;
-      }
-
-      .section-card.live-section {
-        padding: 22px;
-      }
-
-      .section-head-live {
-        display: flex;
-        align-items: end;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 18px;
-      }
-
-      .section-head-live h2 {
-        margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        font-size: clamp(1.4rem, 2.4vw, 2rem);
-        letter-spacing: -0.04em;
-      }
-
-      .section-head-live p {
-        margin: 10px 0 0;
-        max-width: 46rem;
-        color: var(--muted);
-        line-height: 1.7;
-      }
-
-      .model-grid-live {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-
-      .model-card {
-        position: relative;
-        overflow: hidden;
-      }
-
-      .model-card::after {
-        content: "";
-        position: absolute;
-        inset: auto -10% -40% auto;
-        width: 8rem;
-        height: 8rem;
-        border-radius: 50%;
-        filter: blur(24px);
-        opacity: 0.18;
-      }
-
-      .model-card[data-model="A"]::after {
-        background: #47e7ff;
-      }
-
-      .model-card[data-model="B"]::after {
-        background: #4af3ac;
-      }
-
-      .model-card[data-model="C"]::after {
-        background: #f2c15c;
-      }
-
-      .model-card[data-model="D"]::after {
-        background: #8fa7ff;
-      }
-
-      .model-head {
-        display: flex;
-        align-items: start;
-        justify-content: space-between;
-        gap: 10px;
-      }
-
-      .model-badge {
-        display: inline-grid;
-        place-items: center;
-        width: 42px;
-        height: 42px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.05);
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 1rem;
-      }
-
-      .model-copy strong {
-        margin: 2px 0 0;
-        font-size: 1.08rem;
-      }
-
-      .model-copy p {
-        margin-top: 4px;
-        font-size: 0.92rem;
-      }
-
-      .model-stats {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-        margin-top: 18px;
-      }
-
-      .model-stat {
-        padding: 12px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.03);
-      }
-
-      .model-stat label {
-        display: block;
-        color: var(--muted);
-        font-size: 0.78rem;
-      }
-
-      .model-stat strong {
-        margin-top: 6px;
-        font-size: 1rem;
-      }
-
-      .table-shell {
-        overflow: hidden;
-      }
-
-      .table-label {
-        width: 100%;
-        padding: 18px 20px 0;
-        text-align: left;
-      }
-
-      .table-wrap {
-        overflow-x: auto;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-
-      th,
-      td {
-        padding: 14px 16px;
-        border-bottom: 1px solid var(--line);
-        text-align: left;
-        font-size: 0.92rem;
-        white-space: nowrap;
-      }
-
-      td.wrap {
-        white-space: normal;
-      }
-
-      tbody tr:last-child td {
-        border-bottom: 0;
-      }
-
-      th {
-        color: var(--muted);
-        font-weight: 600;
-      }
-
-      .tone-positive {
-        color: var(--green);
-      }
-
-      .tone-negative {
-        color: #ff8d8d;
-      }
-
-      .tone-flat {
-        color: var(--text);
-      }
-
-      .subtle {
-        color: var(--muted);
-      }
-
-      .footer-note {
-        display: flex;
-        justify-content: space-between;
-        gap: 14px;
-        padding: 28px 4px 4px;
-        color: var(--muted);
-        font-size: 0.9rem;
-      }
-
-      @media (max-width: 1120px) {
-        .live-hero,
-        .model-grid-live {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      @media (max-width: 720px) {
-        .live-shell {
-          width: min(100% - 16px, 1280px);
-        }
-
-        .kpi-grid,
-        .model-stats {
-          grid-template-columns: 1fr;
-        }
-
-        .section-head-live,
-        .footer-note {
-          display: grid;
-        }
-
-        .topbar {
-          border-radius: 24px;
-        }
-      }
+        body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; } }
+        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .pnl-plus { color: #10b981; }
+        .pnl-minus { color: #f43f5e; }
     </style>
-  </head>
-  <body>
-    <div class="ambient ambient-a"></div>
-    <div class="ambient ambient-b"></div>
+</head>
+<body class="min-h-screen">
+    <header class="sticky top-0 z-50 bg-[#0b0f1a]/95 border-b border-white/5 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="text-left">
+                <h1 class="text-2xl font-black italic text-white uppercase tracking-tighter text-left">Automethemoney Pro</h1>
+                <p class="text-[10px] text-primary font-bold mt-1 uppercase text-left" id="headline-status">3월 16일부터 모델 구동 시작</p>
+            </div>
+            <div class="tabs tabs-boxed bg-slate-900 border border-white/10 p-1">
+                <button class="tab tab-active px-6 font-bold text-left" id="btn-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</button>
+                <button class="tab px-6 font-bold text-left" id="btn-guide" onclick="switchTab('guide')">System Guide</button>
+            </div>
+        </div>
+    </header>
 
-    <main class="page-shell live-shell">
-      <header class="topbar">
-        <a class="brand" href="./">
-          <span class="brand-mark"></span>
-          <span class="brand-copy">
-            <strong>AI_Auto Live Board</strong>
-            <span>GitHub Pages + Supabase read-only dashboard</span>
-          </span>
-        </a>
-        <nav class="topnav">
-          <a href="#models">Models</a>
-          <a href="#positions">Positions</a>
-          <a href="#ledger">Ledger</a>
-          <a href="./daily-pnl.html">Archive</a>
-          <a href="https://github.com/sheryloe/Automethemoney">GitHub</a>
-        </nav>
-      </header>
-
-      <section class="section-card live-hero">
-        <div class="live-hero-copy">
-          <p class="eyebrow">Live operations</p>
-          <h1>실시간 포지션과 모델별 PnL을 GitHub Pages에서 바로 봅니다.</h1>
-          <p>
-            기존 페이지는 현재 운영 DB에 없는 <code>trading_logs</code>를 조회하고 있었어요.
-            이 화면은 실제로 적재 중인 <code>engine_heartbeat</code>, <code>daily_model_pnl</code>,
-            <code>positions</code>를 직접 읽어서 모델 손익과 오픈 포지션을 한 번에 보여줍니다.
-          </p>
-          <div class="hero-status">
-            <span class="pill" id="engine-pill"><strong>engine</strong> 준비 중</span>
-            <span class="pill" id="realtime-pill"><strong>realtime</strong> 연결 대기</span>
-            <span class="pill" id="refresh-pill"><strong>refresh</strong> -</span>
-          </div>
+    <main class="max-w-7xl mx-auto p-6">
+        <div id="tab-leaderboard" class="tab-content active space-y-8">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500 text-left">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model A PnL</div>
+                    <div class="text-2xl font-black text-white text-left" id="stat-model-a">0.00%</div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500 text-left">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model B PnL</div>
+                    <div class="text-2xl font-black text-white text-left" id="stat-model-b">0.00%</div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500 text-left">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model C PnL</div>
+                    <div class="text-2xl font-black text-white text-left" id="stat-model-c">0.00%</div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500 text-left">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model D PnL</div>
+                    <div class="text-2xl font-black text-white text-left" id="stat-model-d">0.00%</div>
+                </div>
+            </div>
+            <div class="glass-panel p-8 rounded-3xl">
+                <div id="multi-model-chart" style="min-height: 400px;"></div>
+            </div>
+            <div class="glass-panel rounded-3xl overflow-hidden">
+                <table class="table w-full">
+                    <thead class="bg-black/20 text-slate-500 text-[10px] uppercase text-left">
+                        <tr>
+                            <th class="py-5 pl-8 text-left">Opened</th>
+                            <th class="text-left">Model / Symbol</th>
+                            <th class="text-left">PnL (%)</th>
+                            <th class="text-right">Profit</th>
+                            <th class="text-center pr-8">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pnl-table-body" class="font-mono text-sm divide-y divide-white/5"></tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="kpi-grid">
-          <article class="kpi-card">
-            <span>Heartbeat</span>
-            <strong id="kpi-heartbeat">-</strong>
-            <p id="kpi-heartbeat-meta">최근 배치 상태를 확인하는 중입니다.</p>
-          </article>
-          <article class="kpi-card">
-            <span>Latest Day</span>
-            <strong id="kpi-latest-day">-</strong>
-            <p id="kpi-latest-day-meta">모델 손익 기준 일자를 계산하는 중입니다.</p>
-          </article>
-          <article class="kpi-card">
-            <span>Open Positions</span>
-            <strong id="kpi-open-count">0</strong>
-            <p id="kpi-open-count-meta">열려 있는 포지션 수를 계산하는 중입니다.</p>
-          </article>
-          <article class="kpi-card">
-            <span>Live Unrealized</span>
-            <strong id="kpi-open-upnl">$0.00</strong>
-            <p id="kpi-open-upnl-meta">현재 오픈 포지션 미실현 PnL 합계입니다.</p>
-          </article>
+        <div id="tab-guide" class="tab-content space-y-12 py-10">
+            <div class="max-w-4xl mx-auto space-y-12 text-left">
+                <h2 class="text-3xl font-black italic text-white border-b-2 border-indigo-500 pb-4 text-left">Technical Specs</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-indigo-500/20 text-left">
+                        <h3 class="font-bold text-indigo-400 mb-2 text-left">MODEL A: Trend Follower</h3>
+                        <p class="text-xs opacity-60 text-left">EMA 정배열 기반 장기 추세 추종 전략.</p>
+                    </div>
+                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-emerald-500/20 text-left">
+                        <h3 class="font-bold text-emerald-400 mb-2 text-left">MODEL B: Mean Reversion</h3>
+                        <p class="text-xs opacity-60 text-left">볼린저 밴드 하단 이탈 시 기술적 반등 매매.</p>
+                    </div>
+                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-amber-500/20 text-left">
+                        <h3 class="font-bold text-amber-400 mb-2 text-left">MODEL C: Volatility Breakout</h3>
+                        <p class="text-xs opacity-60 text-left">전일 변동폭 기반 당일 돌파 전략.</p>
+                    </div>
+                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left">
+                        <h3 class="font-bold text-cyan-400 mb-2 text-left">MODEL D: Deep Learning</h3>
+                        <p class="text-xs opacity-60 text-left">LSTM 신경망 기반 가격 방향성 예측.</p>
+                    </div>
+                </div>
+            </div>
         </div>
-      </section>
-
-      <section id="status-banner" class="status-banner warn" aria-live="polite">
-        <strong>연결 준비 중</strong>
-        <div>Supabase와 GitHub Pages 환경을 확인하는 중입니다.</div>
-      </section>
-
-      <section id="models" class="section-card live-section">
-        <div class="section-head-live">
-          <div>
-            <span class="section-meta">Model board</span>
-            <h2>모델별 실시간 상태</h2>
-            <p>일별 누적 손익과 현재 오픈 포지션을 모델 A-D 단위로 함께 봅니다.</p>
-          </div>
-        </div>
-        <div id="model-cards" class="model-grid-live"></div>
-      </section>
-
-      <section id="positions" class="section-card live-section">
-        <div class="section-head-live">
-          <div>
-            <span class="section-meta">Open positions</span>
-            <h2>현재 오픈 포지션</h2>
-            <p>실시간 현재가, 진입가, 목표가, 레버리지, 미실현 PnL까지 한 번에 확인합니다.</p>
-          </div>
-        </div>
-        <div class="table-shell">
-          <div class="table-label">현재 열려 있는 포지션</div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Model</th>
-                  <th>Symbol</th>
-                  <th>Side</th>
-                  <th>Entry</th>
-                  <th>Current</th>
-                  <th>TP / SL</th>
-                  <th>Leverage</th>
-                  <th>uPnL</th>
-                  <th>Opened</th>
-                  <th>Updated</th>
-                </tr>
-              </thead>
-              <tbody id="positions-body">
-                <tr>
-                  <td colspan="10" class="wrap subtle">포지션 데이터를 불러오는 중입니다.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section id="ledger" class="section-card live-section">
-        <div class="section-head-live">
-          <div>
-            <span class="section-meta">Daily pnl</span>
-            <h2>최근 모델 손익 기록</h2>
-            <p>실제 운영 중인 <code>daily_model_pnl</code> 테이블의 최신 데이터를 그대로 보여줍니다.</p>
-          </div>
-        </div>
-        <div class="table-shell">
-          <div class="table-label">최근 일자 모델 손익</div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Model</th>
-                  <th>Equity</th>
-                  <th>Total PnL</th>
-                  <th>Realized</th>
-                  <th>Unrealized</th>
-                  <th>Win Rate</th>
-                  <th>Closed</th>
-                </tr>
-              </thead>
-              <tbody id="ledger-body">
-                <tr>
-                  <td colspan="8" class="wrap subtle">손익 기록을 불러오는 중입니다.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <footer class="footer-note">
-        <span>GitHub Pages에서 공개 가능한 Supabase 읽기 키만 사용합니다.</span>
-        <span>Realtime 구독이 실패하면 60초 폴링으로 자동 폴백됩니다.</span>
-      </footer>
     </main>
 
     <script>
-      const SUPABASE_URL = "{{SUPABASE_URL}}";
-      const SUPABASE_ANON_KEY = "{{SUPABASE_ANON_KEY}}";
-      const MODEL_ORDER = ["A", "B", "C", "D"];
-      const MODEL_META = {
-        A: { name: "레인지 리버설", subtitle: "과열 구간 되돌림" },
-        B: { name: "리클레임", subtitle: "지지 회복 재안착" },
-        C: { name: "압축 돌파", subtitle: "수축 후 확장" },
-        D: { name: "리셋 바운스", subtitle: "급락 후 안정화 반등" },
-      };
+        lucide.createIcons();
 
-      let client = null;
-      let refreshTimer = null;
-      let refreshQueued = false;
+        const S_URL = "{{SUPABASE_URL}}";
+        const S_KEY = "{{SUPABASE_ANON_KEY}}";
+        const MODEL_IDS = ["A", "B", "C", "D"];
+        const MODEL_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D" };
+        const MODEL_TARGETS = { A: "stat-model-a", B: "stat-model-b", C: "stat-model-c", D: "stat-model-d" };
+        const EQUITY_BASE = 10000;
 
-      function escapeHtml(value) {
-        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        }[char]));
-      }
+        let _supabase;
+        let _chart;
 
-      function formatMoney(value) {
-        return new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(Number(value || 0));
-      }
-
-      function formatSignedMoney(value) {
-        const amount = Number(value || 0);
-        const prefix = amount > 0 ? "+" : "";
-        return `${prefix}${formatMoney(amount)}`;
-      }
-
-      function formatPercent(value, signed = false) {
-        const amount = Number(value || 0);
-        const prefix = signed && amount > 0 ? "+" : "";
-        return `${prefix}${amount.toFixed(2)}%`;
-      }
-
-      function formatNumber(value, digits = 2) {
-        return Number(value || 0).toLocaleString("en-US", {
-          minimumFractionDigits: digits,
-          maximumFractionDigits: digits,
-        });
-      }
-
-      function formatPrice(value) {
-        const amount = Number(value || 0);
-        if (!Number.isFinite(amount) || amount <= 0) return "-";
-        const digits = amount >= 1000 ? 2 : amount >= 1 ? 3 : 5;
-        return amount.toLocaleString("en-US", {
-          minimumFractionDigits: digits,
-          maximumFractionDigits: digits,
-        });
-      }
-
-      function formatDateTime(value) {
-        if (!value) return "-";
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return "-";
-        return new Intl.DateTimeFormat("ko-KR", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(date);
-      }
-
-      function formatRelative(value) {
-        if (!value) return "-";
-        const target = new Date(value);
-        if (Number.isNaN(target.getTime())) return "-";
-        const diffMs = target.getTime() - Date.now();
-        const diffMinutes = Math.round(diffMs / 60000);
-        const formatter = new Intl.RelativeTimeFormat("ko-KR", { numeric: "auto" });
-        if (Math.abs(diffMinutes) < 60) return formatter.format(diffMinutes, "minute");
-        const diffHours = Math.round(diffMinutes / 60);
-        if (Math.abs(diffHours) < 24) return formatter.format(diffHours, "hour");
-        return formatter.format(Math.round(diffHours / 24), "day");
-      }
-
-      function toneClass(value) {
-        const amount = Number(value || 0);
-        if (amount > 0) return "tone-positive";
-        if (amount < 0) return "tone-negative";
-        return "tone-flat";
-      }
-
-      function currentPrice(row) {
-        const current = Number(row?.position_meta?.current_price || 0);
-        if (current > 0) return current;
-        const qty = Number(row.qty || 0);
-        const entry = Number(row.actual_entry_price || row.planned_entry_price || 0);
-        const pnl = Number(row.unrealized_pnl_usd || 0);
-        const side = String(row.side || "long").toLowerCase();
-        if (qty > 0 && entry > 0) {
-          const derived = side === "short" ? entry - pnl / qty : entry + pnl / qty;
-          if (Number.isFinite(derived) && derived > 0) return derived;
-        }
-        return 0;
-      }
-
-      function setBanner(tone, title, body) {
-        const banner = document.getElementById("status-banner");
-        banner.className = `status-banner ${tone}`;
-        banner.innerHTML = `<strong>${escapeHtml(title)}</strong><div>${escapeHtml(body)}</div>`;
-      }
-
-      function setPill(id, text, tone = "") {
-        const el = document.getElementById(id);
-        el.className = tone ? `pill ${tone}` : "pill";
-        el.innerHTML = text;
-      }
-
-      function groupModels(dailyRows, openPositions) {
-        const latestByModel = new Map();
-        for (const row of dailyRows) {
-          const modelId = String(row.model_id || "").toUpperCase();
-          if (!modelId || latestByModel.has(modelId)) continue;
-          latestByModel.set(modelId, row);
+        if (S_URL.startsWith("http") && S_KEY && !S_URL.includes("{{") && !S_KEY.includes("{{")) {
+            _supabase = supabase.createClient(S_URL, S_KEY, {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                    detectSessionInUrl: false,
+                },
+            });
+            console.log("✅ Supabase 연결 성공");
+        } else {
+            console.error("❌ 치환 실패:", S_URL);
         }
 
-        return MODEL_ORDER.map((modelId) => {
-          const latest = latestByModel.get(modelId) || null;
-          const history = dailyRows.filter((row) => String(row.model_id || "").toUpperCase() === modelId);
-          const positions = openPositions.filter((row) => String(row.model_id || "").toUpperCase() === modelId);
-          return {
-            modelId,
-            meta: MODEL_META[modelId] || { name: `Model ${modelId}`, subtitle: "운영 모델" },
-            latest,
-            positions,
-            cumulativeRealized: history.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0),
-            cumulativeTotal: history.reduce((sum, row) => sum + Number(row.total_pnl_usd || 0), 0),
-            openUnrealized: positions.reduce((sum, row) => sum + Number(row.unrealized_pnl_usd || 0), 0),
-          };
-        });
-      }
-
-      function renderModels(dailyRows, openPositions) {
-        const container = document.getElementById("model-cards");
-        const cards = groupModels(dailyRows, openPositions);
-        container.innerHTML = cards
-          .map((item) => {
-            const latestDay = item.latest?.day || "-";
-            return `
-              <article class="model-card" data-model="${escapeHtml(item.modelId)}">
-                <div class="model-head">
-                  <div class="model-copy">
-                    <span>MODEL ${escapeHtml(item.modelId)}</span>
-                    <strong>${escapeHtml(item.meta.name)}</strong>
-                    <p>${escapeHtml(item.meta.subtitle)}</p>
-                  </div>
-                  <span class="model-badge">${escapeHtml(item.modelId)}</span>
-                </div>
-                <div class="model-stats">
-                  <div class="model-stat">
-                    <label>최근 기준일</label>
-                    <strong>${escapeHtml(latestDay)}</strong>
-                  </div>
-                  <div class="model-stat">
-                    <label>오픈 포지션</label>
-                    <strong>${item.positions.length}건</strong>
-                  </div>
-                  <div class="model-stat">
-                    <label>당일 Total PnL</label>
-                    <strong class="${toneClass(item.latest?.total_pnl_usd)}">${escapeHtml(formatSignedMoney(item.latest?.total_pnl_usd || 0))}</strong>
-                  </div>
-                  <div class="model-stat">
-                    <label>당일 Realized</label>
-                    <strong class="${toneClass(item.latest?.realized_pnl_usd)}">${escapeHtml(formatSignedMoney(item.latest?.realized_pnl_usd || 0))}</strong>
-                  </div>
-                  <div class="model-stat">
-                    <label>현재 Open uPnL</label>
-                    <strong class="${toneClass(item.openUnrealized)}">${escapeHtml(formatSignedMoney(item.openUnrealized))}</strong>
-                  </div>
-                  <div class="model-stat">
-                    <label>승률 / 종료거래</label>
-                    <strong>${escapeHtml(formatPercent(item.latest?.win_rate || 0))} / ${Number(item.latest?.closed_trades || 0)}건</strong>
-                  </div>
-                </div>
-              </article>
-            `;
-          })
-          .join("");
-      }
-
-      function renderPositions(openPositions) {
-        const tbody = document.getElementById("positions-body");
-        if (!openPositions.length) {
-          tbody.innerHTML = '<tr><td colspan="10" class="wrap subtle">현재 오픈 포지션이 없습니다.</td></tr>';
-          return;
+        function formatUsd(value) {
+            return new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+                maximumFractionDigits: 2,
+            }).format(Number(value || 0));
         }
 
-        tbody.innerHTML = openPositions
-          .map((row) => {
-            const modelId = String(row.model_id || "-").toUpperCase();
-            const side = String(row.side || "-").toUpperCase();
-            const tp = Number(row.take_profit_price || row.target_price_2 || row.target_price_1 || 0);
-            const sl = Number(row.stop_loss_price || 0);
-            const entry = Number(row.actual_entry_price || row.planned_entry_price || 0);
-            const live = currentPrice(row);
-            return `
-              <tr>
-                <td>MODEL ${escapeHtml(modelId)}</td>
-                <td>${escapeHtml(row.symbol || "-")}</td>
-                <td>${escapeHtml(side)}</td>
-                <td>${escapeHtml(formatPrice(entry))}</td>
-                <td>${escapeHtml(formatPrice(live))}</td>
-                <td class="wrap">TP ${escapeHtml(formatPrice(tp))}<br><span class="subtle">SL ${escapeHtml(formatPrice(sl))}</span></td>
-                <td>${escapeHtml(formatNumber(row.leverage || 0, 2))}x</td>
-                <td class="${toneClass(row.unrealized_pnl_usd)}">${escapeHtml(formatSignedMoney(row.unrealized_pnl_usd || 0))}</td>
-                <td>${escapeHtml(formatDateTime(row.opened_at))}</td>
-                <td>${escapeHtml(formatRelative(row.updated_at))}</td>
-              </tr>
-            `;
-          })
-          .join("");
-      }
-
-      function renderLedger(dailyRows) {
-        const tbody = document.getElementById("ledger-body");
-        if (!dailyRows.length) {
-          tbody.innerHTML = '<tr><td colspan="8" class="wrap subtle">표시할 손익 기록이 없습니다.</td></tr>';
-          return;
+        function formatPct(value) {
+            const num = Number(value || 0);
+            return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
         }
 
-        tbody.innerHTML = dailyRows
-          .slice(0, 16)
-          .map((row) => `
-            <tr>
-              <td>${escapeHtml(row.day || "-")}</td>
-              <td>MODEL ${escapeHtml(String(row.model_id || "-").toUpperCase())}</td>
-              <td>${escapeHtml(formatMoney(row.equity_usd || 0))}</td>
-              <td class="${toneClass(row.total_pnl_usd)}">${escapeHtml(formatSignedMoney(row.total_pnl_usd || 0))}</td>
-              <td class="${toneClass(row.realized_pnl_usd)}">${escapeHtml(formatSignedMoney(row.realized_pnl_usd || 0))}</td>
-              <td class="${toneClass(row.unrealized_pnl_usd)}">${escapeHtml(formatSignedMoney(row.unrealized_pnl_usd || 0))}</td>
-              <td>${escapeHtml(formatPercent(row.win_rate || 0))}</td>
-              <td>${Number(row.closed_trades || 0)}</td>
-            </tr>
-          `)
-          .join("");
-      }
-
-      function renderKpis(heartbeat, dailyRows, openPositions) {
-        const latestDay = dailyRows[0]?.day || "-";
-        const latestRows = dailyRows.filter((row) => String(row.day || "") === String(latestDay));
-        const latestRealized = latestRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
-        const openUpnl = openPositions.reduce((sum, row) => sum + Number(row.unrealized_pnl_usd || 0), 0);
-        const lastSeen = heartbeat?.last_seen_at || "";
-        const runner = heartbeat?.meta_json?.runner || "unknown";
-        const mode = heartbeat?.meta_json?.trade_mode || heartbeat?.meta_json?.execution_target || "-";
-
-        document.getElementById("kpi-heartbeat").textContent = formatRelative(lastSeen);
-        document.getElementById("kpi-heartbeat-meta").textContent = lastSeen
-          ? `${formatDateTime(lastSeen)} · ${runner} · ${mode}`
-          : "최근 heartbeat가 아직 없습니다.";
-        document.getElementById("kpi-latest-day").textContent = latestDay;
-        document.getElementById("kpi-latest-day-meta").textContent = `해당 일자 realized 합계 ${formatSignedMoney(latestRealized)}`;
-        document.getElementById("kpi-open-count").textContent = String(openPositions.length);
-        document.getElementById("kpi-open-count-meta").textContent = openPositions.length
-          ? `${MODEL_ORDER.filter((id) => openPositions.some((row) => String(row.model_id || "").toUpperCase() === id)).length}개 모델에서 포지션 보유 중`
-          : "현재는 열린 포지션이 없습니다.";
-        document.getElementById("kpi-open-upnl").textContent = formatSignedMoney(openUpnl);
-        document.getElementById("kpi-open-upnl").className = toneClass(openUpnl);
-        document.getElementById("kpi-open-upnl-meta").textContent = "현재 open positions 기준 미실현 손익 합계";
-
-        setPill(
-          "engine-pill",
-          `<strong>engine</strong> ${lastSeen ? `최근 ${escapeHtml(formatRelative(lastSeen))}` : "신호 없음"}`,
-          heartbeat?.last_error ? "error" : lastSeen ? "success" : "warn"
-        );
-        setPill("refresh-pill", `<strong>refresh</strong> ${escapeHtml(formatDateTime(new Date().toISOString()))}`, "success");
-      }
-
-      async function fetchDashboard() {
-        const [heartbeatRes, dailyRes, positionsRes] = await Promise.all([
-          client
-            .from("engine_heartbeat")
-            .select("engine_name,last_seen_at,last_error,meta_json")
-            .order("last_seen_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          client
-            .from("daily_model_pnl")
-            .select("day,market,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,updated_at")
-            .eq("market", "crypto")
-            .order("day", { ascending: false })
-            .limit(120),
-          client
-            .from("positions")
-            .select("id,model_id,symbol,side,status,opened_at,updated_at,planned_entry_price,actual_entry_price,stop_loss_price,take_profit_price,target_price_1,target_price_2,qty,leverage,unrealized_pnl_usd,position_meta")
-            .eq("status", "open")
-            .order("opened_at", { ascending: false })
-            .limit(40),
-        ]);
-
-        const errors = [heartbeatRes.error, dailyRes.error, positionsRes.error].filter(Boolean);
-        if (errors.length) {
-          throw new Error(errors.map((item) => item.message).join(" | "));
+        function dateLabel(value) {
+            if (!value) return "-";
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            return new Intl.DateTimeFormat("ko-KR", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+            }).format(date);
         }
 
-        return {
-          heartbeat: heartbeatRes.data || null,
-          dailyRows: Array.isArray(dailyRes.data) ? dailyRes.data : [],
-          openPositions: Array.isArray(positionsRes.data) ? positionsRes.data : [],
-        };
-      }
-
-      async function loadDashboard({ silent = false } = {}) {
-        if (!client) return;
-        if (!silent) {
-          setBanner("warn", "데이터 불러오는 중", "GitHub Pages에서 실시간 데이터를 새로 조회하고 있습니다.");
+        function modelReturnPct(row) {
+            return (Number(row?.total_pnl_usd || 0) / EQUITY_BASE) * 100;
         }
-        try {
-          const { heartbeat, dailyRows, openPositions } = await fetchDashboard();
-          renderKpis(heartbeat, dailyRows, openPositions);
-          renderModels(dailyRows, openPositions);
-          renderPositions(openPositions);
-          renderLedger(dailyRows);
-          setPill("realtime-pill", "<strong>realtime</strong> 구독 활성화", "success");
-          setBanner(
-            "success",
-            "연결 정상",
-            `daily_model_pnl ${dailyRows.length}건, open positions ${openPositions.length}건을 불러왔습니다.`
-          );
-        } catch (error) {
-          setPill("realtime-pill", "<strong>realtime</strong> 폴링 모드", "warn");
-          setBanner("error", "데이터 조회 실패", String(error?.message || error));
-        }
-      }
 
-      function queueRefresh() {
-        if (refreshQueued) return;
-        refreshQueued = true;
-        window.setTimeout(() => {
-          refreshQueued = false;
-          loadDashboard({ silent: true });
-        }, 500);
-      }
-
-      function startPolling() {
-        if (refreshTimer) window.clearInterval(refreshTimer);
-        refreshTimer = window.setInterval(() => {
-          loadDashboard({ silent: true });
-        }, 60000);
-      }
-
-      function startRealtime() {
-        try {
-          const channel = client.channel("ai-auto-pages-live");
-          ["engine_heartbeat", "daily_model_pnl", "positions"].forEach((table) => {
-            channel.on(
-              "postgres_changes",
-              { event: "*", schema: "public", table },
-              () => queueRefresh()
-            );
-          });
-          channel.subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-              setPill("realtime-pill", "<strong>realtime</strong> websocket 연결됨", "success");
-            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              setPill("realtime-pill", "<strong>realtime</strong> 폴링 모드", "warn");
+        function positionReturnPct(row) {
+            const equity = Number(row?.position_meta?.position_equity_usd || 0);
+            const pnl = Number(row?.unrealized_pnl_usd || 0);
+            if (equity > 0) {
+                return (pnl / equity) * 100;
             }
-          });
-        } catch (error) {
-          setPill("realtime-pill", "<strong>realtime</strong> 폴링 모드", "warn");
-        }
-      }
-
-      function bootstrap() {
-        if (!window.supabase || !window.supabase.createClient) {
-          setBanner("error", "Supabase SDK 로드 실패", "외부 CDN 스크립트를 불러오지 못했습니다.");
-          return;
+            return 0;
         }
 
-        if (
-          !String(SUPABASE_URL || "").startsWith("http") ||
-          !String(SUPABASE_ANON_KEY || "").trim() ||
-          String(SUPABASE_URL).includes("{{") ||
-          String(SUPABASE_ANON_KEY).includes("{{")
-        ) {
-          setBanner(
-            "error",
-            "배포 설정 누락",
-            "GitHub Actions deploy workflow에서 SUPABASE_URL / SUPABASE_ANON_KEY 주입이 필요합니다."
-          );
-          return;
+        function setHeadline(heartbeat, positions) {
+            const target = document.getElementById("headline-status");
+            if (!target) return;
+            if (!heartbeat?.last_seen_at) {
+                target.innerText = "Supabase 연결 대기 중";
+                return;
+            }
+            target.innerText = `최근 동기화 ${dateLabel(heartbeat.last_seen_at)} · OPEN ${positions.length}건`;
         }
 
-        client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false,
-          },
-        });
+        function renderSummaryCards(dailyRows) {
+            const latestByModel = new Map();
+            for (const row of dailyRows) {
+                const modelId = String(row.model_id || "").toUpperCase();
+                if (!latestByModel.has(modelId)) latestByModel.set(modelId, row);
+            }
 
-        loadDashboard();
-        startRealtime();
-        startPolling();
-      }
+            MODEL_IDS.forEach((modelId) => {
+                const latest = latestByModel.get(modelId);
+                const el = document.getElementById(MODEL_TARGETS[modelId]);
+                if (!el) return;
+                if (!latest) {
+                    el.innerText = "0.00%";
+                    el.classList.remove("pnl-plus", "pnl-minus");
+                    return;
+                }
+                const pct = modelReturnPct(latest);
+                el.innerText = formatPct(pct);
+                el.classList.toggle("pnl-plus", pct >= 0);
+                el.classList.toggle("pnl-minus", pct < 0);
+            });
+        }
 
-      bootstrap();
+        function renderChart(dailyRows) {
+            const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "")))]
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+
+            const lookup = {};
+            MODEL_IDS.forEach((modelId) => {
+                lookup[modelId] = {};
+            });
+
+            dailyRows.forEach((row) => {
+                const modelId = String(row.model_id || "").toUpperCase();
+                const day = String(row.day || "");
+                if (!lookup[modelId] || !day) return;
+                lookup[modelId][day] = Number(modelReturnPct(row).toFixed(2));
+            });
+
+            const options = {
+                series: MODEL_IDS.map((modelId) => ({
+                    name: MODEL_LABELS[modelId],
+                    data: orderedDays.map((day) => lookup[modelId][day] ?? 0),
+                })),
+                chart: {
+                    height: 400,
+                    type: "line",
+                    toolbar: { show: false },
+                    background: "transparent",
+                    foreColor: "#64748b",
+                },
+                colors: ["#6366f1", "#10b981", "#f59e0b", "#06b6d4"],
+                stroke: { curve: "smooth", width: 3 },
+                xaxis: { categories: orderedDays, axisBorder: { show: false } },
+                yaxis: {
+                    labels: {
+                        formatter: (value) => `${Number(value).toFixed(1)}%`,
+                    },
+                },
+                tooltip: {
+                    y: {
+                        formatter: (value) => `${Number(value).toFixed(2)}%`,
+                    },
+                },
+                theme: { mode: "dark" },
+            };
+
+            const mount = document.querySelector("#multi-model-chart");
+            mount.innerHTML = "";
+            if (_chart) {
+                _chart.destroy();
+            }
+            _chart = new ApexCharts(mount, options);
+            _chart.render();
+        }
+
+        function renderPositionsTable(positions, dailyRows) {
+            const tbody = document.getElementById("pnl-table-body");
+            if (!tbody) return;
+
+            if (!positions.length) {
+                const latestRows = dailyRows.slice(0, 4);
+                tbody.innerHTML = latestRows.length
+                    ? latestRows.map((row) => {
+                        const pct = modelReturnPct(row);
+                        return `
+                            <tr class="hover:bg-white/5 border-b border-white/5">
+                                <td class="py-5 pl-8 opacity-50 text-left">${row.day || "-"}</td>
+                                <td class="font-black text-white text-left">${MODEL_LABELS[String(row.model_id || "").toUpperCase()] || row.model_id}</td>
+                                <td class="${pct >= 0 ? "pnl-plus" : "pnl-minus"} text-left">${formatPct(pct)}</td>
+                                <td class="text-right opacity-80">${formatUsd(row.total_pnl_usd || 0)}</td>
+                                <td class="text-center pr-8"><span class="badge badge-ghost badge-xs font-black">DAILY</span></td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="5" class="py-5 pl-8 text-left opacity-60">표시할 실시간 포지션이 없습니다.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = positions.map((row) => {
+                const pct = positionReturnPct(row);
+                const modelId = String(row.model_id || "").toUpperCase();
+                const side = String(row.side || "").toUpperCase();
+                return `
+                    <tr class="hover:bg-white/5 border-b border-white/5">
+                        <td class="py-5 pl-8 opacity-50 text-left">${dateLabel(row.opened_at)}</td>
+                        <td class="font-black text-white text-left">${MODEL_LABELS[modelId] || modelId} · ${row.symbol} ${side}</td>
+                        <td class="${pct >= 0 ? "pnl-plus" : "pnl-minus"} text-left">${formatPct(pct)}</td>
+                        <td class="text-right opacity-80">${formatUsd(row.unrealized_pnl_usd || 0)}</td>
+                        <td class="text-center pr-8"><span class="badge badge-success badge-xs font-black">OPEN</span></td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        async function fetchTradingData() {
+            if (!_supabase) {
+                return;
+            }
+
+            const [dailyRes, positionsRes, heartbeatRes] = await Promise.all([
+                _supabase
+                    .from("daily_model_pnl")
+                    .select("day,model_id,total_pnl_usd,market,updated_at")
+                    .eq("market", "crypto")
+                    .order("day", { ascending: false })
+                    .limit(120),
+                _supabase
+                    .from("positions")
+                    .select("model_id,symbol,side,status,opened_at,updated_at,unrealized_pnl_usd,position_meta")
+                    .eq("status", "open")
+                    .order("opened_at", { ascending: false })
+                    .limit(24),
+                _supabase
+                    .from("engine_heartbeat")
+                    .select("last_seen_at")
+                    .order("last_seen_at", { ascending: false })
+                    .limit(1),
+            ]);
+
+            const error = dailyRes.error || positionsRes.error || heartbeatRes.error;
+            if (error) {
+                console.error(error.message);
+                const tbody = document.getElementById("pnl-table-body");
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="py-5 pl-8 text-left text-error">${error.message}</td></tr>`;
+                }
+                return;
+            }
+
+            const dailyRows = Array.isArray(dailyRes.data) ? dailyRes.data : [];
+            const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
+            const heartbeat = heartbeatRes.data?.[0] || null;
+
+            setHeadline(heartbeat, positions);
+            renderSummaryCards(dailyRows);
+            renderChart(dailyRows);
+            renderPositionsTable(positions, dailyRows);
+        }
+
+        function subscribeRealtime() {
+            if (!_supabase) return;
+            try {
+                const channel = _supabase.channel("pages-live-dashboard");
+                ["daily_model_pnl", "positions", "engine_heartbeat"].forEach((table) => {
+                    channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
+                        fetchTradingData();
+                    });
+                });
+                channel.subscribe();
+            } catch (error) {
+                console.warn("Realtime subscribe failed", error);
+            }
+        }
+
+        function switchTab(id) {
+            document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+            document.querySelectorAll(".tab").forEach((t) => t.classList.remove("tab-active"));
+            document.getElementById(`tab-${id}`).classList.add("active");
+            document.getElementById(`btn-${id}`).classList.add("tab-active");
+            if (id === "leaderboard") fetchTradingData();
+        }
+
+        fetchTradingData();
+        subscribeRealtime();
+        setInterval(fetchTradingData, 60000);
     </script>
-  </body>
+</body>
 </html>
