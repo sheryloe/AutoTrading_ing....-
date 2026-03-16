@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automethemoney Pro | Full-Spec Dashboard</title>
+    <title>Automethemoney Pro | Live Dashboard</title>
     
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
@@ -12,17 +12,13 @@
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
     <style>
         body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
         .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
         .pnl-plus { color: #10b981; } .pnl-minus { color: #f43f5e; }
-        .logic-card { border-left-width: 4px; padding: 1.5rem; background: rgba(30, 41, 59, 0.4); border-radius: 1rem; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -41,148 +37,87 @@
     </header>
 
     <main class="max-w-7xl mx-auto p-6">
-        
         <div id="tab-leaderboard" class="tab-content active space-y-8">
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500 text-left">
                     <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model A PnL</div>
                     <div class="text-2xl font-black text-white" id="stat-model-a">0.00%</div>
                 </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500 text-left">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500 text-left text-left">
                     <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model B PnL</div>
                     <div class="text-2xl font-black text-white" id="stat-model-b">0.00%</div>
                 </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500 text-left">
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500 text-left text-left">
                     <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model C PnL</div>
                     <div class="text-2xl font-black text-white" id="stat-model-c">0.00%</div>
                 </div>
                 <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500 text-left text-left">
                     <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left text-left">Model D PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-d">0.00%</div>
+                    <div class="text-2xl font-black text-white" id="stat-model-d">0.00%</div>
                 </div>
             </div>
-
             <div class="glass-panel p-8 rounded-3xl">
-                <h2 class="text-lg font-black text-white italic uppercase mb-8 tracking-widest text-left">Multi-Model Equity Curve</h2>
                 <div id="multi-model-chart" style="min-height: 400px;"></div>
             </div>
-
             <div class="glass-panel rounded-3xl overflow-hidden">
                 <table class="table w-full">
-                    <thead class="bg-black/20 text-slate-500 text-[10px] uppercase tracking-widest text-left">
-                        <tr><th class="py-5 pl-8">Date</th><th>Model ID</th><th>PnL (%)</th><th class="text-right">Profit (₩)</th><th class="text-center pr-8">Status</th></tr>
+                    <thead class="bg-black/20 text-slate-500 text-[10px] uppercase text-left">
+                        <tr><th class="py-5 pl-8">Date</th><th>Model</th><th>PnL (%)</th><th class="text-right">Net Profit</th><th class="text-center pr-8">Status</th></tr>
                     </thead>
-                    <tbody id="pnl-table-body" class="font-mono text-sm divide-y divide-white/5"></tbody>
+                    <tbody id="pnl-table-body" class="font-mono text-sm"></tbody>
                 </table>
             </div>
         </div>
 
         <div id="tab-guide" class="tab-content space-y-12 py-10">
-            <div class="max-w-4xl mx-auto space-y-16">
-                
+            <div class="max-w-4xl mx-auto space-y-12">
                 <section class="space-y-6 text-left">
-                    <h2 class="text-3xl font-black italic text-white border-b-2 border-indigo-500 pb-4">Technical Models Detail</h2>
+                    <h2 class="text-3xl font-black italic text-white underline decoration-indigo-500 decoration-4 underline-offset-8 mb-8">System Overview</h2>
+                    <p class="text-slate-400">본 대시보드는 4가지 독립 전략을 병렬 운용하는 실시간 퀀트 매매 시스템입니다.</p>
                     
-                    <div class="grid grid-cols-1 gap-8">
-                        <div class="logic-card border-indigo-500">
-                            <div class="flex justify-between items-start mb-4">
-                                <h3 class="text-xl font-bold text-white">Model A: Trend Following (지수 추종)</h3>
-                                <span class="badge badge-indigo">Low Risk</span>
-                            </div>
-                            <p class="text-sm text-slate-400 mb-4 leading-relaxed">
-                                장기 이동평균선을 활용하여 시장의 주류 추세에 올라타는 전략입니다. 노이즈를 제거하기 위해 RSI 필터를 결합합니다.
-                            </p>
-                            <div class="bg-black/30 p-4 rounded-lg font-mono text-xs space-y-2">
-                                <div class="text-indigo-400"># Entry Logic</div>
-                                <div>Signal: \(EMA_{20} > EMA_{60} \text{ and } EMA_{60} > EMA_{120}\)</div>
-                                <div>Filter: \(RSI(14) < 65 \text{ (과매수 방지)}\)</div>
-                            </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-indigo-500/20">
+                            <h3 class="font-bold text-indigo-400 mb-2">MODEL A: Trend Follower</h3>
+                            <p class="text-xs opacity-60">EMA 정배열 구간에서 RSI 지표를 필터링하여 강력한 추세 상승 시에만 진입합니다.</p>
                         </div>
-
-                        <div class="logic-card border-emerald-500 text-left">
-                            <div class="flex justify-between items-start mb-4 text-left">
-                                <h3 class="text-xl font-bold text-white text-left">Model B: Mean Reversion (평균 회귀)</h3>
-                                <span class="badge badge-success text-left">Mid Risk</span>
-                            </div>
-                            <p class="text-sm text-slate-400 mb-4 leading-relaxed text-left">
-                                가격이 통계적 변동 범위를 벗어났을 때 다시 평균으로 돌아오려는 성질을 이용한 역추세 전략입니다.
-                            </p>
-                            <div class="bg-black/30 p-4 rounded-lg font-mono text-xs space-y-2 text-left">
-                                <div class="text-emerald-400 text-left"># Entry Logic</div>
-                                <div class="text-left">Signal: \(Price < LowerBB(20, 2)\)</div>
-                                <div class="text-left">Volume: 전일 평균 거래량 대비 150% 이상 폭증 시 진입</div>
-                            </div>
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-emerald-500/20 text-left">
+                            <h3 class="font-bold text-emerald-400 mb-2">MODEL B: Mean Reversion</h3>
+                            <p class="text-xs opacity-60 text-left">볼린저 밴드 하단을 이탈하는 과매도 시점에서 단기 기술적 반등을 노립니다.</p>
                         </div>
-
-                        <div class="logic-card border-amber-500 text-left">
-                            <div class="flex justify-between items-start mb-4 text-left">
-                                <h3 class="text-xl font-bold text-white text-left">Model C: Volatility Breakout (변동성 돌파)</h3>
-                                <span class="badge badge-warning text-left">High Reward</span>
-                            </div>
-                            <p class="text-sm text-slate-400 mb-4 leading-relaxed text-left">
-                                전일 가격 변동폭에 특정 계수(K)를 곱한 값을 돌파할 때 강한 매수세가 붙는 원리를 이용합니다.
-                            </p>
-                            <div class="bg-black/30 p-4 rounded-lg font-mono text-xs space-y-2 text-left text-left">
-                                <div class="text-amber-400 text-left"># Entry Logic</div>
-                                <div class="text-left">Target: \(Open + (PrevHigh - PrevLow) \times 0.5\)</div>
-                                <div class="text-left">Exit: 당일 종가 일괄 매도 (Risk Hedge)</div>
-                            </div>
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-amber-500/20 text-left">
+                            <h3 class="font-bold text-amber-400 mb-2">MODEL C: Volatility Breakout</h3>
+                            <p class="text-xs opacity-60 text-left">전일 변동폭 대비 특정 수치(K)를 돌파할 때 모멘텀에 올라탑니다.</p>
                         </div>
-
-                        <div class="logic-card border-cyan-500 text-left">
-                            <div class="flex justify-between items-start mb-4 text-left">
-                                <h3 class="text-xl font-bold text-white text-left">Model D: Deep Learning (LSTM 예측)</h3>
-                                <span class="badge badge-info text-left">AI Based</span>
-                            </div>
-                            <p class="text-sm text-slate-400 mb-4 leading-relaxed text-left text-left">
-                                3층 LSTM 레이어를 통해 과거 60일간의 OHLCV 데이터를 시계열 분석하여 향후 4시간의 방향성을 예측합니다.
-                            </p>
-                            <div class="bg-black/30 p-4 rounded-lg font-mono text-xs space-y-2 text-left">
-                                <div class="text-cyan-400 text-left"># Model Spec</div>
-                                <div class="text-left text-left">Architecture: \(LSTM(64) \to Dropout(0.2) \to Dense(1)\)</div>
-                                <div class="text-left">Optimizer: Adam (Learning Rate: 0.001)</div>
-                            </div>
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left">
+                            <h3 class="font-bold text-cyan-400 mb-2">MODEL D: Deep Learning</h3>
+                            <p class="text-xs opacity-60 text-left">LSTM 신경망으로 과거 60일의 데이터를 학습해 방향성을 예측합니다.</p>
                         </div>
                     </div>
                 </section>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                    <a href="https://github.com/sheryloe/Automethemoney" target="_blank" class="glass-panel p-6 flex items-center gap-4 hover:bg-white/5 transition-all">
-                        <i data-lucide="github" class="w-10 h-10 text-white"></i>
-                        <div>
-                            <div class="font-bold text-white">Github Repo</div>
-                            <div class="text-xs opacity-50">View Source Code</div>
-                        </div>
-                    </a>
-                    <a href="https://github.com/sheryloe/Automethemoney/wiki" target="_blank" class="glass-panel p-6 flex items-center gap-4 hover:bg-white/5 transition-all text-left">
-                        <i data-lucide="book" class="w-10 h-10 text-white text-left"></i>
-                        <div class="text-left">
-                            <div class="font-bold text-white text-left">Technical Wiki</div>
-                            <div class="text-xs opacity-50 text-left">Read Documentation</div>
-                        </div>
-                    </a>
+                
+                <div class="glass-panel p-8 rounded-3xl" id="comments">
+                    <script src="https://giscus.app/client.js" data-repo="sheryloe/Automethemoney" data-repo-id="R_kgDON7u0mg" data-category="Announcements" data-category-id="DIC_kwDON7u0ms4CnM1U" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="transparent_dark" data-lang="ko" crossorigin="anonymous" async></script>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
-        // GitHub Actions가 치환할 변수
+        lucide.createIcons();
         const URL = '{{SUPABASE_URL}}';
-        const KEY = '{{SUPABASE_ANON_KEY}}'; // 반드시 anon 키여야 함
+        const KEY = '{{SUPABASE_ANON_KEY}}';
 
         let _supabase;
         if (URL.startsWith('http')) {
             _supabase = supabase.createClient(URL, KEY);
+        } else {
+            console.error("❌ Critical: Supabase 주소가 유효하지 않습니다. (현재값: " + URL + ")");
         }
 
         async function fetchTradingData() {
             if (!_supabase) return;
             const { data, error } = await _supabase.from('trading_logs').select('*').order('date', { ascending: false });
-            if (error) {
-                console.error("Fetch Error:", error.message);
-                return;
-            }
+            if (error) return console.error("DB 로드 실패:", error.message);
 
             const tbody = document.getElementById('pnl-table-body');
             tbody.innerHTML = '';
@@ -191,25 +126,26 @@
             const dates = [];
 
             [...data].reverse().forEach(log => {
-                cumulative[log.model_id] += (log.pnl_percent || 0);
+                cumulative[log.model_id] += log.pnl_percent;
                 chartData[log.model_id].push(cumulative[log.model_id].toFixed(2));
                 if (!dates.includes(log.date)) dates.push(log.date);
             });
 
             data.forEach(log => {
                 tbody.innerHTML += `
-                    <tr class="hover:bg-white/5 border-b border-white/5 text-left text-left">
-                        <td class="py-5 pl-8 opacity-50 text-left text-left">${log.date}</td>
-                        <td class="font-black text-white text-left text-left">${log.model_id}</td>
-                        <td class="${log.pnl_percent >= 0 ? 'pnl-plus' : 'pnl-minus'} text-left text-left">${log.pnl_percent >= 0 ? '+' : ''}${log.pnl_percent}%</td>
-                        <td class="text-right opacity-80 text-left text-left text-left">₩ ${log.net_profit_krw?.toLocaleString()}</td>
-                        <td class="text-center pr-8 text-left text-left"><span class="badge ${log.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs font-black text-left">${log.status}</span></td>
+                    <tr class="hover:bg-white/5 border-b border-white/5 text-left">
+                        <td class="py-5 pl-8 opacity-50">${log.date}</td>
+                        <td class="font-black text-white">${log.model_id}</td>
+                        <td class="${log.pnl_percent >= 0 ? 'pnl-plus' : 'pnl-minus'}">${log.pnl_percent >= 0 ? '+' : ''}${log.pnl_percent}%</td>
+                        <td class="text-right opacity-80 italic text-left">₩ ${log.net_profit_krw.toLocaleString()}</td>
+                        <td class="text-center pr-8 text-left"><span class="badge ${log.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs font-black">${log.status}</span></td>
                     </tr>
                 `;
             });
 
             Object.keys(cumulative).forEach(m => {
-                const el = document.getElementById(`stat-model-${m.split(' ')[1].toLowerCase()}`);
+                const mid = m.split(' ')[1].toLowerCase();
+                const el = document.getElementById(`stat-model-${mid}`);
                 if (el) el.innerText = cumulative[m].toFixed(2) + "%";
             });
 
@@ -223,8 +159,7 @@
                 colors: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4'],
                 stroke: { curve: 'smooth', width: 3 },
                 xaxis: { categories: dates, axisBorder: {show: false} },
-                theme: { mode: 'dark' },
-                legend: { position: 'top', horizontalAlign: 'right' }
+                theme: { mode: 'dark' }
             };
             document.querySelector("#multi-model-chart").innerHTML = '';
             new ApexCharts(document.querySelector("#multi-model-chart"), options).render();
@@ -236,10 +171,8 @@
             document.getElementById(`tab-${id}`).classList.add('active');
             document.getElementById(`btn-${id}`).classList.add('tab-active');
             if (id === 'leaderboard') fetchTradingData();
-            lucide.createIcons(); // 아이콘 재렌더링
         }
 
-        lucide.createIcons();
         fetchTradingData();
         setInterval(fetchTradingData, 60000);
     </script>
