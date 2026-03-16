@@ -1,172 +1,41 @@
-<!DOCTYPE html>
-<html lang="ko" data-theme="night">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automethemoney Pro | Real-time</title>
-    
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; } }
-        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .pnl-plus { color: #10b981; } .pnl-minus { color: #f43f5e; }
-    </style>
-</head>
-<body class="min-h-screen">
+name: Deploy Dashboard (Official Flow)
 
-    <header class="sticky top-0 z-50 bg-[#0b0f1a]/90 border-b border-white/5 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="text-left text-left">
-                <h1 class="text-2xl font-black italic text-white uppercase tracking-tighter text-left">Automethemoney Pro</h1>
-                <p class="text-[10px] text-primary font-bold mt-1 uppercase text-left">3월 16일부터 모델 구동 시작</p>
-            </div>
-            <div class="tabs tabs-boxed bg-slate-900 border border-white/10 p-1">
-                <button class="tab tab-active px-6 font-bold" id="btn-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</button>
-                <button class="tab px-6 font-bold" id="btn-guide" onclick="switchTab('guide')">System Guide</button>
-            </div>
-        </div>
-    </header>
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-    <main class="max-w-7xl mx-auto p-6">
-        <div id="tab-leaderboard" class="tab-content active space-y-8">
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="stats-grid">
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model A PnL</div>
-                    <div class="text-2xl font-black text-white" id="stat-model-a">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500 text-left text-left text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left text-left">Model B PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-b">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500 text-left text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left text-left">Model C PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-c">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500 text-left text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left text-left text-left">Model D PnL</div>
-                    <div class="text-2xl font-black text-white text-left text-left" id="stat-model-d">0.00%</div>
-                </div>
-            </div>
-            <div class="glass-panel p-8 rounded-3xl">
-                <div id="multi-model-chart" style="min-height: 400px;"></div>
-            </div>
-            <div class="glass-panel rounded-3xl overflow-hidden">
-                <table class="table w-full">
-                    <thead class="bg-black/20 text-slate-500 text-[10px] uppercase text-left">
-                        <tr><th class="py-5 pl-8 text-left">Date</th><th class="text-left">Model ID</th><th class="text-left">PnL (%)</th><th class="text-right">Profit</th><th class="text-center pr-8">Status</th></tr>
-                    </thead>
-                    <tbody id="pnl-table-body" class="font-mono text-sm"></tbody>
-                </table>
-            </div>
-        </div>
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
-        <div id="tab-guide" class="tab-content space-y-12 py-10">
-            <div class="max-w-4xl mx-auto space-y-12 text-left">
-                <h2 class="text-3xl font-black italic text-white border-b-2 border-indigo-500 pb-4 text-left">Technical Model Specs</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-indigo-500/20 text-left">
-                        <h3 class="font-bold text-indigo-400 mb-2 text-left">MODEL A: Trend Follower</h3>
-                        <p class="text-xs opacity-60 text-left">장기 이평선 정배열과 RSI 필터를 활용한 추세 추종 전략.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-emerald-500/20 text-left text-left">
-                        <h3 class="font-bold text-emerald-400 mb-2 text-left text-left">MODEL B: Mean Reversion</h3>
-                        <p class="text-xs opacity-60 text-left text-left">볼린저 밴드 하단 이탈 시 기술적 반등을 노리는 회귀 전략.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-amber-500/20 text-left text-left">
-                        <h3 class="font-bold text-amber-400 mb-2 text-left text-left">MODEL C: Volatility Breakout</h3>
-                        <p class="text-xs opacity-60 text-left text-left">전일 변동폭의 특정 계수(K) 돌파 시 모멘텀 진입.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left text-left text-left">
-                        <h3 class="font-bold text-cyan-400 mb-2 text-left text-left text-left">MODEL D: Deep Learning</h3>
-                        <p class="text-xs opacity-60 text-left text-left text-left">LSTM 신경망 기반 시계열 방향성 확률 예측 모델.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    <script>
-        lucide.createIcons();
-        // GitHub Actions에서 치환될 변수
-        const URL = '{{SUPABASE_URL}}';
-        const KEY = '{{SUPABASE_ANON_KEY}}';
+      # 1. HTML 내의 플레이스홀더를 실제 비밀 키로 교체
+      - name: Inject Secrets into HTML
+        run: |
+          if [ -f "docs/index.html" ]; then
+            # 시크릿 이름을 사용자님의 환경(SUPABASE_SECRET_KEY)에 맞게 매핑
+            sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
+            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
+            echo "✅ docs/index.html 치환 성공"
+          else
+            echo "❌ 에러: docs/index.html 파일을 찾을 수 없습니다!"
+            exit 1
+          fi
 
-        let _supabase;
-        if (URL.startsWith('http')) {
-            _supabase = supabase.createClient(URL, KEY);
-        } else {
-            console.error("❌ Malformed URL Error: " + URL);
-        }
+      # 2. 아티팩트 업로드 및 공식 배포
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
 
-        async function fetchTradingData() {
-            if (!_supabase) return;
-            const { data, error } = await _supabase.from('trading_logs').select('*').order('date', { ascending: false });
-            if (error) return console.error(error.message);
-
-            const tbody = document.getElementById('pnl-table-body');
-            tbody.innerHTML = '';
-            const cumulative = { "Model A": 0, "Model B": 0, "Model C": 0, "Model D": 0 };
-            const chartData = { "Model A": [], "Model B": [], "Model C": [], "Model D": [] };
-            const dates = [];
-
-            [...data].reverse().forEach(log => {
-                cumulative[log.model_id] += log.pnl_percent;
-                chartData[log.model_id].push(cumulative[log.model_id].toFixed(2));
-                if (!dates.includes(log.date)) dates.push(log.date);
-            });
-
-            data.forEach(log => {
-                tbody.innerHTML += `
-                    <tr class="hover:bg-white/5 border-b border-white/5 text-left text-left">
-                        <td class="py-5 pl-8 opacity-50 text-left text-left">${log.date}</td>
-                        <td class="font-black text-white text-left text-left text-left">${log.model_id}</td>
-                        <td class="${log.pnl_percent >= 0 ? 'pnl-plus' : 'pnl-minus'} text-left text-left text-left">${log.pnl_percent >= 0 ? '+' : ''}${log.pnl_percent}%</td>
-                        <td class="text-right opacity-80 text-left text-left text-left">₩ ${log.net_profit_krw.toLocaleString()}</td>
-                        <td class="text-center pr-8 text-left text-left text-left"><span class="badge ${log.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs font-black text-left">${log.status}</span></td>
-                    </tr>
-                `;
-            });
-
-            Object.keys(cumulative).forEach(m => {
-                const el = document.getElementById(`stat-model-${m.split(' ')[1].toLowerCase()}`);
-                if (el) el.innerText = cumulative[m].toFixed(2) + "%";
-            });
-
-            renderChart(dates, chartData);
-        }
-
-        function renderChart(dates, chartData) {
-            const options = {
-                series: Object.keys(chartData).map(m => ({ name: m, data: chartData[m] })),
-                chart: { height: 400, type: 'line', toolbar: { show: false }, background: 'transparent', foreColor: '#64748b' },
-                colors: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4'],
-                stroke: { curve: 'smooth', width: 3 },
-                xaxis: { categories: dates, axisBorder: {show: false} },
-                theme: { mode: 'dark' }
-            };
-            document.querySelector("#multi-model-chart").innerHTML = '';
-            new ApexCharts(document.querySelector("#multi-model-chart"), options).render();
-        }
-
-        function switchTab(id) {
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(`tab-${id}`).classList.add('active');
-            document.getElementById(`btn-${id}`).classList.add('tab-active');
-            if (id === 'leaderboard') fetchTradingData();
-        }
-
-        fetchTradingData();
-        setInterval(fetchTradingData, 60000);
-    </script>
-</body>
-</html>
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
