@@ -20,12 +20,12 @@ jobs:
       - name: Inject Secrets into HTML
         run: |
           if [ -f "docs/index.html" ]; then
-            # 시크릿 주입 (변수 이름 오염 방지를 위해 내부 식별자 유지)
+            # 시크릿 이름을 SUPABASE_ANON_KEY로 완전히 일치시킴
             sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
-            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
-            echo "✅ docs/index.html 주입 완료"
+            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_ANON_KEY }}|g" docs/index.html
+            echo "✅ Secrets injected successfully."
           else
-            echo "❌ 에러: docs/index.html 파일을 찾을 수 없습니다."
+            echo "❌ Error: docs/index.html not found!"
             exit 1
           fi
 
