@@ -1,25 +1,26 @@
-name: Deploy Dashboard with Secrets
+name: Deploy Dashboard (Official Flow)
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
-# 1. 명시적 권한 부여 (Exit Code 128 해결책)
+# 1. 권한 설정 (GitHub Pages 배포를 위한 필수 설정)
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4 # v3 -> v4 업데이트
+        uses: actions/checkout@v4
 
       # 2. HTML 내의 플레이스홀더를 실제 비밀 키로 교체
       - name: Inject Secrets into HTML
         run: |
-          # 파일 경로가 확실한지 체크 (에러 방지)
           if [ -f "docs/index.html" ]; then
             sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
             sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
@@ -29,9 +30,13 @@ jobs:
             exit 1
           fi
 
-      # 3. GitHub Pages 배포 (v3 -> v4 업데이트)
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      # 3. 아티팩트 업로드 (빌드된 파일을 GitHub 서버에 임시 저장)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          path: './docs' # index.html이 들어있는 폴더
+
+      # 4. 실제 배포 (공식 배포 액션)
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
