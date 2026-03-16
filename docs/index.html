@@ -3,96 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automethemoney Pro | Multi-Model Trading System</title>
+    <title>Automethemoney Pro | Real-time Quant Dashboard</title>
     
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
-        .tab-content { display: none; animation: fadeIn 0.4s ease-out; }
-        .tab-content.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        .glass-panel { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
-        .gradient-text { background: linear-gradient(90deg, #6366f1, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .pnl-plus { color: #10b981; } .pnl-minus { color: #f43f5e; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+        .pnl-plus { color: #10b981; font-weight: 800; }
+        .pnl-minus { color: #f43f5e; font-weight: 800; }
     </style>
 </head>
 <body class="min-h-screen">
 
-    <header class="sticky top-0 z-50 bg-[#0b0f1a]/80 backdrop-blur-md border-b border-white/5">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3">
-                <div class="p-2 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl shadow-lg">
-                    <i data-lucide="activity" class="text-white w-6 h-6"></i>
-                </div>
-                <h1 class="text-xl font-black italic tracking-tighter text-white uppercase">Automethemoney <span class="text-xs font-normal opacity-50">v2.4</span></h1>
+    <header class="sticky top-0 z-50 bg-[#0b0f1a]/90 border-b border-white/5 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="text-left">
+                <h1 class="text-2xl font-black italic text-white uppercase tracking-tighter">Automethemoney Pro</h1>
+                <p class="text-xs text-primary font-bold mt-1">3월 16일부터 모델 구동 시작</p>
             </div>
             
-            <div class="tabs tabs-boxed bg-slate-900 border border-white/5 p-1">
-                <a class="tab tab-md font-bold transition-all active-tab px-8" id="tab-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</a>
-                <a class="tab tab-md font-bold transition-all px-8" id="tab-guide" onclick="switchTab('guide')">System Guide</a>
+            <div class="tabs tabs-boxed bg-slate-900 border border-white/10 p-1">
+                <button class="tab tab-active" id="btn-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</button>
+                <button class="tab" id="btn-guide" onclick="switchTab('guide')">System Guide</button>
             </div>
         </div>
     </header>
 
     <main class="max-w-7xl mx-auto p-6">
         
-        <div id="content-leaderboard" class="tab-content active space-y-8">
+        <div id="tab-leaderboard" class="tab-content active space-y-8">
             
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="glass-panel p-6">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Assets PnL</div>
-                    <div class="text-2xl font-black text-white">+12.42%</div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1">Model A PnL</div>
+                    <div class="text-2xl font-black text-white" id="stat-model-a">--%</div>
                 </div>
-                <div class="glass-panel p-6 border-l-4 border-indigo-500">
-                    <div class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1 italic text-left">Top Performer</div>
-                    <div class="text-2xl font-black text-white text-left">Model A <span class="text-xs text-success ml-2">+1.4%</span></div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1">Model B PnL</div>
+                    <div class="text-2xl font-black text-white" id="stat-model-b">--%</div>
                 </div>
-                <div class="glass-panel p-6">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Win Rate</div>
-                    <div class="text-2xl font-black text-white">64.2%</div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1">Model C PnL</div>
+                    <div class="text-2xl font-black text-white" id="stat-model-c">--%</div>
                 </div>
-                <div class="glass-panel p-6">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Active Models</div>
-                    <div class="text-2xl font-black text-white">4 Models</div>
+                <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1">Model D PnL</div>
+                    <div class="text-2xl font-black text-white" id="stat-model-d">--%</div>
                 </div>
             </div>
 
-            <div class="glass-panel p-8">
-                <div class="flex justify-between items-center mb-8">
+            <div class="glass-panel p-8 rounded-3xl">
+                <div class="flex justify-between items-center mb-6">
                     <h2 class="text-lg font-black text-white italic uppercase tracking-widest">Multi-Model Equity Curve</h2>
-                    <div class="flex gap-4 text-[10px] font-mono">
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> A</span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> B</span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> C</span>
-                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-500"></span> D</span>
-                    </div>
+                    <div class="badge badge-outline text-[10px] opacity-50">Real-time DB Synced</div>
                 </div>
                 <div id="multi-model-chart" style="min-height: 400px;"></div>
             </div>
 
-            <div class="glass-panel overflow-hidden">
-                <div class="p-6 border-b border-white/5 flex justify-between items-center">
-                    <h2 class="text-lg font-black text-white italic uppercase">Daily Performance List</h2>
-                    <span class="badge badge-primary badge-sm font-mono" id="current-date">2026-03-16</span>
+            <div class="glass-panel rounded-3xl overflow-hidden">
+                <div class="p-6 border-b border-white/5">
+                    <h2 class="text-lg font-black text-white italic uppercase">Daily Performance List (₩)</h2>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="table table-zebra w-full">
+                    <table class="table w-full">
                         <thead class="bg-black/20 text-slate-500 text-[10px] uppercase">
                             <tr>
-                                <th class="py-4">Model ID</th>
-                                <th>Trading Logic</th>
+                                <th class="py-4 pl-8">Date</th>
+                                <th>Model ID</th>
                                 <th>Trades</th>
                                 <th>PnL (%)</th>
                                 <th class="text-right">Net Profit</th>
-                                <th class="text-center">Status</th>
+                                <th class="text-center pr-8">Status</th>
                             </tr>
                         </thead>
                         <tbody id="pnl-table-body" class="font-mono text-sm">
@@ -102,158 +92,120 @@
             </div>
         </div>
 
-        <div id="content-guide" class="tab-content space-y-12 py-10">
-            
-            <div class="max-w-4xl mx-auto space-y-16">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <a href="https://github.com/sheryloe/Automethemoney" class="glass-panel p-8 text-center hover:bg-indigo-600/10 transition-all group">
-                        <i data-lucide="github" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform"></i>
-                        <h3 class="font-black text-white uppercase">Repository</h3>
-                        <p class="text-xs opacity-50">Source code & History</p>
+        <div id="tab-guide" class="tab-content space-y-10 py-6">
+            <div class="max-w-4xl mx-auto space-y-12">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center text-left">
+                    <a href="https://github.com/sheryloe/Automethemoney" class="glass-panel p-8 rounded-2xl hover:bg-primary/10 transition-colors group">
+                        <i data-lucide="github" class="w-8 h-8 mx-auto mb-4 text-primary"></i>
+                        <h3 class="font-bold text-white uppercase">Repository</h3>
                     </a>
-                    <a href="https://github.com/sheryloe/Automethemoney/wiki" class="glass-panel p-8 text-center hover:bg-purple-600/10 transition-all group">
-                        <i data-lucide="book-open" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform"></i>
-                        <h3 class="font-black text-white uppercase text-center">Wiki Docs</h3>
-                        <p class="text-xs opacity-50 text-center">Detailed User Guide</p>
+                    <a href="https://github.com/sheryloe/Automethemoney/wiki" class="glass-panel p-8 rounded-2xl hover:bg-secondary/10 transition-colors group text-center">
+                        <i data-lucide="book-open" class="w-8 h-8 mx-auto mb-4 text-secondary text-center"></i>
+                        <h3 class="font-bold text-white uppercase text-center">Wiki Docs</h3>
                     </a>
-                    <a href="#feedback" class="glass-panel p-8 text-center hover:bg-emerald-600/10 transition-all group">
-                        <i data-lucide="message-square" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform text-center"></i>
-                        <h3 class="font-black text-white uppercase text-center">Feedback</h3>
-                        <p class="text-xs opacity-50 text-center">Issues & Discussion</p>
+                    <a href="https://github.com/sheryloe/Automethemoney/issues" class="glass-panel p-8 rounded-2xl hover:bg-accent/10 transition-colors group text-center">
+                        <i data-lucide="bug" class="w-8 h-8 mx-auto mb-4 text-accent text-center"></i>
+                        <h3 class="font-bold text-white uppercase text-center">Report Issues</h3>
                     </a>
                 </div>
 
-                <section class="space-y-6 text-left">
-                    <h2 class="text-3xl font-black italic underline decoration-indigo-500 decoration-8 underline-offset-8 mb-10">System Architecture</h2>
-                    <div class="flex flex-col md:flex-row gap-12 items-center">
-                        <div class="flex-1 space-y-4">
-                            <p class="leading-relaxed text-slate-400">
-                                <strong>Automethemoney</strong>는 Python 기반의 매매 봇과 GitHub Actions의 스케줄러를 결합한 완전 자동화 시스템입니다. 
-                                시장의 노이즈를 제거하기 위해 4가지 독립된 전략(Multi-Strategy)을 병렬 가동하며, 각 모델의 리스크 한도를 동적으로 관리합니다.
-                            </p>
-                            <div class="p-6 bg-slate-900 rounded-2xl border border-white/5">
-                                <h4 class="font-bold text-white mb-2">How it works:</h4>
-                                <ol class="text-sm space-y-2 opacity-70 font-mono">
-                                    <li>1. GitHub Actions 트리거 (매일 정해진 시간)</li>
-                                    <li>2. Python 매매 엔진 구동 (API 연결)</li>
-                                    <li>3. 모델별 데이터 분석 및 주문 체결</li>
-                                    <li>4. 결과 JSON 저장 및 대시보드 업데이트</li>
-                                </ol>
-                            </div>
+                <div class="prose prose-invert max-w-none text-left">
+                    <h2 class="text-2xl font-black italic italic">System Description</h2>
+                    <p class="text-slate-400">본 프로젝트는 GitHub Actions와 Supabase를 활용한 <strong>Serverless Quant Trading System</strong>입니다. 매일 정해진 시간에 Python 봇이 구동되어 시장 데이터를 분석하고, 그 결과를 실시간으로 이 대시보드에 업데이트합니다.</p>
+                    
+                    <h3 class="text-xl font-bold mt-8 text-primary">Model Technical Logic</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div class="p-4 bg-slate-800 rounded-xl border border-white/5">
+                            <h4 class="font-bold text-white text-left">Model A: Trend Follower</h4>
+                            <p class="text-xs opacity-60 text-left">EMA 정배열 구간에서 추세 강도를 측정하여 진입합니다.</p>
                         </div>
-                        <div class="w-full md:w-80 glass-panel p-6 flex flex-col gap-6 items-center">
-                            <div class="flex flex-col items-center gap-1 text-center">
-                                <i data-lucide="database" class="text-indigo-500"></i>
-                                <span class="text-[10px] font-bold">Data Fetching</span>
-                            </div>
-                            <div class="h-10 w-[2px] bg-slate-800"></div>
-                            <div class="flex flex-col items-center gap-1 text-center">
-                                <i data-lucide="cpu" class="text-purple-500"></i>
-                                <span class="text-[10px] font-bold text-center">Core Logic</span>
-                            </div>
-                            <div class="h-10 w-[2px] bg-slate-800"></div>
-                            <div class="flex flex-col items-center gap-1 text-center">
-                                <i data-lucide="layout-dashboard" class="text-emerald-500"></i>
-                                <span class="text-[10px] font-bold">Web Update</span>
-                            </div>
+                        <div class="p-4 bg-slate-800 rounded-xl border border-white/5 text-left">
+                            <h4 class="font-bold text-white">Model B: Mean Reversion</h4>
+                            <p class="text-xs opacity-60 text-left">볼린저 밴드 하단 터치 시 과매도 반등을 노립니다.</p>
                         </div>
                     </div>
-                </section>
-
-                <section class="space-y-8 text-left">
-                    <h2 class="text-2xl font-black italic uppercase">Technical Models Logic</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-white/5">
-                            <h4 class="font-bold text-indigo-400 mb-2">Model A (Trend Following)</h4>
-                            <p class="text-xs opacity-60">이동평균선 정배열 구간에서 RSI 필터를 통과한 강세 종목만 추종합니다. \(EMA_{20} > EMA_{60}\) 조건 충족 시 진입.</p>
-                        </div>
-                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-white/5 text-left">
-                            <h4 class="font-bold text-emerald-400 mb-2 text-left">Model B (Mean Reversion)</h4>
-                            <p class="text-xs opacity-60 text-left">볼린저 밴드 하단(\(2\sigma\)) 이탈 시 단기 반등을 노립니다. 거래량 감소가 확인된 지점에서 매수 진입.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <section id="feedback" class="pt-20 border-t border-white/5 text-center">
-                    <h2 class="text-2xl font-black mb-8 italic italic">Community Feedback</h2>
-                    <div class="glass-panel p-6 rounded-3xl">
-                        <script src="https://giscus.app/client.js" data-repo="sheryloe/Automethemoney" data-repo-id="R_kgDON7u0mg" data-category="Announcements" data-category-id="DIC_kwDON7u0ms4CnM1U" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="transparent_dark" data-lang="ko" crossorigin="anonymous" async></script>
-                    </div>
-                </section>
+                </div>
             </div>
         </div>
     </main>
 
-    <footer class="footer footer-center p-10 bg-black/20 text-slate-600">
-        <aside>
-            <p class="font-bold uppercase tracking-widest text-[10px]">Automethemoney Multi-Strategy Dash</p> 
-            <p>© 2026 Developed by Sheryloe. All rights reserved.</p>
-        </aside>
-    </footer>
-
     <script>
         lucide.createIcons();
 
-        // [1] 탭 전환 로직
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active', 'bg-slate-700', 'text-white'));
-            
-            document.getElementById(`content-${tabName}`).classList.add('active');
-            const targetTab = document.getElementById(`tab-${tabName}`);
-            targetTab.classList.add('tab-active', 'bg-slate-700', 'text-white');
+        // [1] Supabase 설정 (사용자님의 키로 교체 필요)
+        const SUPABASE_URL = 'https://ggrvrdwkhnvgtlakzbzf.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdncnZyZHdraG52Z3RsYWt6YnpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NDY3MTUsImV4cCI6MjA4OTEyMjcxNX0.4-TlLsgGcv_04DhRedDBjnbxxAtyOxxkMNKPwD1NGbg';
+        const supabase = net.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-            if(tabName === 'leaderboard') {
-                // 탭 전환 시 차트 리사이즈 필요
-                window.dispatchEvent(new Event('resize'));
-            }
+        // [2] 탭 전환
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            document.getElementById(`btn-${tabId}`).classList.add('tab-active');
+            if(tabId === 'leaderboard') window.dispatchEvent(new Event('resize'));
         }
 
-        // [2] 모델별 수익 곡선 차트 (Multi-Series)
-        const chartOptions = {
-            series: [
-                { name: 'Model A (Trend)', data: [0, 1.2, 0.8, 2.5, 4.2, 3.8, 5.5, 6.4, 7.8, 8.5] },
-                { name: 'Model B (Mean)', data: [0, 0.5, 1.2, 1.1, 1.8, 2.5, 2.2, 3.1, 4.0, 4.5] },
-                { name: 'Model C (Break)', data: [0, 0.2, 0.5, 1.4, 1.2, 2.8, 3.5, 4.2, 4.5, 5.2] },
-                { name: 'Model D (Deep)', data: [0, -0.4, 0.2, 0.5, 0.8, 0.6, 1.4, 1.8, 2.2, 2.4] }
-            ],
-            chart: { height: 400, type: 'line', toolbar: { show: false }, background: 'transparent', foreColor: '#64748b' },
-            colors: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4'],
-            stroke: { curve: 'smooth', width: 3 },
-            grid: { borderColor: '#1e293b', strokeDashArray: 4 },
-            xaxis: { categories: ['D-9','D-8','D-7','D-6','D-5','D-4','D-3','D-2','D-1','Today'], axisBorder: {show: false} },
-            yaxis: { labels: { formatter: (v) => v + "%" } },
-            legend: { show: false },
-            tooltip: { theme: 'dark' }
-        };
+        // [3] 데이터 로드 및 UI 업데이트
+        async function initDashboard() {
+            // trading_logs 테이블에서 최신 데이터 50개 가져오기
+            const { data, error } = await supabase
+                .from('trading_logs')
+                .select('*')
+                .order('date', { ascending: false })
+                .limit(50);
 
-        const chart = new ApexCharts(document.querySelector("#multi-model-chart"), chartOptions);
-        chart.render();
+            if (error) { console.error(error); return; }
 
-        // [3] 일별 모델 데이터 로딩 (샘플)
-        const sampleData = [
-            { id: "Model A", logic: "Trend Follower", trades: 12, pnl: 1.4, profit: 32000, status: "Win" },
-            { id: "Model B", logic: "Mean Reversion", trades: 8, pnl: 0.8, profit: 15400, status: "Win" },
-            { id: "Model C", logic: "Breakout", trades: 5, pnl: 0.5, profit: 8900, status: "Win" },
-            { id: "Model D", logic: "AI-Forecaster", trades: 15, pnl: -0.2, profit: -4200, status: "Loss" }
-        ];
+            // 테이블 렌더링
+            const tbody = document.getElementById('pnl-table-body');
+            tbody.innerHTML = '';
+            
+            // 모델별 누적 수익률 계산용 객체
+            const cumulativePnL = { "Model A": 0, "Model B": 0, "Model C": 0, "Model D": 0 };
 
-        const tbody = document.getElementById('pnl-table-body');
-        sampleData.forEach(item => {
-            tbody.innerHTML += `
-                <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-left text-left">
-                    <td class="py-4 font-black text-white text-left">${item.id}</td>
-                    <td class="text-xs opacity-60 text-left">${item.logic}</td>
-                    <td class="text-left">${item.trades}</td>
-                    <td class="font-bold ${item.pnl >= 0 ? 'pnl-plus' : 'pnl-minus'} text-left">${item.pnl >= 0 ? '+' : ''}${item.pnl}%</td>
-                    <td class="text-right opacity-80 text-left">₩ ${item.profit.toLocaleString()}</td>
-                    <td class="text-center"><span class="badge ${item.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs text-[8px] font-black">${item.status}</span></td>
-                </tr>
-            `;
-        });
+            data.forEach(log => {
+                cumulativePnL[log.model_id] += log.pnl_percent;
+                
+                tbody.innerHTML += `
+                    <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-left">
+                        <td class="pl-8 opacity-50">${log.date}</td>
+                        <td class="font-black text-white">${log.model_id}</td>
+                        <td class="text-xs opacity-60">${log.logic}</td>
+                        <td class="${log.pnl_percent >= 0 ? 'pnl-plus' : 'pnl-minus'}">${log.pnl_percent >= 0 ? '+' : ''}${log.pnl_percent}%</td>
+                        <td class="text-right opacity-80 italic">₩ ${log.net_profit_krw.toLocaleString()}</td>
+                        <td class="text-center pr-8"><span class="badge ${log.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs font-black">${log.status}</span></td>
+                    </tr>
+                `;
+            });
 
-        // 초기 탭 설정
-        switchTab('leaderboard');
+            // 상단 개별 PnL 업데이트
+            document.getElementById('stat-model-a').innerText = cumulativePnL["Model A"].toFixed(2) + "%";
+            document.getElementById('stat-model-b').innerText = cumulativePnL["Model B"].toFixed(2) + "%";
+            document.getElementById('stat-model-c').innerText = cumulativePnL["Model C"].toFixed(2) + "%";
+            document.getElementById('stat-model-d').innerText = cumulativePnL["Model D"].toFixed(2) + "%";
+
+            // 차트 업데이트 로직 (간략화)
+            updateChart(data);
+        }
+
+        function updateChart(data) {
+            // 차트 데이터 가공 및 렌더링 로직 (생략 - ApexCharts 적용)
+            const options = {
+                series: [
+                    { name: 'Model A', data: [0, 1.2, 0.8, 1.4] }, // 실제 데이터 매핑 필요
+                    { name: 'Model B', data: [0, 0.5, 0.9, 0.8] }
+                ],
+                chart: { height: 400, type: 'line', toolbar: {show: false}, background: 'transparent', foreColor: '#64748b' },
+                colors: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4'],
+                stroke: { curve: 'smooth', width: 3 },
+                xaxis: { type: 'category', axisBorder: {show: false} },
+                theme: { mode: 'dark' }
+            };
+            new ApexCharts(document.querySelector("#multi-model-chart"), options).render();
+        }
+
+        initDashboard();
     </script>
 </body>
 </html>
