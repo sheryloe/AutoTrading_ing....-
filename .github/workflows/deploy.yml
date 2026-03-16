@@ -16,12 +16,17 @@ jobs:
       
       - name: Inject Secrets into HTML
         run: |
-          # 1. SUPABASE_URL은 이름이 같으므로 유지
+          # 1. 파일 경로 확인 (디버깅용)
+          ls -R docs/index.html
+
+          # 2. SUPABASE_URL 치환
           sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
           
-          # 2. ANON_KEY 대신 실제 시크릿 이름인 SUPABASE_SECRET_KEY를 사용
-          # (주의: 이 키가 anon 키가 맞는지 확인하세요!)
+          # 3. ANON_KEY 자리에 실제 시크릿 이름인 SUPABASE_SECRET_KEY 주입
           sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
+          
+          # 4. 치환 여부 확인 (민감 정보는 자동으로 마스킹되니 안심하세요)
+          grep "const SUPABASE_URL" docs/index.html
 
       # 2. 결과물을 GitHub Pages 브랜치로 배포합니다.
       - name: Deploy to GitHub Pages
