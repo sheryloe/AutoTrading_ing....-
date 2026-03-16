@@ -54,6 +54,27 @@ function realizedPctLabel(row) {
     : "-";
 }
 
+function entryLabel(row) {
+  const actual = Number(row.actual_entry_price || 0);
+  if (actual > 0) return formatMoney(actual);
+  const planned = Number(row.planned_entry_price || 0);
+  return planned > 0 ? `${formatMoney(planned)} (plan)` : "-";
+}
+
+function tpLabel(row) {
+  const value = Number(row.take_profit_price || row.target_price_2 || row.target_price_1 || 0);
+  return value > 0 ? formatMoney(value) : "-";
+}
+
+function slLabel(row) {
+  const value = Number(row.stop_loss_price || 0);
+  return value > 0 ? formatMoney(value) : "-";
+}
+
+function openedMeta(row) {
+  return row.opened_at ? formatTs(row.opened_at) : "-";
+}
+
 export default function PositionsTabs({ openPositions, setupRows, recentTradeRows }) {
   const [activeModel, setActiveModel] = useState(() => pickDefaultModel(openPositions, setupRows, recentTradeRows));
 
@@ -74,7 +95,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
 
   return (
     <section className="tab-shell">
-      <div className="tab-strip" role="tablist" aria-label="포지션 모델 선택">
+      <div className="tab-strip" role="tablist" aria-label="모델 선택">
         {MODEL_ORDER.map((modelId) => {
           const item = getModelMeta(modelId);
           const active = activeModel === modelId;
@@ -122,7 +143,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
       </SectionCard>
 
       <section className="content-grid content-grid-two">
-        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}개`}>
+        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}건`}>
           {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
@@ -130,15 +151,19 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
                   <div>
                     <strong>{row.symbol}</strong>
                     <p>
-                      {row.side} / {row.status}
+                      {String(row.side || "").toUpperCase()} / {row.status}
                     </p>
+                    <p className="position-secondary">오픈 {openedMeta(row)}</p>
                   </div>
                   <div className="mini-metrics position-metrics">
+                    <span className="position-secondary">진입 {entryLabel(row)}</span>
+                    <span className="position-secondary">TP {tpLabel(row)}</span>
+                    <span className="position-secondary">SL {slLabel(row)}</span>
                     <span className="position-secondary">레버리지 {leverageLabel(row.leverage)}</span>
                     <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
                       {formatMoney(row.unrealized_pnl_usd)}
                     </strong>
-                    <span className="position-secondary">현재 PnL</span>
+                    <span className="position-secondary">미실현 PnL</span>
                   </div>
                 </article>
               ))}
@@ -173,6 +198,47 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
           )}
         </SectionCard>
       </section>
+
+      <TablePanel eyebrow="포지션 상세" title={`${meta.name} Entry / TP / SL / PnL`} meta={`${activePositions.length}건`}>
+        <table>
+          <thead>
+            <tr>
+              <th>심볼</th>
+              <th>오픈 시각</th>
+              <th>진입가</th>
+              <th>TP</th>
+              <th>SL</th>
+              <th>레버리지</th>
+              <th>미실현 PnL</th>
+              <th>실현 PnL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activePositions.length ? (
+              activePositions.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.symbol}</td>
+                  <td>{openedMeta(row)}</td>
+                  <td>{entryLabel(row)}</td>
+                  <td>{tpLabel(row)}</td>
+                  <td>{slLabel(row)}</td>
+                  <td>{leverageLabel(row.leverage)}</td>
+                  <td className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
+                    {formatMoney(row.unrealized_pnl_usd)}
+                  </td>
+                  <td className={`position-pnl ${pnlToneClass(row.realized_pnl_usd)}`}>
+                    {formatMoney(row.realized_pnl_usd)}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="8">데이터가 없습니다.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </TablePanel>
 
       <TablePanel eyebrow="진입 계획" title={`${meta.name} Entry / SL / TP`} meta={`${activeSetups.length}건`}>
         <table>

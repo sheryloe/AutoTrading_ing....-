@@ -44,6 +44,7 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
     json_path = target_dir / f"{day_key}.json"
     csv_path = target_dir / f"{day_key}.csv"
     summary_path = target_dir / "summary.csv"
+    summary_json_path = target_dir / "summary.json"
 
     json_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2), encoding="utf-8")
 
@@ -92,7 +93,9 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
         writer.writeheader()
         writer.writerows(filtered)
 
-    return [str(json_path), str(csv_path), str(summary_path)]
+    summary_json_path.write_text(json.dumps(filtered, ensure_ascii=True, indent=2), encoding="utf-8")
+
+    return [str(json_path), str(csv_path), str(summary_path), str(summary_json_path)]
 
 
 def git_commit_report_files(
