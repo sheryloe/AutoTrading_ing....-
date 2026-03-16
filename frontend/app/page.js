@@ -4,7 +4,7 @@ import SectionCard from "./components/section-card";
 import StatusBadge from "./components/status-badge";
 import { loadOverviewPageData } from "../lib/dashboard-data";
 import { getModelMeta, MODEL_ORDER } from "../lib/model-meta";
-import { formatMoney, formatPct, formatTs } from "../lib/formatters";
+import { formatMoney, formatPercent, formatTs } from "../lib/formatters";
 
 function buildOverviewModelCards(dailyRows = []) {
   return MODEL_ORDER.map((modelId) => {
@@ -105,7 +105,7 @@ export default async function HomePage() {
                 </div>
                 <div>
                   <label>승률</label>
-                  <strong>{formatPct(latest?.win_rate || 0)}</strong>
+                  <strong>{formatPercent(latest?.win_rate || 0)}</strong>
                 </div>
                 <div>
                   <label>종료 거래</label>

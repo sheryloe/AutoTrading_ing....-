@@ -1914,6 +1914,40 @@ class TradingEngine:
             },
         }
 
+    def _build_supabase_runtime_config_row(self, now_ts: int) -> dict[str, Any]:
+        return {
+            "engine_name": "ai_auto_core",
+            "market": "crypto",
+            "captured_at": self._iso_datetime(now_ts),
+            "trade_mode": str(self.settings.trade_mode or ""),
+            "autotrade_enabled": bool(self.settings.enable_autotrade),
+            "live_execution_enabled": bool(self.settings.enable_live_execution),
+            "demo_enable_macro": bool(self.settings.demo_enable_macro),
+            "live_enable_crypto": bool(self.settings.live_enable_crypto),
+            "autotrade_models": list(self._autotrade_model_ids("crypto")),
+            "live_models": list(self._live_model_ids("crypto")),
+            "configured_symbols": list(self._configured_crypto_symbols()),
+            "scan_interval_seconds": int(self.settings.scan_interval_seconds),
+            "bybit_max_positions": int(self.settings.bybit_max_positions),
+            "bybit_min_order_usd": float(self.settings.bybit_min_order_usd),
+            "bybit_order_pct_min": float(getattr(self.settings, "bybit_order_pct_min", self.settings.bybit_order_pct)),
+            "bybit_order_pct_max": float(getattr(self.settings, "bybit_order_pct_max", self.settings.bybit_order_pct)),
+            "bybit_leverage_min": float(self.settings.bybit_leverage_min),
+            "bybit_leverage_max": float(self.settings.bybit_leverage_max),
+            "crypto_min_entry_score": float(getattr(self.settings, "crypto_min_entry_score", 0.30) or 0.30),
+            "macro_rank_min": int(getattr(self.settings, "macro_rank_min", 0) or 0),
+            "macro_rank_max": int(getattr(self.settings, "macro_rank_max", 0) or 0),
+            "macro_trend_pool_size": int(getattr(self.settings, "macro_trend_pool_size", 0) or 0),
+            "source_json": {
+                "live_execution_armed": bool(getattr(self.settings, "live_execution_armed", False)),
+                "crypto_data_source_order": str(getattr(self.settings, "crypto_data_source_order", "") or ""),
+                "use_binance_data": bool(getattr(self.settings, "crypto_use_binance_data", False)),
+                "use_bybit_data": bool(getattr(self.settings, "crypto_use_bybit_data", False)),
+                "use_coingecko_data": bool(getattr(self.settings, "crypto_use_coingecko_data", False)),
+                "active_scan_models": list(self._active_crypto_model_ids_for_scan()),
+            },
+        }
+
     def _build_supabase_runtime_tune_rows(self, now_ts: int) -> list[dict[str, Any]]:
         with self._lock:
             runs = dict(self.state.model_runs or {})
@@ -1941,8 +1975,103 @@ class TradingEngine:
                         "variant_seq": int(tune.get("variant_seq") or 0),
                         "next_eval_ts": int(tune.get("next_eval_ts") or 0),
                     },
-                }
-            )
+                    }
+                )
+        return rows
+
+    def _build_supabase_signal_audit_rows(self, now_ts: int) -> list[dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        rows: list[dict[str, Any]] = []
+        min_score_floor = _clamp(float(getattr(self.settings, "crypto_min_entry_score", 0.30) or 0.30), 0.0, 1.0)
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            positions = set((run.get("bybit_positions") or {}).keys())
+            for signal in list(run.get("latest_crypto_signals") or [])[:120]:
+                row = dict(signal or {})
+                symbol = str(row.get("symbol") or "").upper().strip()
+                if not symbol:
+                    continue
+                scored_at_ts = int(row.get("scored_at_ts") or now_ts)
+                score = float(row.get("score") or 0.0)
+                entry_threshold = max(min_score_floor, float(row.get("entry_threshold") or min_score_floor))
+                risk_reward = float(row.get("risk_reward") or 0.0)
+                symbol_allowed = bool(row.get("symbol_allowed", True))
+                gate_ok = bool(row.get("gate_ok"))
+                in_position = bool(symbol in positions or row.get("in_position"))
+                entry_ready = bool(row.get("entry_ready"))
+                expires_at_ts = int(row.get("setup_expiry_ts") or 0)
+                expired = bool(expires_at_ts > 0 and now_ts > expires_at_ts)
+                reentry_blocked, retry_after_ts, cooldown_reason = self._crypto_reentry_blocked(run, symbol, now_ts)
+
+                audit_status = "entry_candidate"
+                audit_reason = "entry_ready"
+                if in_position:
+                    audit_status = "in_position"
+                    audit_reason = "already_open"
+                elif not symbol_allowed:
+                    audit_status = "filtered_symbol"
+                    audit_reason = "symbol_not_allowed"
+                elif not gate_ok:
+                    audit_status = "filtered_gate"
+                    audit_reason = str(row.get("gate_reason") or "gate_not_satisfied")
+                elif score <= entry_threshold:
+                    audit_status = "below_threshold"
+                    audit_reason = "score_below_threshold"
+                elif risk_reward < 1.10:
+                    audit_status = "low_risk_reward"
+                    audit_reason = "risk_reward_below_1_10"
+                elif expired:
+                    audit_status = "expired"
+                    audit_reason = "setup_expired"
+                elif reentry_blocked:
+                    audit_status = "reentry_blocked"
+                    audit_reason = str(cooldown_reason or "cooldown_active")
+                elif not entry_ready:
+                    audit_status = "waiting_setup"
+                    audit_reason = str(row.get("setup_state") or "setup_not_ready")
+
+                indicator_snapshot = dict(row.get("indicator_snapshot") or {})
+                rows.append(
+                    {
+                        "cycle_at": self._iso_datetime(scored_at_ts),
+                        "market": "crypto",
+                        "model_id": model_id,
+                        "symbol": symbol,
+                        "strategy": str(row.get("strategy") or ""),
+                        "score": float(score),
+                        "threshold": float(entry_threshold),
+                        "risk_reward": float(risk_reward),
+                        "price_usd": float(row.get("price_usd") or 0.0),
+                        "entry_price": float(row.get("entry_price") or 0.0),
+                        "recommended_leverage": float(row.get("leverage") or 0.0),
+                        "entry_ready": bool(entry_ready),
+                        "above_threshold": bool(score > entry_threshold),
+                        "gate_ok": bool(gate_ok),
+                        "symbol_allowed": bool(symbol_allowed),
+                        "in_position": bool(in_position),
+                        "reentry_blocked": bool(reentry_blocked),
+                        "audit_status": str(audit_status),
+                        "audit_reason": str(audit_reason),
+                        "setup_state": str(row.get("setup_state") or ""),
+                        "expires_at": self._iso_datetime(expires_at_ts),
+                        "reason_text": str(row.get("reason") or ""),
+                        "indicators_json": indicator_snapshot,
+                        "source_json": {
+                            "score_raw": float(row.get("score_raw") or indicator_snapshot.get("score_raw") or 0.0),
+                            "entry_threshold_raw": float(
+                                row.get("entry_threshold_raw") or indicator_snapshot.get("entry_threshold_raw") or 0.0
+                            ),
+                            "market_cap_rank": int(row.get("market_cap_rank") or indicator_snapshot.get("rank") or 0),
+                            "gate_reason": str(row.get("gate_reason") or ""),
+                            "retry_after_at": self._iso_datetime(retry_after_ts),
+                            "reentry_reason": str(cooldown_reason or ""),
+                            "tp_pct": float(row.get("tp_pct") or 0.0),
+                            "sl_pct": float(row.get("sl_pct") or 0.0),
+                            "volatility": float(row.get("volatility") or 0.0),
+                        },
+                    }
+                )
         return rows
 
     def _build_supabase_daily_pnl_rows(self) -> list[dict[str, Any]]:
@@ -2115,6 +2244,11 @@ class TradingEngine:
                 [self._build_supabase_heartbeat_row(now_ts)],
                 on_conflict="engine_name",
             ),
+            "engine_runtime_config": self.supabase_sync.upsert_rows(
+                "engine_runtime_config",
+                [self._build_supabase_runtime_config_row(now_ts)],
+                on_conflict="engine_name",
+            ),
             "model_runtime_tunes": self.supabase_sync.upsert_rows(
                 "model_runtime_tunes",
                 self._build_supabase_runtime_tune_rows(now_ts),
@@ -2129,6 +2263,11 @@ class TradingEngine:
                 "model_setups",
                 self._build_supabase_setup_rows(),
                 on_conflict="cycle_at,symbol,model_id",
+            ),
+            "model_signal_audit": self.supabase_sync.upsert_rows(
+                "model_signal_audit",
+                self._build_supabase_signal_audit_rows(now_ts),
+                on_conflict="cycle_at,market,model_id,symbol",
             ),
             "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows()),
             "recent_crypto_trades": self.supabase_sync.upsert_blob(

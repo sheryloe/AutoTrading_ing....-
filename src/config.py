@@ -358,14 +358,14 @@ class Settings:
             bybit_min_order_usd=max(5.0, _to_float(data.get("BYBIT_MIN_ORDER_USD"), 10.0)),
             crypto_min_entry_score=min(1.0, max(0.0, _to_float(data.get("CRYPTO_MIN_ENTRY_SCORE"), 0.30))),
             meme_autotrade_models=_to_str(data.get("MEME_AUTOTRADE_MODELS"), "A,B,C"),
-            crypto_autotrade_models=_to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C"),
+            crypto_autotrade_models=_to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C,D"),
             live_meme_models=_to_str(
                 data.get("LIVE_MEME_MODELS"),
                 _to_str(data.get("MEME_AUTOTRADE_MODELS"), "A,B,C"),
             ),
             live_crypto_models=_to_str(
                 data.get("LIVE_CRYPTO_MODELS"),
-                _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C"),
+                _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C,D"),
             ),
             bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
             telegram_polling_enabled=_to_bool(data.get("TELEGRAM_POLLING_ENABLED"), True),

@@ -40,6 +40,33 @@ create table if not exists public.engine_heartbeat (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.engine_runtime_config (
+  engine_name text primary key,
+  market text not null default 'crypto',
+  captured_at timestamptz,
+  trade_mode text not null default 'paper',
+  autotrade_enabled boolean not null default false,
+  live_execution_enabled boolean not null default false,
+  demo_enable_macro boolean not null default false,
+  live_enable_crypto boolean not null default false,
+  autotrade_models jsonb not null default '[]'::jsonb,
+  live_models jsonb not null default '[]'::jsonb,
+  configured_symbols jsonb not null default '[]'::jsonb,
+  scan_interval_seconds integer not null default 0,
+  bybit_max_positions integer not null default 0,
+  bybit_min_order_usd numeric(20, 8) not null default 0,
+  bybit_order_pct_min numeric(10, 6) not null default 0,
+  bybit_order_pct_max numeric(10, 6) not null default 0,
+  bybit_leverage_min numeric(10, 4) not null default 0,
+  bybit_leverage_max numeric(10, 4) not null default 0,
+  crypto_min_entry_score numeric(10, 6) not null default 0,
+  macro_rank_min integer not null default 0,
+  macro_rank_max integer not null default 0,
+  macro_trend_pool_size integer not null default 0,
+  source_json jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.engine_state_blobs (
   blob_key text primary key,
   payload_json jsonb not null default '{}'::jsonb,
@@ -193,6 +220,36 @@ create table if not exists public.model_setups (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   unique (cycle_at, symbol, model_id)
+);
+
+create table if not exists public.model_signal_audit (
+  cycle_at timestamptz not null,
+  market text not null default 'crypto',
+  model_id text not null,
+  symbol text not null,
+  strategy text not null default '',
+  score numeric(10, 6) not null default 0,
+  threshold numeric(10, 6) not null default 0,
+  risk_reward numeric(10, 6) not null default 0,
+  price_usd numeric(20, 8) not null default 0,
+  entry_price numeric(20, 8) not null default 0,
+  recommended_leverage numeric(10, 4) not null default 0,
+  entry_ready boolean not null default false,
+  above_threshold boolean not null default false,
+  gate_ok boolean not null default false,
+  symbol_allowed boolean not null default false,
+  in_position boolean not null default false,
+  reentry_blocked boolean not null default false,
+  audit_status text not null default '',
+  audit_reason text not null default '',
+  setup_state text not null default '',
+  expires_at timestamptz,
+  reason_text text,
+  indicators_json jsonb not null default '{}'::jsonb,
+  source_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (cycle_at, market, model_id, symbol)
 );
 
 create table if not exists public.positions (

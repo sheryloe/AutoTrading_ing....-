@@ -84,6 +84,38 @@ create trigger trg_engine_heartbeat_updated_at
 before update on public.engine_heartbeat
 for each row execute function public.set_updated_at();
 
+create table if not exists public.engine_runtime_config (
+  engine_name text primary key,
+  market text not null default 'crypto' check (market = 'crypto'),
+  captured_at timestamptz,
+  trade_mode text not null default 'paper',
+  autotrade_enabled boolean not null default false,
+  live_execution_enabled boolean not null default false,
+  demo_enable_macro boolean not null default false,
+  live_enable_crypto boolean not null default false,
+  autotrade_models jsonb not null default '[]'::jsonb,
+  live_models jsonb not null default '[]'::jsonb,
+  configured_symbols jsonb not null default '[]'::jsonb,
+  scan_interval_seconds integer not null default 0,
+  bybit_max_positions integer not null default 0,
+  bybit_min_order_usd numeric(20, 8) not null default 0,
+  bybit_order_pct_min numeric(10, 6) not null default 0,
+  bybit_order_pct_max numeric(10, 6) not null default 0,
+  bybit_leverage_min numeric(10, 4) not null default 0,
+  bybit_leverage_max numeric(10, 4) not null default 0,
+  crypto_min_entry_score numeric(10, 6) not null default 0,
+  macro_rank_min integer not null default 0,
+  macro_rank_max integer not null default 0,
+  macro_trend_pool_size integer not null default 0,
+  source_json jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+drop trigger if exists trg_engine_runtime_config_updated_at on public.engine_runtime_config;
+create trigger trg_engine_runtime_config_updated_at
+before update on public.engine_runtime_config
+for each row execute function public.set_updated_at();
+
 create table if not exists public.model_runtime_tunes (
   model_id text primary key check (model_id in ('A', 'B', 'C', 'D')),
   market text not null default 'crypto' check (market = 'crypto'),
@@ -180,6 +212,47 @@ create trigger trg_model_setups_updated_at
 before update on public.model_setups
 for each row execute function public.set_updated_at();
 
+create table if not exists public.model_signal_audit (
+  cycle_at timestamptz not null,
+  market text not null default 'crypto' check (market = 'crypto'),
+  model_id text not null check (model_id in ('A', 'B', 'C', 'D')),
+  symbol text not null references public.instruments(symbol),
+  strategy text not null default '',
+  score numeric(10, 6) not null default 0,
+  threshold numeric(10, 6) not null default 0,
+  risk_reward numeric(10, 6) not null default 0,
+  price_usd numeric(20, 8) not null default 0,
+  entry_price numeric(20, 8) not null default 0,
+  recommended_leverage numeric(10, 4) not null default 0,
+  entry_ready boolean not null default false,
+  above_threshold boolean not null default false,
+  gate_ok boolean not null default false,
+  symbol_allowed boolean not null default false,
+  in_position boolean not null default false,
+  reentry_blocked boolean not null default false,
+  audit_status text not null default '',
+  audit_reason text not null default '',
+  setup_state text not null default '',
+  expires_at timestamptz,
+  reason_text text,
+  indicators_json jsonb not null default '{}'::jsonb,
+  source_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (cycle_at, market, model_id, symbol)
+);
+
+create index if not exists idx_model_signal_audit_model_cycle
+  on public.model_signal_audit (model_id, cycle_at desc);
+
+create index if not exists idx_model_signal_audit_status
+  on public.model_signal_audit (audit_status, cycle_at desc);
+
+drop trigger if exists trg_model_signal_audit_updated_at on public.model_signal_audit;
+create trigger trg_model_signal_audit_updated_at
+before update on public.model_signal_audit
+for each row execute function public.set_updated_at();
+
 create table if not exists public.positions (
   id uuid primary key default gen_random_uuid(),
   setup_id uuid references public.model_setups(id) on delete set null,
@@ -269,9 +342,11 @@ alter table public.instruments enable row level security;
 alter table public.engine_state_kv enable row level security;
 alter table public.runtime_events enable row level security;
 alter table public.engine_heartbeat enable row level security;
+alter table public.engine_runtime_config enable row level security;
 alter table public.model_runtime_tunes enable row level security;
 alter table public.model_tune_history enable row level security;
 alter table public.model_setups enable row level security;
+alter table public.model_signal_audit enable row level security;
 alter table public.positions enable row level security;
 alter table public.daily_model_pnl enable row level security;
 alter table public.report_commits enable row level security;
@@ -296,6 +371,11 @@ create policy engine_heartbeat_auth_read on public.engine_heartbeat
 for select to authenticated
 using (true);
 
+drop policy if exists engine_runtime_config_auth_read on public.engine_runtime_config;
+create policy engine_runtime_config_auth_read on public.engine_runtime_config
+for select to authenticated
+using (true);
+
 drop policy if exists model_runtime_tunes_auth_read on public.model_runtime_tunes;
 create policy model_runtime_tunes_auth_read on public.model_runtime_tunes
 for select to authenticated
@@ -308,6 +388,11 @@ using (true);
 
 drop policy if exists model_setups_auth_read on public.model_setups;
 create policy model_setups_auth_read on public.model_setups
+for select to authenticated
+using (true);
+
+drop policy if exists model_signal_audit_auth_read on public.model_signal_audit;
+create policy model_signal_audit_auth_read on public.model_signal_audit
 for select to authenticated
 using (true);
 
@@ -335,6 +420,13 @@ end $$;
 
 do $$
 begin
+  alter publication supabase_realtime add table public.engine_runtime_config;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
   alter publication supabase_realtime add table public.model_runtime_tunes;
 exception
   when duplicate_object then null;
@@ -343,6 +435,13 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.model_setups;
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.model_signal_audit;
 exception
   when duplicate_object then null;
 end $$;

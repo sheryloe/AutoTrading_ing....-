@@ -5,7 +5,7 @@ import EmptyState from "./empty-state";
 import SectionCard from "./section-card";
 import TablePanel from "./table-panel";
 import StatusBadge from "./status-badge";
-import { formatMoney, formatNumber, formatPct } from "../../lib/formatters";
+import { formatMoney, formatNumber, formatPct, formatPercent } from "../../lib/formatters";
 import { getModelMeta, MODEL_ORDER } from "../../lib/model-meta";
 
 function pickDefaultModel(modelSummaries, dailyRows, tunes) {
@@ -140,7 +140,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
             <p>{meta.description}</p>
             <div className="status-row compact">
               <StatusBadge tone="info">최근 일자 {activeSummary?.latestDay || "-"}</StatusBadge>
-              <StatusBadge tone="success">승률 {formatPct(activeSummary?.latestWinRate || 0)}</StatusBadge>
+              <StatusBadge tone="success">승률 {formatPercent(activeSummary?.latestWinRate || 0)}</StatusBadge>
               <StatusBadge tone="warning">종료 거래 {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
             </div>
           </div>
@@ -186,7 +186,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
                     <td>{String(row.day)}</td>
                     <td>{formatMoney(row.equity_usd)}</td>
                     <td>{formatMoney(row.realized_pnl_usd)}</td>
-                    <td>{formatPct(row.win_rate)}</td>
+                    <td>{formatPercent(row.win_rate)}</td>
                     <td>{row.closed_trades}</td>
                   </tr>
                 ))

@@ -11,6 +11,10 @@ export function formatPct(value, digits = 2) {
   return `${(Number(value || 0) * 100).toFixed(digits)}%`;
 }
 
+export function formatPercent(value, digits = 2) {
+  return `${Number(value || 0).toFixed(digits)}%`;
+}
+
 export function formatNumber(value, digits = 0) {
   return new Intl.NumberFormat("ko-KR", {
     maximumFractionDigits: digits,

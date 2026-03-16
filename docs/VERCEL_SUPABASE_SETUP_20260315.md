@@ -172,10 +172,12 @@ It creates:
 
 - `instruments`
 - `engine_heartbeat`
+- `engine_runtime_config`
 - `engine_state_blobs`
 - `service_secrets`
 - `model_runtime_tunes`
 - `model_setups`
+- `model_signal_audit`
 - `positions`
 - `daily_model_pnl`
 
@@ -256,6 +258,133 @@ What the runner does:
 3. hydrates `Bybit`, `Binance`, and `CoinGecko` credentials into runtime env
 4. runs one Python engine cycle
 5. syncs heartbeat, setups, positions, and PnL back to Supabase
+
+It also syncs:
+
+- active runtime config snapshot into `engine_runtime_config`
+- per-model signal audit rows into `model_signal_audit`
+
+## 9-1. Runtime diagnostics validation
+
+After running `cloud-cycle` once, validate these tables in `Supabase > SQL Editor`.
+
+### Confirm runtime config snapshot
+
+```sql
+select
+  engine_name,
+  captured_at,
+  trade_mode,
+  autotrade_enabled,
+  live_execution_enabled,
+  live_enable_crypto,
+  autotrade_models,
+  live_models,
+  configured_symbols
+from public.engine_runtime_config
+order by captured_at desc nulls last
+limit 1;
+```
+
+Expected:
+
+- one row for `ai_auto_core`
+- `autotrade_models` and `live_models` match the runtime profile you saved
+- `configured_symbols` matches the service/runtime config
+
+### Confirm model signal audit rows exist for A/B/C/D
+
+```sql
+select
+  model_id,
+  count(*) as rows,
+  max(cycle_at) as latest_cycle_at
+from public.model_signal_audit
+group by model_id
+order by model_id;
+```
+
+Expected:
+
+- rows exist for active scan cycles
+- latest cycle timestamps are recent after the batch finishes
+
+### Read why models were filtered
+
+```sql
+select
+  cycle_at,
+  model_id,
+  symbol,
+  audit_status,
+  audit_reason,
+  score,
+  threshold,
+  risk_reward,
+  gate_ok,
+  symbol_allowed,
+  reentry_blocked
+from public.model_signal_audit
+order by cycle_at desc, model_id, symbol
+limit 60;
+```
+
+Use this to answer questions like:
+
+- why only `C` entered
+- whether `A/B/D` were blocked by gate, threshold, or cooldown
+- whether a model is inactive vs. simply filtered out
+
+### Check latest status distribution
+
+```sql
+select
+  model_id,
+  audit_status,
+  count(*) as cnt
+from public.model_signal_audit
+where cycle_at >= now() - interval '1 hour'
+group by model_id, audit_status
+order by model_id, audit_status;
+```
+
+Typical statuses:
+
+- `entry_candidate`
+- `in_position`
+- `filtered_symbol`
+- `filtered_gate`
+- `below_threshold`
+- `low_risk_reward`
+- `expired`
+- `reentry_blocked`
+- `waiting_setup`
+
+### Compare planned signals with actual positions
+
+```sql
+select
+  s.cycle_at,
+  s.model_id,
+  s.symbol,
+  s.audit_status,
+  p.status as position_status,
+  p.opened_at
+from public.model_signal_audit s
+left join public.positions p
+  on p.market = s.market
+ and p.model_id = s.model_id
+ and p.symbol = s.symbol
+ and p.status = 'open'
+where s.cycle_at >= now() - interval '1 hour'
+order by s.cycle_at desc, s.model_id, s.symbol;
+```
+
+Use this to confirm:
+
+- `entry_candidate` rows that became open positions
+- filtered rows that never opened
+- cases where one model opened while others were filtered
 
 ## 10. Current limitation in this phase
 
