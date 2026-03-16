@@ -2016,6 +2016,7 @@ class TradingEngine:
             "last_seen_at": self._iso_datetime(now_ts),
             "last_cycle_started_at": self._iso_datetime(now_ts),
             "last_cycle_finished_at": self._iso_datetime(now_ts),
+            "updated_at": self._iso_datetime(now_ts),
             "last_error": "",
             "version_sha": "",
             "host_name": os.environ.get("HOSTNAME", "") or os.environ.get("COMPUTERNAME", ""),

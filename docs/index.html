@@ -29,7 +29,7 @@
                 <p class="text-[10px] text-primary font-bold mt-1 uppercase text-left" id="headline-status">3월 16일부터 계속 동작중</p>
             </div>
             <div class="tabs tabs-boxed bg-slate-900 border border-white/10 p-1">
-                <button class="tab tab-active px-6 font-bold text-left" id="btn-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</button>
+                <button class="tab tab-active px-6 font-bold text-left" id="btn-leaderboard" onclick="switchTab('leaderboard')">Overview</button>
                 <button class="tab px-6 font-bold text-left" id="btn-guide" onclick="switchTab('guide')">GUIDE</button>
             </div>
         </div>
@@ -58,20 +58,6 @@
             <div class="glass-panel p-8 rounded-3xl">
                 <div id="multi-model-chart" style="min-height: 400px;"></div>
             </div>
-            <div class="glass-panel rounded-3xl overflow-hidden">
-                <table class="table w-full">
-                    <thead class="bg-black/20 text-slate-500 text-[10px] uppercase text-left">
-                        <tr>
-                            <th class="py-5 pl-8 text-left">Opened</th>
-                            <th class="text-left">Model / Symbol</th>
-                            <th class="text-left">PnL (%)</th>
-                            <th class="text-right">Profit</th>
-                            <th class="text-center pr-8">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pnl-table-body" class="font-mono text-sm divide-y divide-white/5"></tbody>
-                </table>
-            </div>
         </div>
 
         <div id="tab-guide" class="tab-content space-y-12 py-10">
@@ -79,7 +65,7 @@
                 <h2 class="text-3xl font-black italic text-white border-b-2 border-indigo-500 pb-4 text-left">GUIDE</h2>
                 <div class="glass-panel p-6 rounded-2xl border border-white/5">
                     <h3 class="font-bold text-white mb-3 text-left">이 페이지에서 보는 값</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left text-sm">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-sm">
                         <div class="p-4 bg-slate-900/50 rounded-xl border border-white/5">
                             <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Model Cards</div>
                             <p class="opacity-70">모델 A-D별 현재 손익률입니다. 최근 일자 실현 손익과 현재 오픈 포지션 미실현 손익을 합쳐서 보여줍니다.</p>
@@ -87,10 +73,6 @@
                         <div class="p-4 bg-slate-900/50 rounded-xl border border-white/5">
                             <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Graph</div>
                             <p class="opacity-70">모델별 손익 추이를 날짜 기준으로 그립니다. 최신 포인트는 현재 포지션 기준 값으로 갱신됩니다.</p>
-                        </div>
-                        <div class="p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                            <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Leaderboard</div>
-                            <p class="opacity-70">실시간 오픈 포지션을 위주로 보여주고, 포지션이 없을 때는 가장 최근 일자 모델 요약으로 자동 전환됩니다.</p>
                         </div>
                     </div>
                 </div>
@@ -179,15 +161,6 @@
             return (Number(row?.total_pnl_usd || 0) / EQUITY_BASE) * 100;
         }
 
-        function positionReturnPct(row) {
-            const equity = Number(row?.position_meta?.position_equity_usd || 0);
-            const pnl = Number(row?.unrealized_pnl_usd || 0);
-            if (equity > 0) {
-                return (pnl / equity) * 100;
-            }
-            return 0;
-        }
-
         function liveModelPct(latestRow, positions) {
             const realized = Number(latestRow?.realized_pnl_usd || 0);
             const openUnrealized = (positions || []).reduce((sum, row) => sum + Number(row?.unrealized_pnl_usd || 0), 0);
@@ -229,9 +202,20 @@
         }
 
         function renderChart(dailyRows, positions) {
+            const mount = document.querySelector("#multi-model-chart");
+            if (!mount) return;
             const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "")))]
                 .filter(Boolean)
                 .sort((a, b) => a.localeCompare(b));
+
+            if (!orderedDays.length) {
+                if (_chart) {
+                    _chart.destroy();
+                    _chart = null;
+                }
+                mount.innerHTML = '<div class="min-h-[400px] flex items-center justify-center text-sm text-slate-400">표시할 모델 손익 데이터가 아직 없습니다.</div>';
+                return;
+            }
 
             const lookup = {};
             MODEL_IDS.forEach((modelId) => {
@@ -289,52 +273,12 @@
                 theme: { mode: "dark" },
             };
 
-            const mount = document.querySelector("#multi-model-chart");
             mount.innerHTML = "";
             if (_chart) {
                 _chart.destroy();
             }
             _chart = new ApexCharts(mount, options);
             _chart.render();
-        }
-
-        function renderPositionsTable(positions, dailyRows) {
-            const tbody = document.getElementById("pnl-table-body");
-            if (!tbody) return;
-
-            if (!positions.length) {
-                const latestRows = dailyRows.slice(0, 4);
-                tbody.innerHTML = latestRows.length
-                    ? latestRows.map((row) => {
-                        const pct = modelReturnPct(row);
-                        return `
-                            <tr class="hover:bg-white/5 border-b border-white/5">
-                                <td class="py-5 pl-8 opacity-50 text-left">${row.day || "-"}</td>
-                                <td class="font-black text-white text-left">${MODEL_LABELS[String(row.model_id || "").toUpperCase()] || row.model_id}</td>
-                                <td class="${pct >= 0 ? "pnl-plus" : "pnl-minus"} text-left">${formatPct(pct)}</td>
-                                <td class="text-right opacity-80">${formatUsd(row.total_pnl_usd || 0)}</td>
-                                <td class="text-center pr-8"><span class="badge badge-ghost badge-xs font-black">DAILY</span></td>
-                            </tr>
-                        `;
-                    }).join("")
-                    : '<tr><td colspan="5" class="py-5 pl-8 text-left opacity-60">표시할 실시간 포지션이 없습니다.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = positions.map((row) => {
-                const pct = positionReturnPct(row);
-                const modelId = String(row.model_id || "").toUpperCase();
-                const side = String(row.side || "").toUpperCase();
-                return `
-                    <tr class="hover:bg-white/5 border-b border-white/5">
-                        <td class="py-5 pl-8 opacity-50 text-left">${dateLabel(row.opened_at)}</td>
-                        <td class="font-black text-white text-left">${MODEL_LABELS[modelId] || modelId} · ${row.symbol} ${side}</td>
-                        <td class="${pct >= 0 ? "pnl-plus" : "pnl-minus"} text-left">${formatPct(pct)}</td>
-                        <td class="text-right opacity-80">${formatUsd(row.unrealized_pnl_usd || 0)}</td>
-                        <td class="text-center pr-8"><span class="badge badge-success badge-xs font-black">OPEN</span></td>
-                    </tr>
-                `;
-            }).join("");
         }
 
         async function fetchTradingData() {
@@ -365,9 +309,9 @@
             const error = dailyRes.error || positionsRes.error || heartbeatRes.error;
             if (error) {
                 console.error(error.message);
-                const tbody = document.getElementById("pnl-table-body");
-                if (tbody) {
-                    tbody.innerHTML = `<tr><td colspan="5" class="py-5 pl-8 text-left text-error">${error.message}</td></tr>`;
+                const mount = document.querySelector("#multi-model-chart");
+                if (mount) {
+                    mount.innerHTML = `<div class="min-h-[400px] flex items-center justify-center text-sm text-rose-400">${error.message}</div>`;
                 }
                 return;
             }
@@ -379,7 +323,6 @@
             setHeadline(heartbeat, positions);
             renderSummaryCards(dailyRows, positions);
             renderChart(dailyRows, positions);
-            renderPositionsTable(positions, dailyRows);
         }
 
         function subscribeRealtime() {
