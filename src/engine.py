@@ -948,6 +948,39 @@ class TradingEngine:
         fallback = self._optional_float((row or {}).get("pnl_pct"))
         return float(fallback) if fallback is not None else None
 
+    @staticmethod
+    def _normalize_crypto_side(value: Any) -> str:
+        return "short" if str(value or "").strip().lower() == "short" else "long"
+
+    def _crypto_demo_trade_event_kind(self, row: dict[str, Any]) -> str:
+        event_kind = str((row or {}).get("event_kind") or "").strip().lower()
+        if event_kind in {"open", "close"}:
+            return event_kind
+        side = str((row or {}).get("side") or "").strip().lower()
+        return "close" if side == "sell" else "open"
+
+    def _crypto_demo_trade_position_side(self, row: dict[str, Any]) -> str:
+        position_side = str((row or {}).get("position_side") or "").strip().lower()
+        if position_side in {"long", "short"}:
+            return position_side
+        side = str((row or {}).get("side") or "").strip().lower()
+        event_kind = self._crypto_demo_trade_event_kind(row)
+        if event_kind == "close":
+            return "short" if side == "buy" else "long"
+        return "short" if side == "sell" else "long"
+
+    def _crypto_demo_trade_is_close(self, row: dict[str, Any]) -> bool:
+        return self._crypto_demo_trade_event_kind(row) == "close"
+
+    def _crypto_demo_trade_is_open(self, row: dict[str, Any]) -> bool:
+        return self._crypto_demo_trade_event_kind(row) == "open"
+
+    def _paper_trade_is_close(self, row: dict[str, Any]) -> bool:
+        source = str((row or {}).get("source") or "").strip().lower()
+        if source == "crypto_demo":
+            return self._crypto_demo_trade_is_close(row)
+        return str((row or {}).get("side") or "").strip().lower() == "sell"
+
     def _prune_pending_live_trade_signatures(self, now_ts: int | None = None) -> None:
         now = int(now_ts or int(time.time()))
         keep: dict[str, int] = {}
@@ -2235,7 +2268,7 @@ class TradingEngine:
                         "symbol": symbol,
                         "model_id": model_id,
                         "timeframe": "10m",
-                        "side": "long",
+                        "side": str((signal or {}).get("side") or "long"),
                         "score": float((signal or {}).get("score") or 0.0),
                         "threshold": float((signal or {}).get("entry_threshold") or 0.0),
                         "confidence": float((signal or {}).get("score") or 0.0),
@@ -2305,7 +2338,7 @@ class TradingEngine:
                             "setup_state": str((pos or {}).get("setup_state") or ""),
                             "current_price": float(current or 0.0),
                             "price_as_of": self._iso_datetime(snapshot_ts),
-                            "pnl_pct": float(marked.get("pnl_pct") or 0.0),
+                            "pnl_pct": float(marked.get("price_pnl_pct") or 0.0),
                             "position_equity_usd": float(marked.get("position_equity_usd") or 0.0),
                         },
                     }
@@ -2322,6 +2355,9 @@ class TradingEngine:
                 if str((tr or {}).get("source") or "").strip().lower() != "crypto_demo":
                     continue
                 side = str((tr or {}).get("side") or "").strip().lower()
+                position_side = self._crypto_demo_trade_position_side(tr)
+                event_kind = self._crypto_demo_trade_event_kind(tr)
+                is_open = event_kind == "open"
                 fill_mode = str((tr or {}).get("fill_mode") or "spot").strip().lower()
                 close_mode = str((tr or {}).get("close_mode") or "").strip().lower()
                 ts = int((tr or {}).get("ts") or 0)
@@ -2332,26 +2368,32 @@ class TradingEngine:
                         "model_id": model_id,
                         "model_name": self._market_model_name("crypto", model_id),
                         "side": side,
+                        "position_side": position_side,
+                        "event_kind": event_kind,
                         "symbol": str((tr or {}).get("symbol") or ""),
                         "price_usd": float((tr or {}).get("price_usd") or 0.0),
                         "notional_usd": float((tr or {}).get("notional_usd") or 0.0),
                         "leverage": float((tr or {}).get("leverage") or 0.0),
-                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0) if side == "sell" else None,
-                        "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0) if side == "sell" else None,
+                        "pnl_usd": float((tr or {}).get("pnl_usd") or 0.0) if not is_open else None,
+                        "pnl_pct": float((tr or {}).get("pnl_pct") or 0.0) if not is_open else None,
                         "reason": str((tr or {}).get("reason") or ""),
-                        "fill_mode": fill_mode if side == "buy" else "",
-                        "close_mode": close_mode if side == "sell" else "",
-                        "event_mode": fill_mode if side == "buy" else close_mode,
+                        "fill_mode": fill_mode if is_open else "",
+                        "close_mode": close_mode if not is_open else "",
+                        "event_mode": fill_mode if is_open else close_mode,
                         "event_label": (
-                            "intrabar 체결"
-                            if side == "buy" and fill_mode == "intrabar"
+                            f"{position_side.upper()} intrabar 체결"
+                            if is_open and fill_mode == "intrabar"
                             else (
-                                "배치 체결"
-                                if side == "buy"
-                                else ("intrabar 종료" if close_mode == "intrabar" else "배치 종료")
+                                f"{position_side.upper()} 배치 체결"
+                                if is_open
+                                else (
+                                    f"{position_side.upper()} intrabar 종료"
+                                    if close_mode == "intrabar"
+                                    else f"{position_side.upper()} 배치 종료"
+                                )
                             )
                         ),
-                        "is_intrabar": bool((fill_mode if side == "buy" else close_mode) == "intrabar"),
+                        "is_intrabar": bool((fill_mode if is_open else close_mode) == "intrabar"),
                     }
                 )
         rows.sort(key=lambda row: int(row.get("ts_epoch") or 0), reverse=True)
@@ -5269,18 +5311,17 @@ class TradingEngine:
         live_text = self._build_telegram_periodic_report_live()
         return f"{demo_text}\n\n{live_text}"
 
-    @staticmethod
-    def _crypto_recent_stats(run: dict[str, Any], lookback: int = MODEL_AUTOTUNE_LOOKBACK_TRADES) -> dict[str, float]:
+    def _crypto_recent_stats(self, run: dict[str, Any], lookback: int = MODEL_AUTOTUNE_LOOKBACK_TRADES) -> dict[str, float]:
         trades = list(run.get("trades") or [])
-        sells = [
+        closed_rows = [
             t
             for t in trades
-            if str(t.get("side") or "").lower() == "sell"
-            and str(t.get("source") or "").lower() == "crypto_demo"
+            if str(t.get("source") or "").lower() == "crypto_demo"
+            and self._crypto_demo_trade_is_close(t)
         ]
         if lookback > 0:
-            sells = sells[-int(lookback) :]
-        pnl_rows = [float(t.get("pnl_usd") or 0.0) for t in sells]
+            closed_rows = closed_rows[-int(lookback) :]
+        pnl_rows = [float(t.get("pnl_usd") or 0.0) for t in closed_rows]
         wins = [v for v in pnl_rows if v > 0.0]
         losses = [v for v in pnl_rows if v < 0.0]
         gross_win = float(sum(wins))
@@ -7679,16 +7720,16 @@ class TradingEngine:
             key = self._market_run_key("meme" if market == "meme" else "crypto", model_id)
             run = (self.state.model_runs or {}).get(key) or {}
             trades = list((run or {}).get("trades") or [])
-        sells = [
+        closed_rows = [
             t
             for t in trades
-            if str(t.get("side") or "").lower() == "sell"
-            and str(t.get("source") or "").lower() == source_name
+            if str(t.get("source") or "").lower() == source_name
+            and (self._crypto_demo_trade_is_close(t) if market != "meme" else str(t.get("side") or "").lower() == "sell")
             and (not self._is_live_trade_row(t))
         ]
         if lookback > 0:
-            sells = sells[-int(lookback) :]
-        pnl_rows = [float(t.get("pnl_usd") or 0.0) for t in sells]
+            closed_rows = closed_rows[-int(lookback) :]
+        pnl_rows = [float(t.get("pnl_usd") or 0.0) for t in closed_rows]
         closed = len(pnl_rows)
         wins = sum(1 for v in pnl_rows if v > 0.0)
         win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
@@ -9998,22 +10039,41 @@ class TradingEngine:
         stop_price: float,
         targets: list[float],
         ttl_minutes: int,
+        side: str = "long",
     ) -> dict[str, float]:
+        trade_side = "short" if str(side or "").strip().lower() == "short" else "long"
         current = max(0.0, float(current_price or 0.0))
         entry = max(1e-9, float(entry_price or current or 0.0))
         z_low = min(float(zone_low or entry), float(zone_high or entry), entry)
         z_high = max(float(zone_low or entry), float(zone_high or entry), entry)
-        stop = min(float(stop_price or 0.0), entry - max(entry * 0.001, 1e-9))
-        risk = max(entry - stop, entry * 0.0015)
-        clean_targets = [float(value) for value in list(targets or []) if float(value) > (entry + (risk * 0.25))]
-        while len(clean_targets) < 3:
-            step = 1.10 + (0.75 * len(clean_targets))
-            clean_targets.append(entry + (risk * step))
-        clean_targets = sorted(clean_targets[:3])
-        take_profit = float(clean_targets[1])
-        risk_reward = (take_profit - entry) / max(risk, 1e-9)
-        setup_state = "entry-ready" if z_low <= current <= z_high else ("waiting-retrace" if current > z_high else "waiting-breakout")
+        if trade_side == "short":
+            stop = max(float(stop_price or 0.0), entry + max(entry * 0.001, 1e-9))
+            risk = max(stop - entry, entry * 0.0015)
+            clean_targets = [float(value) for value in list(targets or []) if float(value) < (entry - (risk * 0.25))]
+            while len(clean_targets) < 3:
+                step = 1.10 + (0.75 * len(clean_targets))
+                clean_targets.append(entry - (risk * step))
+            clean_targets = sorted(clean_targets[:3], reverse=True)
+            take_profit = float(clean_targets[1])
+            risk_reward = (entry - take_profit) / max(risk, 1e-9)
+            setup_state = "entry-ready" if z_low <= current <= z_high else ("waiting-retrace" if current < z_low else "waiting-breakdown")
+            sl_pct = (stop - entry) / max(entry, 1e-9)
+            tp_pct = (entry - take_profit) / max(entry, 1e-9)
+        else:
+            stop = min(float(stop_price or 0.0), entry - max(entry * 0.001, 1e-9))
+            risk = max(entry - stop, entry * 0.0015)
+            clean_targets = [float(value) for value in list(targets or []) if float(value) > (entry + (risk * 0.25))]
+            while len(clean_targets) < 3:
+                step = 1.10 + (0.75 * len(clean_targets))
+                clean_targets.append(entry + (risk * step))
+            clean_targets = sorted(clean_targets[:3])
+            take_profit = float(clean_targets[1])
+            risk_reward = (take_profit - entry) / max(risk, 1e-9)
+            setup_state = "entry-ready" if z_low <= current <= z_high else ("waiting-retrace" if current > z_high else "waiting-breakout")
+            sl_pct = (entry - stop) / max(entry, 1e-9)
+            tp_pct = (take_profit - entry) / max(entry, 1e-9)
         return {
+            "side": trade_side,
             "entry_price": float(entry),
             "entry_zone_low": float(z_low),
             "entry_zone_high": float(z_high),
@@ -10022,8 +10082,8 @@ class TradingEngine:
             "target_price_2": float(clean_targets[1]),
             "target_price_3": float(clean_targets[2]),
             "take_profit_price": float(take_profit),
-            "sl_pct": float(_clamp((entry - stop) / max(entry, 1e-9), 0.004, 0.30)),
-            "tp_pct": float(_clamp((take_profit - entry) / max(entry, 1e-9), 0.008, 0.80)),
+            "sl_pct": float(_clamp(sl_pct, 0.004, 0.30)),
+            "tp_pct": float(_clamp(tp_pct, 0.008, 0.80)),
             "risk_reward": float(max(0.0, risk_reward)),
             "entry_ready": bool(z_low <= current <= z_high),
             "setup_state": str(setup_state),
@@ -10258,189 +10318,397 @@ class TradingEngine:
         low_36 = float(feats.get("window_low_36") or current_price)
         high_36 = float(feats.get("window_high_36") or current_price)
         mid_36 = float(feats.get("window_mid_36") or current_price)
+        low_72 = float(feats.get("window_low_72") or current_price)
         high_72 = float(feats.get("window_high_72") or current_price)
+        mid_72 = float(feats.get("window_mid_72") or current_price)
+        atr_pct = float(feats.get("atr_pct") or 0.0)
+        range_36_pct = float(feats.get("range_36_pct") or 0.0)
+        rsi = float(feats.get("rsi") or 50.0)
+        lower_range_bias = float(feats.get("lower_range_bias") or 0.0)
+        upper_range_bias = float(feats.get("upper_range_bias") or 0.0)
+        support_closeness = float(feats.get("support_closeness") or 0.0)
+        breakout_ready = float(feats.get("breakout_ready") or 0.0)
+        rebound_strength = float(feats.get("rebound_strength") or 0.0)
+        rebound_weakness = _clamp(1.0 - rebound_strength, 0.0, 1.0)
+        reclaim_strength = float(feats.get("reclaim_strength") or 0.0)
+        reclaim_weakness = _clamp(max(0.0, -reclaim_strength), 0.0, 1.0)
+        mean_reversion_gap = float(feats.get("mean_reversion_gap") or 0.0)
+        mean_reversion_short = _clamp(max(0.0, -mean_reversion_gap), 0.0, 1.0)
+        compression_score = float(feats.get("compression_score") or 0.0)
+        ema_alignment = float(feats.get("ema_alignment") or 0.0)
+        ema_short_bias = _clamp((0.5 - ema_alignment) / 0.5, 0.0, 1.0)
+        oversold_score = float(feats.get("oversold_score") or 0.0)
+        reset_score = float(feats.get("reset_score") or 0.0)
+        washout_score = float(feats.get("washout_score") or 0.0)
+        stability_score = float(feats.get("stability_score") or 0.0)
+        volatility_penalty = float(feats.get("volatility_penalty") or 0.0)
+        quality_score = float(feats.get("quality_score") or 0.0)
+        overheat_penalty = float(feats.get("overheat_penalty") or 0.0)
+        ema_gap_pct = float(feats.get("ema_gap_pct") or 0.0)
+        overbought_score = _clamp((rsi - 56.0) / 18.0, 0.0, 1.0)
+        breakdown_ready = _clamp(1.0 - breakout_ready, 0.0, 1.0)
         gate_penalty = 0.028
         chase_penalty = 0.018
         score_lo = -0.220
         score_hi = 0.220
         rr_floor = float(plan_cfg.get("risk_reward_min") or 1.10)
         if model_id == "A":
-            strategy = "A-RangeReversionPlanner"
-            gate_ok = bool(
-                allowed
-                and max(
-                    float(feats.get("lower_range_bias") or 0.0),
-                    float(feats.get("support_closeness") or 0.0),
+            prefer_short = bool(
+                max(upper_range_bias, breakout_ready, overheat_penalty) > max(lower_range_bias, support_closeness, oversold_score) + 0.06
+                and rsi >= float(plan_cfg.get("short_rsi_min") or 56.0)
+            )
+            if prefer_short:
+                strategy = "A-RangeReversionPlanner-Short"
+                gate_ok = bool(
+                    allowed
+                    and max(upper_range_bias, breakout_ready) >= float(plan_cfg.get("bias_gate_min") or 0.08)
+                    and range_36_pct >= float(plan_cfg.get("range_min_pct") or 0.006)
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.082)
+                    and rsi >= float(plan_cfg.get("short_rsi_min") or 56.0)
+                    and ema_gap_pct <= float(plan_cfg.get("short_ema_gap_max") or 0.028)
                 )
-                >= float(plan_cfg.get("bias_gate_min") or 0.08)
-                and float(feats.get("range_36_pct") or 0.0) >= float(plan_cfg.get("range_min_pct") or 0.006)
-                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.082)
-                and float(feats.get("rsi") or 0.0) <= float(plan_cfg.get("rsi_max") or 62.0)
-                and float(feats.get("ema_gap_pct") or 0.0) >= float(plan_cfg.get("ema_gap_min") or -0.026)
-                and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.10)
-                and not chase_block
-            )
-            score = (
-                (0.058 * float(feats.get("oversold_score") or 0.0))
-                + (0.048 * float(feats.get("support_closeness") or 0.0))
-                + (0.032 * float(feats.get("stability_score") or 0.0))
-                + (0.040 * float(feats.get("rebound_strength") or 0.0))
-                + (0.020 * float(feats.get("ema_alignment") or 0.0))
-                + (0.022 * float(feats.get("quality_score") or 0.0))
-                + (0.024 * max(0.0, float(feats.get("mean_reversion_gap") or 0.0)))
-                - (0.024 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.010 * float(feats.get("upper_range_bias") or 0.0))
-            )
-            entry_price = max(
-                min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs)),
-                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
-            )
-            stop_price = low_36 - (0.90 * atr_abs * sl_mul)
-            risk = max(entry_price - stop_price, current_price * 0.002)
-            plan = self._finalize_crypto_trade_plan(
-                current_price=current_price,
-                entry_price=entry_price,
-                zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
-                zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
-                stop_price=stop_price,
-                targets=[
-                    max(mid_12, entry_price + (risk * (1.10 * tp_mul))),
-                    max(high_36 - (0.10 * atr_abs), entry_price + (risk * (1.75 * tp_mul))),
-                    max(high_72, entry_price + (risk * (2.45 * tp_mul))),
-                ],
-                ttl_minutes=30,
-            )
-            plan["risk_reward_min"] = float(rr_floor)
-            gate_reason = "레인지 하단 재진입 + 완화된 반등 확인 + 지지 근접"
+                score = (
+                    (0.056 * upper_range_bias)
+                    + (0.044 * breakout_ready)
+                    + (0.036 * overbought_score)
+                    + (0.030 * stability_score)
+                    + (0.028 * reclaim_weakness)
+                    + (0.026 * mean_reversion_short)
+                    + (0.020 * quality_score)
+                    + (0.020 * overheat_penalty)
+                    + (0.016 * ema_short_bias)
+                    - (0.022 * volatility_penalty)
+                    - (0.012 * lower_range_bias)
+                )
+                entry_price = min(
+                    max(current_price, high_12 - (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs)),
+                    current_price + (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = high_36 + (0.90 * atr_abs * sl_mul)
+                risk = max(stop_price - entry_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        min(mid_12, entry_price - (risk * (1.10 * tp_mul))),
+                        min(low_36 + (0.10 * atr_abs), entry_price - (risk * (1.75 * tp_mul))),
+                        min(low_72, entry_price - (risk * (2.45 * tp_mul))),
+                    ],
+                    ttl_minutes=30,
+                    side="short",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "레인지 상단 과열 + 재하락 대기 구간"
+            else:
+                strategy = "A-RangeReversionPlanner-Long"
+                gate_ok = bool(
+                    allowed
+                    and max(lower_range_bias, support_closeness) >= float(plan_cfg.get("bias_gate_min") or 0.08)
+                    and range_36_pct >= float(plan_cfg.get("range_min_pct") or 0.006)
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.082)
+                    and rsi <= float(plan_cfg.get("rsi_max") or 62.0)
+                    and ema_gap_pct >= float(plan_cfg.get("ema_gap_min") or -0.026)
+                    and rebound_strength >= float(plan_cfg.get("rebound_min") or 0.10)
+                    and not chase_block
+                )
+                score = (
+                    (0.058 * oversold_score)
+                    + (0.048 * support_closeness)
+                    + (0.032 * stability_score)
+                    + (0.040 * rebound_strength)
+                    + (0.020 * ema_alignment)
+                    + (0.022 * quality_score)
+                    + (0.024 * max(0.0, mean_reversion_gap))
+                    - (0.024 * volatility_penalty)
+                    - (0.010 * upper_range_bias)
+                )
+                entry_price = max(
+                    min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs)),
+                    current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = low_36 - (0.90 * atr_abs * sl_mul)
+                risk = max(entry_price - stop_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        max(mid_12, entry_price + (risk * (1.10 * tp_mul))),
+                        max(high_36 - (0.10 * atr_abs), entry_price + (risk * (1.75 * tp_mul))),
+                        max(high_72, entry_price + (risk * (2.45 * tp_mul))),
+                    ],
+                    ttl_minutes=30,
+                    side="long",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "레인지 하단 재진입 + 완화된 반등 확인 + 지지 근접"
         elif model_id == "B":
-            strategy = "B-SupportReclaimPlanner"
-            gate_ok = bool(
-                allowed
-                and float(feats.get("reclaim_strength") or 0.0) >= float(plan_cfg.get("reclaim_min") or -0.06)
-                and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.18)
-                and float(feats.get("ema_alignment") or 0.0) >= float(plan_cfg.get("ema_align_min") or 0.42)
-                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.075)
-                and not chase_block
+            prefer_short = bool(
+                max(upper_range_bias, reclaim_weakness, rebound_weakness) > max(support_closeness, reclaim_strength, rebound_strength) + 0.05
             )
-            score = (
-                (0.054 * float(feats.get("reclaim_strength") or 0.0))
-                + (0.038 * float(feats.get("support_closeness") or 0.0))
-                + (0.028 * float(feats.get("ema_alignment") or 0.0))
-                + (0.024 * float(feats.get("rebound_strength") or 0.0))
-                + (0.022 * float(feats.get("quality_score") or 0.0))
-                + (0.020 * float(feats.get("stability_score") or 0.0))
-                - (0.026 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.018 * float(feats.get("overheat_penalty") or 0.0))
-            )
-            entry_price = max(
-                min(current_price, mid_12 + (float(plan_cfg.get("mid_atr_boost") or 0.0) * atr_abs)),
-                low_12 + (float(plan_cfg.get("floor_atr_mul") or 0.85) * atr_abs),
-                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
-            )
-            stop_price = low_12 - (1.05 * atr_abs * sl_mul)
-            risk = max(entry_price - stop_price, current_price * 0.002)
-            plan = self._finalize_crypto_trade_plan(
-                current_price=current_price,
-                entry_price=entry_price,
-                zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
-                zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
-                stop_price=stop_price,
-                targets=[
-                    max(high_12 - (0.05 * atr_abs), entry_price + (risk * (1.15 * tp_mul))),
-                    max(high_36 - (0.05 * atr_abs), entry_price + (risk * (1.95 * tp_mul))),
-                    max(high_72, entry_price + (risk * (2.75 * tp_mul))),
-                ],
-                ttl_minutes=40,
-            )
-            plan["risk_reward_min"] = float(rr_floor)
-            gate_reason = "지지 회복 + EMA 재안착 + 재반등 강도"
-        elif model_id == "C":
-            strategy = "C-CompressionBreakoutPlanner"
-            gate_ok = bool(
-                allowed
-                and float(feats.get("compression_score") or 0.0) >= 0.18
-                and float(feats.get("breakout_ready") or 0.0) >= 0.62
-                and float(feats.get("ema_alignment") or 0.0) >= 0.48
-                and float(feats.get("atr_pct") or 0.0) <= 0.085
-                and not chase_block
-            )
-            score = (
-                (0.058 * float(feats.get("compression_score") or 0.0))
-                + (0.048 * float(feats.get("breakout_ready") or 0.0))
-                + (0.034 * float(feats.get("ema_alignment") or 0.0))
-                + (0.024 * float(feats.get("quality_score") or 0.0))
-                + (0.018 * float(feats.get("stability_score") or 0.0))
-                - (0.028 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.024 * float(feats.get("overheat_penalty") or 0.0))
-            )
-            box_height = max(high_12 - low_12, atr_abs * 1.20)
-            entry_price = max(current_price, high_12 * 1.001)
-            stop_price = entry_price - max((box_height * 0.70 * sl_mul), (atr_abs * 1.25 * sl_mul))
-            plan = self._finalize_crypto_trade_plan(
-                current_price=current_price,
-                entry_price=entry_price,
-                zone_low=(high_12 - (0.20 * atr_abs)),
-                zone_high=entry_price + (0.30 * atr_abs),
-                stop_price=stop_price,
-                targets=[
-                    entry_price + (box_height * (0.95 * tp_mul)),
-                    entry_price + (box_height * (1.40 * tp_mul)),
-                    entry_price + (box_height * (1.95 * tp_mul)),
-                ],
-                ttl_minutes=30,
-            )
-            plan["risk_reward_min"] = 1.10
-            gate_reason = "변동성 압축 + 상단 근접 + 돌파 계획"
-        else:
-            strategy = "D-ResetBouncePlanner"
-            gate_ok = bool(
-                allowed
-                and (
-                    (
-                        float(feats.get("washout_score") or 0.0) >= float(plan_cfg.get("washout_min") or 0.08)
-                        and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.16)
-                    )
-                    or (
-                        float(feats.get("reset_score") or 0.0) >= float(plan_cfg.get("reset_min") or 0.22)
-                        and float(feats.get("lower_range_bias") or 0.0) >= float(plan_cfg.get("lower_bias_min") or 0.06)
-                    )
+            if prefer_short:
+                strategy = "B-SupportReclaimPlanner-Short"
+                gate_ok = bool(
+                    allowed
+                    and reclaim_strength <= float(plan_cfg.get("short_reclaim_max") or 0.02)
+                    and rebound_strength <= float(plan_cfg.get("short_rebound_max") or 0.72)
+                    and ema_alignment <= float(plan_cfg.get("short_ema_align_max") or 0.58)
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.075)
+                    and (upper_range_bias >= 0.16 or overheat_penalty >= 0.18)
                 )
-                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.115)
-                and float(feats.get("ema_gap_pct") or 0.0) >= float(plan_cfg.get("ema_gap_min") or -0.035)
-                and not chase_block
+                score = (
+                    (0.054 * reclaim_weakness)
+                    + (0.040 * upper_range_bias)
+                    + (0.030 * ema_short_bias)
+                    + (0.028 * breakout_ready)
+                    + (0.024 * rebound_weakness)
+                    + (0.020 * quality_score)
+                    + (0.018 * stability_score)
+                    + (0.018 * overheat_penalty)
+                    - (0.026 * volatility_penalty)
+                    - (0.014 * support_closeness)
+                )
+                entry_price = min(
+                    max(current_price, mid_12 - (float(plan_cfg.get("mid_atr_boost") or 0.0) * atr_abs)),
+                    max(current_price, high_12 - (float(plan_cfg.get("floor_atr_mul") or 0.85) * atr_abs)),
+                    current_price + (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = high_12 + (1.05 * atr_abs * sl_mul)
+                risk = max(stop_price - entry_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        min(low_12 + (0.05 * atr_abs), entry_price - (risk * (1.15 * tp_mul))),
+                        min(low_36 + (0.05 * atr_abs), entry_price - (risk * (1.95 * tp_mul))),
+                        min(low_72, entry_price - (risk * (2.75 * tp_mul))),
+                    ],
+                    ttl_minutes=40,
+                    side="short",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "저항 재거절 + EMA 재이탈 + 리클레임 실패"
+            else:
+                strategy = "B-SupportReclaimPlanner-Long"
+                gate_ok = bool(
+                    allowed
+                    and reclaim_strength >= float(plan_cfg.get("reclaim_min") or -0.06)
+                    and rebound_strength >= float(plan_cfg.get("rebound_min") or 0.18)
+                    and ema_alignment >= float(plan_cfg.get("ema_align_min") or 0.42)
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.075)
+                    and not chase_block
+                )
+                score = (
+                    (0.054 * reclaim_strength)
+                    + (0.038 * support_closeness)
+                    + (0.028 * ema_alignment)
+                    + (0.024 * rebound_strength)
+                    + (0.022 * quality_score)
+                    + (0.020 * stability_score)
+                    - (0.026 * volatility_penalty)
+                    - (0.018 * overheat_penalty)
+                )
+                entry_price = max(
+                    min(current_price, mid_12 + (float(plan_cfg.get("mid_atr_boost") or 0.0) * atr_abs)),
+                    low_12 + (float(plan_cfg.get("floor_atr_mul") or 0.85) * atr_abs),
+                    current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = low_12 - (1.05 * atr_abs * sl_mul)
+                risk = max(entry_price - stop_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        max(high_12 - (0.05 * atr_abs), entry_price + (risk * (1.15 * tp_mul))),
+                        max(high_36 - (0.05 * atr_abs), entry_price + (risk * (1.95 * tp_mul))),
+                        max(high_72, entry_price + (risk * (2.75 * tp_mul))),
+                    ],
+                    ttl_minutes=40,
+                    side="long",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "지지 회복 + EMA 재안착 + 재반등 강도"
+        elif model_id == "C":
+            box_height = max(high_12 - low_12, atr_abs * 1.20)
+            prefer_short = bool(breakdown_ready > breakout_ready + 0.04 and ema_alignment <= 0.52)
+            if prefer_short:
+                strategy = "C-CompressionBreakoutPlanner-Short"
+                gate_ok = bool(
+                    allowed
+                    and compression_score >= 0.18
+                    and breakdown_ready >= 0.62
+                    and ema_alignment <= 0.52
+                    and atr_pct <= 0.085
+                )
+                score = (
+                    (0.058 * compression_score)
+                    + (0.048 * breakdown_ready)
+                    + (0.034 * ema_short_bias)
+                    + (0.024 * quality_score)
+                    + (0.018 * stability_score)
+                    + (0.016 * reclaim_weakness)
+                    - (0.028 * volatility_penalty)
+                    - (0.012 * support_closeness)
+                )
+                entry_price = min(current_price, low_12 * 0.999)
+                stop_price = entry_price + max((box_height * 0.70 * sl_mul), (atr_abs * 1.25 * sl_mul))
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (0.30 * atr_abs),
+                    zone_high=(low_12 + (0.20 * atr_abs)),
+                    stop_price=stop_price,
+                    targets=[
+                        entry_price - (box_height * (0.95 * tp_mul)),
+                        entry_price - (box_height * (1.40 * tp_mul)),
+                        entry_price - (box_height * (1.95 * tp_mul)),
+                    ],
+                    ttl_minutes=30,
+                    side="short",
+                )
+                plan["risk_reward_min"] = 1.10
+                gate_reason = "변동성 압축 + 하단 이탈 계획"
+            else:
+                strategy = "C-CompressionBreakoutPlanner-Long"
+                gate_ok = bool(
+                    allowed
+                    and compression_score >= 0.18
+                    and breakout_ready >= 0.62
+                    and ema_alignment >= 0.48
+                    and atr_pct <= 0.085
+                    and not chase_block
+                )
+                score = (
+                    (0.058 * compression_score)
+                    + (0.048 * breakout_ready)
+                    + (0.034 * ema_alignment)
+                    + (0.024 * quality_score)
+                    + (0.018 * stability_score)
+                    - (0.028 * volatility_penalty)
+                    - (0.024 * overheat_penalty)
+                )
+                entry_price = max(current_price, high_12 * 1.001)
+                stop_price = entry_price - max((box_height * 0.70 * sl_mul), (atr_abs * 1.25 * sl_mul))
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=(high_12 - (0.20 * atr_abs)),
+                    zone_high=entry_price + (0.30 * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        entry_price + (box_height * (0.95 * tp_mul)),
+                        entry_price + (box_height * (1.40 * tp_mul)),
+                        entry_price + (box_height * (1.95 * tp_mul)),
+                    ],
+                    ttl_minutes=30,
+                    side="long",
+                )
+                plan["risk_reward_min"] = 1.10
+                gate_reason = "변동성 압축 + 상단 근접 + 돌파 계획"
+        else:
+            prefer_short = bool(
+                max(upper_range_bias, overheat_penalty, reclaim_weakness) > max(lower_range_bias, washout_score, reset_score) + 0.05
             )
-            score = (
-                (0.050 * float(feats.get("washout_score") or 0.0))
-                + (0.046 * float(feats.get("reset_score") or 0.0))
-                + (0.028 * float(feats.get("lower_range_bias") or 0.0))
-                + (0.034 * float(feats.get("rebound_strength") or 0.0))
-                + (0.018 * max(0.0, float(feats.get("reclaim_strength") or 0.0)))
-                + (0.020 * float(feats.get("quality_score") or 0.0))
-                - (0.026 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.012 * float(feats.get("upper_range_bias") or 0.0))
-            )
-            entry_price = max(
-                min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs)),
-                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
-            )
-            stop_price = low_12 - (1.15 * atr_abs * sl_mul)
-            risk = max(entry_price - stop_price, current_price * 0.002)
-            plan = self._finalize_crypto_trade_plan(
-                current_price=current_price,
-                entry_price=entry_price,
-                zone_low=entry_price - (float(plan_cfg.get("zone_low_atr") or 0.40) * atr_abs),
-                zone_high=entry_price + (float(plan_cfg.get("zone_high_atr") or 0.28) * atr_abs),
-                stop_price=stop_price,
-                targets=[
-                    max(mid_12, entry_price + (risk * (1.05 * tp_mul))),
-                    max(mid_36, entry_price + (risk * (1.70 * tp_mul))),
-                    max(high_36, entry_price + (risk * (2.35 * tp_mul))),
-                ],
-                ttl_minutes=35,
-            )
-            plan["risk_reward_min"] = float(rr_floor)
-            gate_reason = "급락/리셋 이후 완화된 바운스 확인 구간"
-        if chase_block:
+            if prefer_short:
+                strategy = "D-ResetBouncePlanner-Short"
+                gate_ok = bool(
+                    allowed
+                    and (
+                        (overheat_penalty >= float(plan_cfg.get("short_overheat_min") or 0.10) and upper_range_bias >= float(plan_cfg.get("short_upper_bias_min") or 0.08))
+                        or (breakout_ready >= float(plan_cfg.get("short_breakout_min") or 0.74) and reclaim_strength <= float(plan_cfg.get("short_reclaim_max") or 0.08))
+                    )
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.115)
+                    and ema_gap_pct <= float(plan_cfg.get("short_ema_gap_max") or 0.028)
+                )
+                score = (
+                    (0.050 * overheat_penalty)
+                    + (0.046 * upper_range_bias)
+                    + (0.034 * reclaim_weakness)
+                    + (0.030 * mean_reversion_short)
+                    + (0.020 * quality_score)
+                    + (0.018 * breakout_ready)
+                    + (0.018 * ema_short_bias)
+                    - (0.026 * volatility_penalty)
+                    - (0.012 * lower_range_bias)
+                )
+                entry_price = min(
+                    max(current_price, high_12 - (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs)),
+                    current_price + (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = high_12 + (1.15 * atr_abs * sl_mul)
+                risk = max(stop_price - entry_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_high_atr") or 0.28) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_low_atr") or 0.40) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        min(mid_12, entry_price - (risk * (1.05 * tp_mul))),
+                        min(mid_36, entry_price - (risk * (1.70 * tp_mul))),
+                        min(low_36, entry_price - (risk * (2.35 * tp_mul))),
+                    ],
+                    ttl_minutes=35,
+                    side="short",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "과열/리셋 실패 이후 재하락 확인 구간"
+            else:
+                strategy = "D-ResetBouncePlanner-Long"
+                gate_ok = bool(
+                    allowed
+                    and (
+                        (washout_score >= float(plan_cfg.get("washout_min") or 0.08) and rebound_strength >= float(plan_cfg.get("rebound_min") or 0.16))
+                        or (reset_score >= float(plan_cfg.get("reset_min") or 0.22) and lower_range_bias >= float(plan_cfg.get("lower_bias_min") or 0.06))
+                    )
+                    and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.115)
+                    and ema_gap_pct >= float(plan_cfg.get("ema_gap_min") or -0.035)
+                    and not chase_block
+                )
+                score = (
+                    (0.050 * washout_score)
+                    + (0.046 * reset_score)
+                    + (0.028 * lower_range_bias)
+                    + (0.034 * rebound_strength)
+                    + (0.018 * max(0.0, reclaim_strength))
+                    + (0.020 * quality_score)
+                    - (0.026 * volatility_penalty)
+                    - (0.012 * upper_range_bias)
+                )
+                entry_price = max(
+                    min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs)),
+                    current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+                )
+                stop_price = low_12 - (1.15 * atr_abs * sl_mul)
+                risk = max(entry_price - stop_price, current_price * 0.002)
+                plan = self._finalize_crypto_trade_plan(
+                    current_price=current_price,
+                    entry_price=entry_price,
+                    zone_low=entry_price - (float(plan_cfg.get("zone_low_atr") or 0.40) * atr_abs),
+                    zone_high=entry_price + (float(plan_cfg.get("zone_high_atr") or 0.28) * atr_abs),
+                    stop_price=stop_price,
+                    targets=[
+                        max(mid_12, entry_price + (risk * (1.05 * tp_mul))),
+                        max(mid_36, entry_price + (risk * (1.70 * tp_mul))),
+                        max(high_36, entry_price + (risk * (2.35 * tp_mul))),
+                    ],
+                    ttl_minutes=35,
+                    side="long",
+                )
+                plan["risk_reward_min"] = float(rr_floor)
+                gate_reason = "급락/리셋 이후 완화된 바운스 확인 구간"
+        if chase_block and str(plan.get("side") or "long").lower() != "short":
             score -= float(chase_penalty)
         score = _clamp(score, score_lo, score_hi)
         if not gate_ok or float(plan.get("risk_reward") or 0.0) < rr_floor:
@@ -10481,12 +10749,14 @@ class TradingEngine:
         feats = dict(profile.get("features") or {})
         score = float(profile.get("score") or 0.0)
         threshold = float(profile.get("threshold") or 0.0)
+        side = str(profile.get("side") or "long").upper()
         entry = float(profile.get("entry_price") or 0.0)
         stop = float(profile.get("stop_loss_price") or 0.0)
         tp = float(profile.get("take_profit_price") or 0.0)
         rr = float(profile.get("risk_reward") or 0.0)
         return (
             f"{profile.get('strategy')} | "
+            f"SIDE={side} | "
             f"5m={float(feats.get('ret_5m') or 0.0)*100:+.2f}% "
             f"15m={float(feats.get('ret_15m') or 0.0)*100:+.2f}% "
             f"1h={float(feats.get('ret_1h') or 0.0)*100:+.2f}% "
@@ -10780,10 +11050,36 @@ class TradingEngine:
             return (float(take_profit_price), f"TP intrabar {take_profit_price:.4f}")
         return (0.0, "")
 
+    def _intrabar_short_exit_hit(self, pos: dict[str, Any], candle: dict[str, Any]) -> tuple[float, str]:
+        low = float((candle or {}).get("low") or 0.0)
+        high = float((candle or {}).get("high") or 0.0)
+        open_price = float((candle or {}).get("open") or 0.0)
+        stop_loss_price = float((pos or {}).get("stop_loss_price") or 0.0)
+        take_profit_price = float((pos or {}).get("take_profit_price") or 0.0)
+        if low <= 0.0 or high <= 0.0:
+            return (0.0, "")
+        if stop_loss_price > 0.0 and high >= stop_loss_price and take_profit_price > 0.0 and low <= take_profit_price:
+            policy = str(getattr(self.settings, "intrabar_conflict_policy", "conservative") or "conservative").lower()
+            if policy == "aggressive":
+                return (float(take_profit_price), f"TP intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
+            if policy == "neutral":
+                ref_price = open_price if open_price > 0.0 else float((candle or {}).get("close") or 0.0)
+                if ref_price <= 0.0:
+                    ref_price = float((stop_loss_price + take_profit_price) / 2.0)
+                if abs(ref_price - take_profit_price) < abs(ref_price - stop_loss_price):
+                    return (float(take_profit_price), f"TP intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
+            return (float(stop_loss_price), f"SL intrabar both-hit {stop_loss_price:.4f}/{take_profit_price:.4f}")
+        if stop_loss_price > 0.0 and high >= stop_loss_price:
+            return (float(stop_loss_price), f"SL intrabar {stop_loss_price:.4f}")
+        if take_profit_price > 0.0 and low <= take_profit_price:
+            return (float(take_profit_price), f"TP intrabar {take_profit_price:.4f}")
+        return (0.0, "")
+
     @staticmethod
     def _mark_crypto_position(pos: dict[str, Any], current_price: float) -> dict[str, float]:
         qty = float(pos.get("qty") or 0.0)
         avg = float(pos.get("avg_price_usd") or 0.0)
+        side = "short" if str(pos.get("side") or "").strip().lower() == "short" else "long"
         leverage = max(1.0, float(pos.get("leverage") or 1.0))
         margin = float(pos.get("margin_usd") or 0.0)
         if margin <= 0.0 and avg > 0.0 and qty > 0.0:
@@ -10794,11 +11090,15 @@ class TradingEngine:
         if mark <= 0.0:
             mark = avg
         exposure = max(0.0, mark * qty)
-        pnl_raw = (mark - avg) * qty if avg > 0.0 and qty > 0.0 else 0.0
+        if avg > 0.0 and qty > 0.0:
+            pnl_raw = (avg - mark) * qty if side == "short" else (mark - avg) * qty
+            price_pnl_pct = ((avg - mark) / avg) if side == "short" else ((mark - avg) / avg)
+        else:
+            pnl_raw = 0.0
+            price_pnl_pct = 0.0
         pnl_floor = -max(0.0, margin)
         pnl = max(pnl_floor, pnl_raw)
         position_equity = max(0.0, margin + pnl)
-        price_pnl_pct = 0.0 if avg <= 0.0 else ((mark - avg) / avg)
         roe_pct = 0.0 if margin <= 0.0 else (pnl / margin)
         return {
             "qty": qty,
@@ -10845,6 +11145,7 @@ class TradingEngine:
             out.append(
                 {
                     "symbol": symbol,
+                    "side": str(profile.get("side") or "long"),
                     "strategy": str(profile.get("strategy") or ""),
                     "scored_at_ts": int(scored_at_ts),
                     "score": score,
@@ -10865,6 +11166,7 @@ class TradingEngine:
                     "target_price_3": float(profile.get("target_price_3") or 0.0),
                     "take_profit_price": float(profile.get("take_profit_price") or 0.0),
                     "risk_reward": float(profile.get("risk_reward") or 0.0),
+                    "risk_reward_min": float(profile.get("risk_reward_min") or 1.10),
                     "entry_ready": bool(profile.get("entry_ready")),
                     "setup_state": str(profile.get("setup_state") or ""),
                     "setup_expiry_ts": int(profile.get("setup_expiry_ts") or 0),
@@ -10899,6 +11201,7 @@ class TradingEngine:
                         "reclaim_strength": float(indicators.get("reclaim_strength") or 0.0),
                         "pullback_from_high": float(indicators.get("pullback_from_high") or 0.0),
                         "breakout_strength": float(indicators.get("breakout_strength") or 0.0),
+                        "side": str(profile.get("side") or "long"),
                         "score_raw": float(score_raw),
                         "entry_threshold_raw": float(threshold_raw),
                     },
@@ -10941,6 +11244,7 @@ class TradingEngine:
         }.get(model_id, "")
         for pos in list((run.get("bybit_positions") or {}).values()):
             symbol = str(pos.get("symbol") or "")
+            position_side = self._normalize_crypto_side((pos or {}).get("side"))
             entry = float(pos.get("avg_price_usd") or 0.0)
             current = float(self._crypto_current_price(pos, prices))
             pos_reason = str(pos.get("reason") or "")
@@ -10993,7 +11297,9 @@ class TradingEngine:
                 continue
             stop_loss_price = float(pos.get("stop_loss_price") or 0.0)
             take_profit_price = float(pos.get("take_profit_price") or 0.0)
-            if stop_loss_price > 0.0 and current <= stop_loss_price:
+            stop_hit = (current >= stop_loss_price) if position_side == "short" else (current <= stop_loss_price)
+            take_hit = (current <= take_profit_price) if position_side == "short" else (current >= take_profit_price)
+            if stop_loss_price > 0.0 and stop_hit:
                 self._close_model_bybit_position(
                     model_id,
                     run,
@@ -11002,7 +11308,7 @@ class TradingEngine:
                     f"SL {current:.4f}/{stop_loss_price:.4f}",
                 )
                 continue
-            if take_profit_price > 0.0 and current >= take_profit_price:
+            if take_profit_price > 0.0 and take_hit:
                 self._close_model_bybit_position(
                     model_id,
                     run,
@@ -11034,6 +11340,8 @@ class TradingEngine:
         if symbol not in positions:
             return False
         marked = self._mark_crypto_position(pos, price_usd)
+        position_side = self._normalize_crypto_side((pos or {}).get("side"))
+        close_side = "buy" if position_side == "short" else "sell"
         qty = float(marked["qty"])
         notional = float(marked["exposure_usd"])
         pnl_usd = float(marked["pnl_usd"])
@@ -11050,7 +11358,9 @@ class TradingEngine:
             {
                 "ts": now_ts,
                 "source": "crypto_demo",
-                "side": "sell",
+                "side": close_side,
+                "position_side": position_side,
+                "event_kind": "close",
                 "symbol": symbol,
                 "token_address": symbol,
                 "qty": qty,
@@ -11077,6 +11387,7 @@ class TradingEngine:
         model_id: str,
         run: dict[str, Any],
         symbol: str,
+        side: str,
         fill_price: float,
         order_usd: float,
         order_pct: float,
@@ -11090,6 +11401,8 @@ class TradingEngine:
         opened_at: int,
         fill_mode: str = "spot",
     ) -> bool:
+        position_side = self._normalize_crypto_side(side)
+        order_side = "sell" if position_side == "short" else "buy"
         price = max(0.0, float(fill_price or 0.0))
         margin_usd = max(0.0, float(order_usd or 0.0))
         if not symbol or price <= 0.0 or margin_usd <= 0.0:
@@ -11098,7 +11411,7 @@ class TradingEngine:
         qty = notional_usd / max(price, 1e-9)
         run.setdefault("bybit_positions", {})[symbol] = {
             "symbol": symbol,
-            "side": "long",
+            "side": position_side,
             "qty": qty,
             "avg_price_usd": price,
             "last_mark_price_usd": price,
@@ -11128,7 +11441,9 @@ class TradingEngine:
             {
                 "ts": int(opened_at),
                 "source": "crypto_demo",
-                "side": "buy",
+                "side": order_side,
+                "position_side": position_side,
+                "event_kind": "open",
                 "symbol": symbol,
                 "token_address": symbol,
                 "qty": qty,
@@ -11170,8 +11485,12 @@ class TradingEngine:
             rows = self._intrabar_rows_since(candles_by_symbol.get(symbol) or [], max(eval_from_ts, int((pos or {}).get("opened_at") or 0)))
             if not rows:
                 continue
+            position_side = self._normalize_crypto_side((pos or {}).get("side"))
             for candle in rows:
-                exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
+                if position_side == "short":
+                    exit_price, exit_reason = self._intrabar_short_exit_hit(pos, candle)
+                else:
+                    exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
                 if exit_price > 0.0 and exit_reason:
                     self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason, close_mode="intrabar")
                     break
@@ -11246,10 +11565,12 @@ class TradingEngine:
             if not reason_text:
                 reason_text = f"{str(row.get('strategy') or ('MODEL-' + model_id))} | intrabar-fill conf={score:.4f} thr={entry_threshold:.4f}"
             opened_at = int((rows[hit_index] or {}).get("close_ts") or int(now_ts))
+            position_side = self._normalize_crypto_side(row.get("side"))
             opened = self._open_crypto_demo_position(
                 model_id=model_id,
                 run=run,
                 symbol=symbol,
+                side=position_side,
                 fill_price=fill_price,
                 order_usd=order_usd,
                 order_pct=order_pct,
@@ -11269,7 +11590,10 @@ class TradingEngine:
             if not isinstance(pos, dict):
                 continue
             for candle in rows[hit_index:]:
-                exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
+                if position_side == "short":
+                    exit_price, exit_reason = self._intrabar_short_exit_hit(pos, candle)
+                else:
+                    exit_price, exit_reason = self._intrabar_long_exit_hit(pos, candle)
                 if exit_price > 0.0 and exit_reason:
                     self._close_model_bybit_position(model_id, run, pos, exit_price, exit_reason, close_mode="intrabar")
                     break
@@ -11293,17 +11617,18 @@ class TradingEngine:
             return
         if model_id == "C":
             today_key = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
-            todays_buys = sum(
+            todays_entries = sum(
                 1
                 for tr in list(run.get("trades") or [])
                 if str((tr or {}).get("source") or "").lower() == "crypto_demo"
-                and str((tr or {}).get("side") or "").lower() == "buy"
+                and self._crypto_demo_trade_is_open(tr)
                 and datetime.fromtimestamp(int((tr or {}).get("ts") or 0), tz=timezone.utc).strftime("%Y-%m-%d") == today_key
             )
-            if todays_buys >= 10:
+            if todays_entries >= 10:
                 return
 
         ranked: list[tuple[str, float]] = []
+        side_by_symbol: dict[str, str] = {}
         leverage_by_symbol: dict[str, float] = {}
         threshold_by_symbol: dict[str, float] = {}
         threshold_raw_by_symbol: dict[str, float] = {}
@@ -11320,6 +11645,7 @@ class TradingEngine:
                 if not symbol or symbol in positions:
                     continue
                 ranked.append((symbol, float(row.get("score") or 0.0)))
+                side_by_symbol[symbol] = self._normalize_crypto_side(row.get("side"))
                 leverage_by_symbol[symbol] = float(row.get("leverage") or 0.0)
                 threshold_by_symbol[symbol] = max(
                     min_score_floor,
@@ -11342,6 +11668,7 @@ class TradingEngine:
                     "target_price_3": float(row.get("target_price_3") or 0.0),
                     "risk_reward": float(row.get("risk_reward") or 0.0),
                     "risk_reward_min": float(row.get("risk_reward_min") or 1.10),
+                    "side": self._normalize_crypto_side(row.get("side")),
                     "entry_ready": bool(row.get("entry_ready")),
                     "setup_state": str(row.get("setup_state") or ""),
                     "setup_expiry_ts": int(row.get("setup_expiry_ts") or 0),
@@ -11354,6 +11681,7 @@ class TradingEngine:
                     continue
                 profile = self._crypto_score_profile(model_id, symbol, trend_bundle)
                 ranked.append((symbol, float(profile.get("score") or 0.0)))
+                side_by_symbol[symbol] = self._normalize_crypto_side(profile.get("side"))
                 threshold_by_symbol[symbol] = max(
                     min_score_floor,
                     float(profile.get("threshold") or min_score_floor),
@@ -11379,6 +11707,7 @@ class TradingEngine:
                     "target_price_3": float(profile.get("target_price_3") or 0.0),
                     "risk_reward": float(profile.get("risk_reward") or 0.0),
                     "risk_reward_min": float(profile.get("risk_reward_min") or 1.10),
+                    "side": self._normalize_crypto_side(profile.get("side")),
                     "entry_ready": bool(profile.get("entry_ready")),
                     "setup_state": str(profile.get("setup_state") or ""),
                     "setup_expiry_ts": int(profile.get("setup_expiry_ts") or 0),
@@ -11453,6 +11782,7 @@ class TradingEngine:
                 model_id=model_id,
                 run=run,
                 symbol=symbol,
+                side=str(plan.get("side") or side_by_symbol.get(symbol) or "long"),
                 fill_price=fill_price,
                 order_usd=order_usd,
                 order_pct=order_pct,
@@ -11470,10 +11800,10 @@ class TradingEngine:
 
     def _model_metrics(self, model_id: str, run: dict[str, Any]) -> dict[str, Any]:
         trades = [t for t in list(run.get("trades") or []) if not self._is_live_trade_row(t)]
-        sells = [t for t in trades if str(t.get("side") or "").lower() == "sell"]
-        realized = sum(float(t.get("pnl_usd") or 0.0) for t in sells)
-        wins = sum(1 for t in sells if float(t.get("pnl_usd") or 0.0) > 0)
-        closed = len(sells)
+        closed_trades = [t for t in trades if self._paper_trade_is_close(t)]
+        realized = sum(float(t.get("pnl_usd") or 0.0) for t in closed_trades)
+        wins = sum(1 for t in closed_trades if float(t.get("pnl_usd") or 0.0) > 0)
+        closed = len(closed_trades)
         win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
 
         bybit_enabled = bool(self.settings.demo_enable_macro)
@@ -11533,11 +11863,12 @@ class TradingEngine:
     def _market_trade_stats(self, run: dict[str, Any], market: str, mode_filter: str = "paper") -> dict[str, float]:
         source_name = "memecoin" if market == "meme" else "crypto_demo"
         trades = list(run.get("trades") or [])
-        sells: list[dict[str, Any]] = []
+        closed_rows: list[dict[str, Any]] = []
         for t in trades:
-            if str(t.get("side") or "").lower() != "sell":
-                continue
             if str(t.get("source") or "").lower() != source_name:
+                continue
+            is_close = self._crypto_demo_trade_is_close(t) if market == "crypto" else str(t.get("side") or "").lower() == "sell"
+            if not is_close:
                 continue
             if mode_filter == "live":
                 if not self._is_live_trade_row(t):
@@ -11547,14 +11878,14 @@ class TradingEngine:
             else:
                 if self._is_live_trade_row(t):
                     continue
-            sells.append(t)
+            closed_rows.append(t)
         if mode_filter == "live" and market == "meme":
-            realized_values = [float(self._live_trade_realized_pnl_usd(t) or 0.0) for t in sells]
+            realized_values = [float(self._live_trade_realized_pnl_usd(t) or 0.0) for t in closed_rows]
         else:
-            realized_values = [float(t.get("pnl_usd") or 0.0) for t in sells]
+            realized_values = [float(t.get("pnl_usd") or 0.0) for t in closed_rows]
         realized = sum(realized_values)
         wins = sum(1 for pnl in realized_values if float(pnl) > 0.0)
-        closed = len(sells)
+        closed = len(closed_rows)
         win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
         return {
             "realized_pnl_usd": float(realized),
@@ -12762,10 +13093,10 @@ class TradingEngine:
         crypto_trades = list(run_a_crypto.get("trades") or [])[-120:]
 
         def _trade_stats(rows: list[dict[str, Any]]) -> dict[str, float]:
-            sells = [t for t in rows if str(t.get("side") or "").lower() == "sell"]
-            realized = sum(float(t.get("pnl_usd") or 0.0) for t in sells)
-            closed = len(sells)
-            wins = sum(1 for t in sells if float(t.get("pnl_usd") or 0.0) > 0.0)
+            closed_rows = [t for t in rows if self._paper_trade_is_close(t)]
+            realized = sum(float(t.get("pnl_usd") or 0.0) for t in closed_rows)
+            closed = len(closed_rows)
+            wins = sum(1 for t in closed_rows if float(t.get("pnl_usd") or 0.0) > 0.0)
             win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
             return {
                 "realized_pnl_usd": float(realized),

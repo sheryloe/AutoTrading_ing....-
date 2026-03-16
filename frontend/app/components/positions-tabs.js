@@ -18,9 +18,9 @@ function pickDefaultModel(openPositions, setupRows, recentTradeRows) {
 }
 
 function tradeTone(row) {
-  const side = String(row.side || "").toLowerCase();
+  const eventKind = String(row.event_kind || "").toLowerCase();
   const mode = String(row.event_mode || "").toLowerCase();
-  if (side === "buy") {
+  if (eventKind ? eventKind === "open" : String(row.side || "").toLowerCase() === "buy") {
     return mode === "intrabar" ? "warning" : "info";
   }
   return mode === "intrabar" ? "success" : "muted";
@@ -39,17 +39,27 @@ function pnlToneClass(value) {
 }
 
 function tradeKindLabel(row) {
+  const eventKind = String(row.event_kind || "").toLowerCase();
+  if (eventKind) {
+    return eventKind === "close" ? "종료" : "진입";
+  }
   return String(row.side || "").toLowerCase() === "buy" ? "진입" : "종료";
 }
 
 function realizedPnlLabel(row) {
-  return String(row.side || "").toLowerCase() === "sell" && row.pnl_usd !== null && row.pnl_usd !== undefined
+  const isCloseEvent =
+    String(row.event_kind || "").toLowerCase() === "close" ||
+    (!row.event_kind && String(row.side || "").toLowerCase() === "sell");
+  return isCloseEvent && row.pnl_usd !== null && row.pnl_usd !== undefined
     ? formatMoney(row.pnl_usd)
     : "-";
 }
 
 function realizedPctLabel(row) {
-  return String(row.side || "").toLowerCase() === "sell" && row.pnl_pct !== null && row.pnl_pct !== undefined
+  const isCloseEvent =
+    String(row.event_kind || "").toLowerCase() === "close" ||
+    (!row.event_kind && String(row.side || "").toLowerCase() === "sell");
+  return isCloseEvent && row.pnl_pct !== null && row.pnl_pct !== undefined
     ? formatPct(row.pnl_pct, 2)
     : "-";
 }
@@ -278,6 +288,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
           <thead>
             <tr>
               <th>사이클</th>
+              <th>Side</th>
               <th>심볼</th>
               <th>엔트리</th>
               <th>손절</th>
@@ -291,6 +302,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               activeSetups.map((row) => (
                 <tr key={row.id}>
                   <td>{formatTs(row.cycle_at)}</td>
+                  <td>{String(row.side || "long").toUpperCase()}</td>
                   <td>{row.symbol}</td>
                   <td>{formatPrice(row.entry_price)}</td>
                   <td>{formatPrice(row.stop_loss_price)}</td>
@@ -301,7 +313,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               ))
             ) : (
               <tr>
-                <td colSpan="7">데이터가 없습니다.</td>
+                <td colSpan="8">데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>
