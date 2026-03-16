@@ -170,36 +170,43 @@ CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
     "A": {
-        "threshold_bias": -0.002,
-        "entry_atr_mul": 0.95,
-        "zone_half_atr": 0.40,
-        "bias_gate_min": 0.06,
-        "rebound_min": 0.06,
-        "atr_pct_max": 0.085,
-        "rsi_max": 64.0,
-        "ema_gap_min": -0.030,
+        "threshold_bias": -0.005,
+        "entry_atr_mul": 1.35,
+        "shallow_pullback_atr": 0.22,
+        "zone_half_atr": 0.58,
+        "bias_gate_min": 0.02,
+        "rebound_min": 0.02,
+        "range_min_pct": 0.002,
+        "atr_pct_max": 0.120,
+        "rsi_max": 72.0,
+        "ema_gap_min": -0.055,
+        "risk_reward_min": 1.02,
     },
     "B": {
-        "threshold_bias": -0.002,
-        "floor_atr_mul": 1.00,
-        "mid_atr_boost": 0.12,
-        "zone_half_atr": 0.34,
-        "reclaim_min": -0.10,
-        "rebound_min": 0.14,
-        "ema_align_min": 0.39,
-        "atr_pct_max": 0.078,
+        "threshold_bias": -0.005,
+        "floor_atr_mul": 1.18,
+        "mid_atr_boost": 0.32,
+        "shallow_pullback_atr": 0.20,
+        "zone_half_atr": 0.54,
+        "reclaim_min": -0.22,
+        "rebound_min": 0.05,
+        "ema_align_min": 0.24,
+        "atr_pct_max": 0.110,
+        "risk_reward_min": 1.03,
     },
     "D": {
-        "threshold_bias": -0.002,
-        "entry_atr_mul": 1.25,
-        "zone_low_atr": 0.46,
-        "zone_high_atr": 0.34,
-        "washout_min": 0.05,
-        "rebound_min": 0.12,
-        "reset_min": 0.18,
+        "threshold_bias": -0.005,
+        "entry_atr_mul": 1.65,
+        "shallow_pullback_atr": 0.24,
+        "zone_low_atr": 0.60,
+        "zone_high_atr": 0.62,
+        "washout_min": 0.01,
+        "rebound_min": 0.04,
+        "reset_min": 0.08,
         "lower_bias_min": 0.04,
-        "atr_pct_max": 0.120,
-        "ema_gap_min": -0.040,
+        "atr_pct_max": 0.160,
+        "ema_gap_min": -0.065,
+        "risk_reward_min": 1.00,
     },
 }
 CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
@@ -208,11 +215,13 @@ CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
     "entry_atr_mul": (0.40, 2.20),
     "floor_atr_mul": (0.40, 2.20),
     "mid_atr_boost": (0.00, 0.80),
+    "shallow_pullback_atr": (0.00, 1.20),
     "zone_half_atr": (0.10, 1.20),
     "zone_low_atr": (0.10, 1.20),
     "zone_high_atr": (0.10, 1.20),
     "bias_gate_min": (0.00, 0.50),
     "rebound_min": (0.00, 0.80),
+    "range_min_pct": (0.000, 0.050),
     "reclaim_min": (-0.50, 0.50),
     "ema_align_min": (0.00, 1.00),
     "atr_pct_max": (0.010, 0.250),
@@ -221,6 +230,7 @@ CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
     "washout_min": (0.00, 1.00),
     "reset_min": (0.00, 1.00),
     "lower_bias_min": (0.00, 1.00),
+    "risk_reward_min": (0.90, 2.50),
 }
 AUTOTUNE_NOTE_KO: dict[str, str] = {
     "hold": "유지",
@@ -10238,6 +10248,7 @@ class TradingEngine:
         chase_penalty = 0.018
         score_lo = -0.220
         score_hi = 0.220
+        rr_floor = float(plan_cfg.get("risk_reward_min") or 1.10)
         if model_id == "A":
             strategy = "A-RangeReversionPlanner"
             gate_ok = bool(
@@ -10247,7 +10258,7 @@ class TradingEngine:
                     float(feats.get("support_closeness") or 0.0),
                 )
                 >= float(plan_cfg.get("bias_gate_min") or 0.08)
-                and float(feats.get("range_36_pct") or 0.0) >= 0.006
+                and float(feats.get("range_36_pct") or 0.0) >= float(plan_cfg.get("range_min_pct") or 0.006)
                 and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.082)
                 and float(feats.get("rsi") or 0.0) <= float(plan_cfg.get("rsi_max") or 62.0)
                 and float(feats.get("ema_gap_pct") or 0.0) >= float(plan_cfg.get("ema_gap_min") or -0.026)
@@ -10265,7 +10276,10 @@ class TradingEngine:
                 - (0.024 * float(feats.get("volatility_penalty") or 0.0))
                 - (0.010 * float(feats.get("upper_range_bias") or 0.0))
             )
-            entry_price = min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs))
+            entry_price = max(
+                min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs)),
+                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+            )
             stop_price = low_36 - (0.90 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
             plan = self._finalize_crypto_trade_plan(
@@ -10281,6 +10295,7 @@ class TradingEngine:
                 ],
                 ttl_minutes=30,
             )
+            plan["risk_reward_min"] = float(rr_floor)
             gate_reason = "레인지 하단 재진입 + 완화된 반등 확인 + 지지 근접"
         elif model_id == "B":
             strategy = "B-SupportReclaimPlanner"
@@ -10305,6 +10320,7 @@ class TradingEngine:
             entry_price = max(
                 min(current_price, mid_12 + (float(plan_cfg.get("mid_atr_boost") or 0.0) * atr_abs)),
                 low_12 + (float(plan_cfg.get("floor_atr_mul") or 0.85) * atr_abs),
+                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
             )
             stop_price = low_12 - (1.05 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
@@ -10321,6 +10337,7 @@ class TradingEngine:
                 ],
                 ttl_minutes=40,
             )
+            plan["risk_reward_min"] = float(rr_floor)
             gate_reason = "지지 회복 + EMA 재안착 + 재반등 강도"
         elif model_id == "C":
             strategy = "C-CompressionBreakoutPlanner"
@@ -10357,6 +10374,7 @@ class TradingEngine:
                 ],
                 ttl_minutes=30,
             )
+            plan["risk_reward_min"] = 1.10
             gate_reason = "변동성 압축 + 상단 근접 + 돌파 계획"
         else:
             strategy = "D-ResetBouncePlanner"
@@ -10386,7 +10404,10 @@ class TradingEngine:
                 - (0.026 * float(feats.get("volatility_penalty") or 0.0))
                 - (0.012 * float(feats.get("upper_range_bias") or 0.0))
             )
-            entry_price = min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs))
+            entry_price = max(
+                min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs)),
+                current_price - (float(plan_cfg.get("shallow_pullback_atr") or 0.0) * atr_abs),
+            )
             stop_price = low_12 - (1.15 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
             plan = self._finalize_crypto_trade_plan(
@@ -10402,11 +10423,12 @@ class TradingEngine:
                 ],
                 ttl_minutes=35,
             )
+            plan["risk_reward_min"] = float(rr_floor)
             gate_reason = "급락/리셋 이후 완화된 바운스 확인 구간"
         if chase_block:
             score -= float(chase_penalty)
         score = _clamp(score, score_lo, score_hi)
-        if not gate_ok or float(plan.get("risk_reward") or 0.0) < 1.10:
+        if not gate_ok or float(plan.get("risk_reward") or 0.0) < rr_floor:
             score -= gate_penalty
         raw_score = _clamp(score, score_lo, score_hi)
         bayes_cfg = {
@@ -11304,6 +11326,7 @@ class TradingEngine:
                     "target_price_2": float(row.get("target_price_2") or 0.0),
                     "target_price_3": float(row.get("target_price_3") or 0.0),
                     "risk_reward": float(row.get("risk_reward") or 0.0),
+                    "risk_reward_min": float(row.get("risk_reward_min") or 1.10),
                     "entry_ready": bool(row.get("entry_ready")),
                     "setup_state": str(row.get("setup_state") or ""),
                     "setup_expiry_ts": int(row.get("setup_expiry_ts") or 0),
@@ -11340,6 +11363,7 @@ class TradingEngine:
                     "target_price_2": float(profile.get("target_price_2") or 0.0),
                     "target_price_3": float(profile.get("target_price_3") or 0.0),
                     "risk_reward": float(profile.get("risk_reward") or 0.0),
+                    "risk_reward_min": float(profile.get("risk_reward_min") or 1.10),
                     "entry_ready": bool(profile.get("entry_ready")),
                     "setup_state": str(profile.get("setup_state") or ""),
                     "setup_expiry_ts": int(profile.get("setup_expiry_ts") or 0),
@@ -11370,7 +11394,7 @@ class TradingEngine:
             plan = dict(plan_by_symbol.get(symbol) or {})
             if int(plan.get("setup_expiry_ts") or 0) > 0 and now > int(plan.get("setup_expiry_ts") or 0):
                 continue
-            if float(plan.get("risk_reward") or 0.0) < 1.10:
+            if float(plan.get("risk_reward") or 0.0) < float(plan.get("risk_reward_min") or 1.10):
                 continue
             if not bool(plan.get("entry_ready")):
                 continue

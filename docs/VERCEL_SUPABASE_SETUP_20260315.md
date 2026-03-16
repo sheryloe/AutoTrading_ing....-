@@ -284,9 +284,9 @@ It also syncs:
 
 ```json
 {
-  "A": { "threshold_bias": -0.003, "entry_atr_mul": 1.05, "zone_half_atr": 0.42 },
-  "B": { "floor_atr_mul": 1.10, "mid_atr_boost": 0.18, "zone_half_atr": 0.36 },
-  "D": { "entry_atr_mul": 1.35, "zone_low_atr": 0.50, "zone_high_atr": 0.38 }
+  "A": { "threshold_bias": -0.006, "entry_atr_mul": 1.45, "shallow_pullback_atr": 0.20, "zone_half_atr": 0.60, "risk_reward_min": 1.02 },
+  "B": { "threshold_bias": -0.006, "floor_atr_mul": 1.20, "mid_atr_boost": 0.35, "shallow_pullback_atr": 0.18, "zone_half_atr": 0.56, "risk_reward_min": 1.03 },
+  "D": { "threshold_bias": -0.006, "entry_atr_mul": 1.75, "shallow_pullback_atr": 0.22, "zone_low_atr": 0.62, "zone_high_atr": 0.64, "risk_reward_min": 1.00 }
 }
 ```
 
