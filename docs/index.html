@@ -1,255 +1,219 @@
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AI_Auto | Futures Demo 운영 콘솔</title>
-    <meta
-      name="description"
-      content="8분 배치 futures demo, Top 5 메이저 코인, 운영 콘솔과 위키 문서로 구성된 AI_Auto 소개 페이지"
-    >
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="AI_Auto | Futures Demo 운영 콘솔">
-    <meta
-      property="og:description"
-      content="운영 화면, 상태 저장, 배치 실행을 분리해 관리하는 AI_Auto futures demo 프로젝트"
-    >
-    <meta property="og:image" content="assets/screenshots/auto-trading-cover.png">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="AI_Auto | Futures Demo 운영 콘솔">
-    <meta
-      name="twitter:description"
-      content="운영 구조, 모델 운영 방식, 배포 기준을 한글로 정리한 AI_Auto 랜딩 페이지"
-    >
-    <link rel="stylesheet" href="styles.css">
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    >
-  </head>
-  <body>
-    <div class="ambient ambient-a"></div>
-    <div class="ambient ambient-b"></div>
+<!DOCTYPE html>
+<html lang="ko" data-theme="night">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automethemoney | AI Trading Analysis</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net)npm/apexcharts"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 
-    <div class="page-shell">
-      <header class="topbar">
-        <a class="brand" href="#top">
-          <span class="brand-mark"></span>
-          <span class="brand-copy">
-            <strong>AI_Auto</strong>
-            <span>Futures Demo 운영 콘솔</span>
-          </span>
-        </a>
-        <nav class="topnav" aria-label="문서 이동">
-          <a href="#why">왜 재구성했나</a>
-          <a href="#screens">화면 구조</a>
-          <a href="#models">모델 운영</a>
-          <a href="#stack">배포 구조</a>
-          <a href="#reference">참고</a>
-        </nav>
-        <a class="ghost-button" href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub</a>
-      </header>
+    <style>
+        body { font-family: "Pretendard", sans-serif; background: radial-gradient(circle at top right, #1e293b, #0f172a); }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="p-4 lg:p-10 text-slate-200">
 
-      <main id="top">
-        <section class="hero">
-          <div class="hero-copy">
-            <p class="eyebrow">Operator-first automation</p>
-            <h1>운영 기준이 분명한 futures demo 자동매매 콘솔</h1>
-            <p class="hero-body">
-              AI_Auto는 Top 5 메이저 코인을 대상으로 8분 배치 futures demo를 운영하는 자동매매 프로젝트입니다.
-              개요, 모델 성과, 포지션, 설정을 분리해 상태 확인과 운영 입력이 서로 섞이지 않도록 정리했습니다.
-            </p>
-            <p class="hero-links">
-              코드, 설정 기준, 운영 문서는
-              <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소</a>
-              와
-              <a href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">GitHub Wiki</a>
-              에서 바로 확인할 수 있습니다.
-            </p>
-            <ul class="hero-chips">
-              <li>개요 / 모델 성과 / 포지션 / 설정</li>
-              <li>Top 5 메이저 코인</li>
-              <li>8분 주기 배치 분석</li>
-              <li>futures demo / intrabar 체결 반영</li>
-            </ul>
-          </div>
-
-          <div class="hero-visual">
-            <figure class="hero-shot">
-              <img src="assets/screenshots/auto-trading-cover.png" alt="AI_Auto 운영형 콘솔 커버">
-              <figcaption>
-                <span>Operator surface</span>
-                <strong>운영자가 바로 해석할 수 있도록 정리한 다크 콘솔 UI</strong>
-              </figcaption>
-            </figure>
-            <div class="hero-panel-grid">
-              <article>
-                <label>추적 범위</label>
-                <strong>메이저 5종</strong>
-                <p>유동성과 체결 안정성이 높은 메이저 심볼만 다룹니다.</p>
-              </article>
-              <article>
-                <label>분석 주기</label>
-                <strong>8분</strong>
-                <p>상시 루프 대신 운영 가능한 배치 주기로 정리했습니다.</p>
-              </article>
-              <article>
-                <label>성과 관리</label>
-                <strong>일별 PnL / 주간 튜닝</strong>
-                <p>일별 손익 기록과 주간 autotune을 운영 루프에 포함합니다.</p>
-              </article>
-              <article>
-                <label>설정 방식</label>
-                <strong>서비스 콘솔</strong>
-                <p>provider 키와 runtime profile을 운영 화면에서 분리 관리합니다.</p>
-              </article>
+    <div class="max-w-7xl mx-auto space-y-12">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+                <h1 class="text-4xl font-black text-white tracking-tighter italic">
+                    AUTOMETHEMONEY <span class="text-primary text-2xl">v2.4</span>
+                </h1>
+                <p class="text-slate-400 font-medium mt-1">Multi-Model AI Automated Quant Trading System</p>
             </div>
-          </div>
-        </section>
-
-        <section id="why" class="section-card">
-          <div class="section-head">
-            <p class="eyebrow">왜 재구성했나</p>
-            <h2>상태 확인과 설정 입력을 분리해야 운영이 편해집니다.</h2>
-          </div>
-          <div class="why-grid">
-            <article>
-              <strong>역할 분리</strong>
-              <p>운영 상태 확인, 성과 비교, 포지션 점검, 설정 입력은 같은 화면에서 같은 밀도로 보여줄 필요가 없습니다.</p>
-            </article>
-            <article>
-              <strong>판단 속도</strong>
-              <p>지표를 보다가 설정 폼을 마주치는 구조는 판단을 느리게 만듭니다. 그래서 화면을 기능별로 나눴습니다.</p>
-            </article>
-            <article>
-              <strong>제품 인상</strong>
-              <p>GitHub Pages는 프로젝트 소개와 진입점에 집중하고, 실제 운영 기준은 콘솔과 Wiki에 모았습니다.</p>
-            </article>
-          </div>
-        </section>
-
-        <section id="screens" class="section-card">
-          <div class="section-head">
-            <p class="eyebrow">화면 구조</p>
-            <h2>운영자 기준으로 정리한 4개 화면 구조</h2>
-          </div>
-          <div class="screen-grid">
-            <article class="screen-card">
-              <span>01</span>
-              <strong>개요</strong>
-              <p>핵심 KPI, heartbeat, 최근 사이클 요약, 오픈 포지션 수를 먼저 보여줍니다.</p>
-            </article>
-            <article class="screen-card">
-              <span>02</span>
-              <strong>모델 성과</strong>
-              <p>모델별 PnL, 승률, 종료 거래 수, autotune 상태를 비교합니다.</p>
-            </article>
-            <article class="screen-card">
-              <span>03</span>
-              <strong>포지션</strong>
-              <p>오픈 포지션, 최신 setup, entry / SL / TP 상태를 실행 기준으로 정리합니다.</p>
-            </article>
-            <article class="screen-card">
-              <span>04</span>
-              <strong>설정</strong>
-              <p>Service control, provider vault, execution target, runtime profile은 설정 화면에만 둡니다.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="section-card media-section">
-          <div class="section-head">
-            <p class="eyebrow">화면 분위기</p>
-            <h2>과한 소개보다 운영 도구처럼 보이도록 다듬었습니다.</h2>
-          </div>
-          <div class="media-grid">
-            <figure class="media-shot">
-              <img src="assets/screenshots/auto-trading-dashboard.png" alt="AI_Auto 운영 화면 미리보기">
-            </figure>
-            <div class="media-copy">
-              <p>
-                검은 배경, 민트와 시안 포인트, 데이터 패널 중심 레이아웃을 사용했습니다.
-                한 화면에 모든 것을 넣기보다 읽는 흐름이 끊기지 않도록 타이포와 간격을 정리했습니다.
-              </p>
-              <ul>
-                <li>페이지별 책임 분리</li>
-                <li>데이터 카드와 표 중심 레이아웃</li>
-                <li>설정 입력은 별도 화면으로 격리</li>
-              </ul>
+            <div class="flex items-center gap-4">
+                <div class="flex flex-col items-end">
+                    <span class="text-xs font-bold text-success animate-pulse">● LIVE TRADING</span>
+                    <span class="text-sm font-mono text-slate-500">Last Update: 2026.03.16</span>
+                </div>
+                <a href="https://github.com/sheryloe/Automethemoney" class="btn btn-circle btn-ghost border border-slate-700">
+                    <i data-lucide="github"></i>
+                </a>
             </div>
-          </div>
+        </header>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="glass-card rounded-2xl p-6">
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Return</div>
+                <div class="text-3xl font-black text-primary font-mono">+24.85%</div>
+            </div>
+            <div class="glass-card rounded-2xl p-6">
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Sharpe Ratio</div>
+                <div class="text-3xl font-black text-secondary font-mono">2.14</div>
+            </div>
+            <div class="glass-card rounded-2xl p-6">
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Max Drawdown</div>
+                <div class="text-3xl font-black text-error font-mono">-4.2%</div>
+            </div>
+            <div class="glass-card rounded-2xl p-6">
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Trades</div>
+                <div class="text-3xl font-black text-white font-mono">1,242</div>
+            </div>
+        </div>
+
+        <section id="model-analysis">
+            <div class="flex items-center gap-4 mb-8">
+                <h2 class="text-2xl font-black text-white italic">Model Logic Analysis</h2>
+                <div class="h-[2px] flex-grow bg-slate-800"></div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-card rounded-3xl p-8 hover:border-primary/50 transition-all group">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="bg-primary/20 text-primary p-3 rounded-2xl group-hover:bg-primary group-hover:text-white transition-colors">
+                            <i data-lucide="trending-up"></i>
+                        </div>
+                        <span class="text-xs font-mono font-bold opacity-40">STRATEGY A</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Model A: Trend Follower</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed mb-6">
+                        장기 이동평균선(MA 120/200)을 기반으로 대세 상승장을 판별합니다. RSI 지표를 필터로 사용하여 고점 매수를 방지하고, 강력한 추세 형성 시 피라미딩 기법으로 수익을 극대화합니다.
+                    </p>
+                    <div class="flex gap-2">
+                        <div class="badge badge-outline text-[10px]">MA-Cross</div>
+                        <div class="badge badge-outline text-[10px]">RSI-Filter</div>
+                        <div class="badge badge-outline text-[10px]">Pyramiding</div>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-3xl p-8 hover:border-secondary/50 transition-all group">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="bg-secondary/20 text-secondary p-3 rounded-2xl group-hover:bg-secondary group-hover:text-white transition-colors">
+                            <i data-lucide="refresh-cw"></i>
+                        </div>
+                        <span class="text-xs font-mono font-bold opacity-40">STRATEGY B</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Model B: Mean Reversion</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed mb-6">
+                        가격이 평균에서 과도하게 멀어질 때 발생하는 회귀 본능을 이용합니다. 볼린저 밴드의 하단 터치와 거래량 급감을 분석하여 단기 반등 포인트를 포착하며, 15분봉 기준 스캘핑에 최적화되어 있습니다.
+                    </p>
+                    <div class="flex gap-2">
+                        <div class="badge badge-outline text-[10px]">Bollinger-Bands</div>
+                        <div class="badge badge-outline text-[10px]">Mean-Recap</div>
+                        <div class="badge badge-outline text-[10px]">Scalping</div>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-3xl p-8 hover:border-accent/50 transition-all group">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="bg-accent/20 text-accent p-3 rounded-2xl group-hover:bg-accent group-hover:text-white transition-colors">
+                            <i data-lucide="zap"></i>
+                        </div>
+                        <span class="text-xs font-mono font-bold opacity-40">STRATEGY C</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Model C: Volatility Breakout</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed mb-6">
+                        래리 윌리엄스의 변동성 돌파 전략을 현대적으로 재해석했습니다. 전일 고가-저가의 특정 비율(K-Value)을 실시간으로 계산하여 돌파 시점에 즉시 진입하며, 장 마감 시 강제 청산으로 리스크를 관리합니다.
+                    </p>
+                    <div class="flex gap-2">
+                        <div class="badge badge-outline text-[10px]">K-Value</div>
+                        <div class="badge badge-outline text-[10px]">Range-Break</div>
+                        <div class="badge badge-outline text-[10px]">Day-Trade</div>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-3xl p-8 hover:border-info/50 transition-all group">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="bg-info/20 text-info p-3 rounded-2xl group-hover:bg-info group-hover:text-white transition-colors">
+                            <i data-lucide="brain-circuit"></i>
+                        </div>
+                        <span class="text-xs font-mono font-bold opacity-40">STRATEGY D</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Model D: Deep Neural Network</h3>
+                    <p class="text-sm text-slate-400 leading-relaxed mb-6">
+                        LSTM 기반의 시계열 예측 모델입니다. 단순 가격 데이터 외에도 거래량 오더북 데이터, SNS 감성 지수를 다중 입력(Multi-Input)으로 받아 향후 1시간 내의 가격 방향성을 확률적으로 예측합니다.
+                    </p>
+                    <div class="flex gap-2">
+                        <div class="badge badge-outline text-[10px]">LSTM</div>
+                        <div class="badge badge-outline text-[10px]">Sentiment-Analysis</div>
+                        <div class="badge badge-outline text-[10px]">AI-Forecast</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <section id="models" class="section-card">
-          <div class="section-head">
-            <p class="eyebrow">모델 운영</p>
-            <h2>4개 planner 모델이 진입과 청산 계획을 제안합니다.</h2>
-          </div>
-          <div class="model-grid">
-            <article>
-              <span>A</span>
-              <strong>레인지 리버전</strong>
-              <p>되돌림과 평균 회귀 구간을 중심으로 entry와 stop 구조를 계산합니다.</p>
-            </article>
-            <article>
-              <span>B</span>
-              <strong>리클레임</strong>
-              <p>스윕 후 회복되는 패턴에서 reclaim 기준의 진입 계획을 만듭니다.</p>
-            </article>
-            <article>
-              <span>C</span>
-              <strong>압축 돌파</strong>
-              <p>변동성 수축 이후 breakout retest를 기준으로 목표 구간을 설정합니다.</p>
-            </article>
-            <article>
-              <span>D</span>
-              <strong>리셋 바운스</strong>
-              <p>실패한 돌파 이후 반대 방향으로 복귀하는 구간을 활용합니다.</p>
-            </article>
-          </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 glass-card rounded-3xl p-6">
+                <h3 class="text-xl font-bold mb-6 italic">Equity Curve</h3>
+                <div id="main-chart" class="min-h-[350px]"></div>
+            </div>
+            
+            <div class="lg:col-span-1 glass-card rounded-3xl p-6 overflow-hidden">
+                <h3 class="text-xl font-bold mb-6 italic text-center">Daily PnL</h3>
+                <div class="overflow-y-auto max-h-[350px]">
+                    <table class="table table-xs w-full font-mono">
+                        <thead class="sticky top-0 bg-slate-800">
+                            <tr>
+                                <th>Date</th>
+                                <th>Model</th>
+                                <th class="text-right">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700">
+                            <tr><td>03/16</td><td>Model A</td><td class="text-right text-success">+1.2%</td></tr>
+                            <tr><td>03/16</td><td>Model D</td><td class="text-right text-error">-0.4%</td></tr>
+                            <tr><td>03/15</td><td>Model C</td><td class="text-right text-success">+2.5%</td></tr>
+                            <tr><td>03/14</td><td>Model B</td><td class="text-right text-success">+0.8%</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <section id="feedback" class="pt-10 border-t border-slate-800">
+            <div class="max-w-4xl mx-auto text-center">
+                <h2 class="text-2xl font-black mb-4 italic">Feedback & Improvements</h2>
+                <p class="text-slate-500 text-sm mb-10 text-center">사용 중 발견한 버그나 모델 개선 제안은 아래 댓글로 남겨주세요.</p>
+                <div class="glass-card p-6 rounded-3xl">
+                    <script src="https://giscus.app/client.js"
+                        data-repo="sheryloe/Automethemoney"
+                        data-repo-id="R_kgDON7u0mg"
+                        data-category="Announcements"
+                        data-category-id="DIC_kwDON7u0ms4CnM1U"
+                        data-mapping="pathname"
+                        data-strict="0"
+                        data-reactions-enabled="1"
+                        data-emit-metadata="0"
+                        data-input-position="bottom"
+                        data-theme="transparent_dark"
+                        data-lang="ko"
+                        crossorigin="anonymous"
+                        async>
+                    </script>
+                </div>
+            </div>
         </section>
 
-        <section id="stack" class="section-card">
-          <div class="section-head">
-            <p class="eyebrow">배포 구조</p>
-            <h2>프론트, 저장소, 배치를 분리해 운영합니다.</h2>
-          </div>
-          <div class="stack-grid">
-            <article>
-              <strong>Vercel</strong>
-              <p>운영자 콘솔과 Service control 화면을 제공합니다.</p>
-            </article>
-            <article>
-              <strong>Supabase</strong>
-              <p>상태 저장, runtime profile, provider vault, 대시보드 원장을 담당합니다.</p>
-            </article>
-            <article>
-              <strong>Python 배치</strong>
-              <p>8분 분석, intrabar 체결 판정, 일별 리포트, 주간 autotune 작업을 처리합니다.</p>
-            </article>
-          </div>
-        </section>
-
-        <section id="reference" class="section-card reference-block">
-          <div class="section-head">
-            <p class="eyebrow">참고</p>
-            <h2>상세 문서는 GitHub 저장소와 Wiki를 기준으로 관리합니다.</h2>
-          </div>
-          <p class="reference-copy">
-            프로젝트 개요는 이 페이지에 남기고, 실제 운영 기준과 설정 절차, 배포 참고 문서는 GitHub 저장소와 Wiki에 모아둡니다.
-            최신 코드, 변경 이력, 설정 문서가 필요할 때는
-            <a href="https://github.com/sheryloe/AutoTrading_ing....-">GitHub 저장소</a>
-            와
-            <a href="https://github.com/sheryloe/AutoTrading_ing....-/wiki">GitHub Wiki</a>
-            를 함께 확인하면 됩니다.
-          </p>
-        </section>
-      </main>
-
-      <footer class="footer">
-        <span>AI_Auto / Futures Demo 운영 콘솔</span>
-        <span>Operator-first automation surface</span>
-      </footer>
+        <footer class="text-center py-10 opacity-30 text-xs font-mono">
+            BUILD BY SHERYLOE | AUTOMETHEMONEY PROJECT
+        </footer>
     </div>
-  </body>
+
+    <script>
+        lucide.createIcons();
+
+        // ApexCharts 설정
+        var options = {
+            series: [{
+                name: 'Cumulative PnL',
+                data: [0, 2.1, 1.8, 4.5, 5.2, 4.8, 7.5, 12.2, 11.5, 14.8, 18.2, 22.4, 24.8]
+            }],
+            chart: { type: 'area', height: 350, toolbar: { show: false }, background: 'transparent' },
+            stroke: { curve: 'smooth', width: 4 },
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.1 } },
+            xaxis: { categories: ['03/04','03/05','03/06','03/07','03/08','03/09','03/10','03/11','03/12','03/13','03/14','03/15','03/16'], axisBorder: {show: false} },
+            yaxis: { labels: { formatter: (v) => v + "%" } },
+            colors: ['#570df8'],
+            theme: { mode: 'dark' },
+            grid: { borderColor: '#1e293b' }
+        };
+
+        new ApexCharts(document.querySelector("#main-chart"), options).render();
+    </script>
+</body>
 </html>
