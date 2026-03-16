@@ -1,8 +1,12 @@
-name: Deploy Dashboard (Official Flow)
+name: Deploy Dashboard
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -10,29 +14,61 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject Secrets into HTML
+      - name: Inject public Supabase config into Pages HTML
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          if [ -f "docs/index.html" ]; then
-            # 시크릿 이름을 SUPABASE_ANON_KEY로 완전히 일치시킴
-            sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
-            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_ANON_KEY }}|g" docs/index.html
-            echo "✅ Secrets injected successfully."
-          else
-            echo "❌ Error: docs/index.html not found!"
-            exit 1
-          fi
+          python - <<'PY'
+          from pathlib import Path
+          import os
 
-      - name: Upload artifact
+          replacements = {
+              "{{SUPABASE_URL}}": os.environ.get("SUPABASE_URL", "").strip(),
+              "{{SUPABASE_ANON_KEY}}": os.environ.get("SUPABASE_ANON_KEY", "").strip(),
+          }
+
+          missing = [name for name, value in replacements.items() if not value]
+          if missing:
+              names = ", ".join(token.strip("{}") for token in missing)
+              raise SystemExit(f"Missing required GitHub secrets: {names}")
+
+          changed = []
+          for path in Path("docs").glob("*.html"):
+              original = path.read_text(encoding="utf-8")
+              updated = original
+              for token, value in replacements.items():
+                  updated = updated.replace(token, value)
+              if updated != original:
+                  path.write_text(updated, encoding="utf-8")
+                  changed.append(str(path))
+
+          if not changed:
+              raise SystemExit("No HTML files contained SUPABASE placeholders to inject.")
+
+          print("Injected config into:")
+          for item in changed:
+              print(f" - {item}")
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs'
+          path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment

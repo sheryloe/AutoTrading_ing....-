@@ -3,8 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050b12">
     <title>AI_Auto | Daily Model PnL Archive</title>
+    <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    >
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
       .archive-shell {
         width: min(1120px, calc(100% - 24px));
@@ -13,7 +22,9 @@
       }
 
       .archive-header,
-      .archive-card {
+      .archive-card,
+      .archive-banner,
+      .archive-table {
         border: 1px solid var(--line);
         border-radius: var(--radius-xl);
         background: linear-gradient(180deg, rgba(10, 19, 30, 0.92) 0%, rgba(5, 11, 18, 0.96) 100%);
@@ -35,7 +46,8 @@
       }
 
       .archive-header p,
-      .archive-note {
+      .archive-note,
+      .archive-copy {
         margin: 0;
         color: var(--muted);
         line-height: 1.7;
@@ -57,9 +69,19 @@
         background: rgba(12, 22, 33, 0.82);
       }
 
+      .archive-banner {
+        margin-top: 18px;
+        padding: 14px 16px;
+      }
+
+      .archive-banner strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
       .archive-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 16px;
         margin-top: 18px;
       }
@@ -85,10 +107,31 @@
 
       .archive-table {
         margin-top: 20px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-xl);
         overflow: hidden;
         background: rgba(8, 15, 24, 0.82);
+      }
+
+      .archive-table-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 16px;
+        padding: 18px 20px 0;
+      }
+
+      .archive-table-head h2 {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 1.4rem;
+      }
+
+      .archive-table-head p {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+
+      .archive-table-wrap {
+        overflow-x: auto;
       }
 
       .archive-table table {
@@ -102,6 +145,7 @@
         border-bottom: 1px solid var(--line);
         text-align: left;
         font-size: 0.94rem;
+        white-space: nowrap;
       }
 
       .archive-table tbody tr:last-child td {
@@ -130,8 +174,8 @@
           grid-template-columns: 1fr;
         }
 
-        .archive-table {
-          overflow-x: auto;
+        .archive-table-head {
+          display: grid;
         }
       }
     </style>
@@ -143,116 +187,246 @@
       <section class="archive-header">
         <p class="eyebrow">Daily archive</p>
         <h1>모델별 일일 PnL 아카이브</h1>
-        <p>
-          GitHub Actions `cloud-cycle`가 하루가 바뀔 때마다 전일 모델 성과를 `docs/data/daily_pnl`에 기록합니다.
-          이 페이지는 그 누적 기록을 GitHub Pages에서 바로 읽어 보여줍니다.
+        <p class="archive-copy">
+          우선 GitHub에 커밋된 <code>docs/data/daily_pnl/summary.json</code>을 읽고,
+          그 파일이 아직 없으면 Supabase <code>daily_model_pnl</code> 테이블로 자동 폴백합니다.
         </p>
         <div class="archive-links">
-          <a href="./">GitHub Pages 홈</a>
+          <a href="./">라이브 대시보드</a>
           <a href="https://github.com/sheryloe/Automethemoney">저장소</a>
         </div>
       </section>
 
+      <section id="archive-banner" class="archive-banner">
+        <strong>데이터 원본 확인 중</strong>
+        <div class="archive-note">정적 JSON과 Supabase 중 사용 가능한 원본을 찾고 있습니다.</div>
+      </section>
+
       <section class="archive-grid">
+        <article class="archive-card">
+          <span>Source</span>
+          <strong id="source-label">checking</strong>
+          <p class="archive-note">현재 페이지가 읽고 있는 데이터 원본</p>
+        </article>
         <article class="archive-card">
           <span>Last Day</span>
           <strong id="latest-day">-</strong>
-          <p class="archive-note">가장 최근에 기록된 일자</p>
+          <p class="archive-note">가장 최근에 적재된 모델 손익 날짜</p>
         </article>
         <article class="archive-card">
           <span>Total Realized</span>
           <strong id="latest-realized">$0.00</strong>
-          <p class="archive-note">최근 일자의 모델 합산 실현 PnL</p>
+          <p class="archive-note">가장 최근 날짜의 모델 합산 realized PnL</p>
         </article>
         <article class="archive-card">
           <span>Rows</span>
           <strong id="row-count">0</strong>
-          <p class="archive-note">누적된 모델별 일별 기록 수</p>
+          <p class="archive-note">표시 중인 총 모델 일별 기록 수</p>
         </article>
       </section>
 
       <section class="archive-table">
-        <table>
-          <thead>
-            <tr>
-              <th>일자</th>
-              <th>모델</th>
-              <th>총 PnL</th>
-              <th>실현 PnL</th>
-              <th>미실현 PnL</th>
-              <th>승률</th>
-              <th>종료 거래</th>
-            </tr>
-          </thead>
-          <tbody id="archive-body">
-            <tr>
-              <td colspan="7">데이터를 불러오는 중입니다.</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="archive-table-head">
+          <div>
+            <p class="eyebrow">Archive ledger</p>
+            <h2>일별 모델 손익 기록</h2>
+            <p>최근 데이터부터 모델 단위로 정렬해서 보여줍니다.</p>
+          </div>
+        </div>
+        <div class="archive-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Model</th>
+                <th>Equity</th>
+                <th>Total PnL</th>
+                <th>Realized PnL</th>
+                <th>Unrealized PnL</th>
+                <th>Win Rate</th>
+                <th>Closed Trades</th>
+              </tr>
+            </thead>
+            <tbody id="archive-body">
+              <tr>
+                <td colspan="8">아카이브 데이터를 불러오는 중입니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
 
     <script>
-      const formatMoney = (value) =>
-        new Intl.NumberFormat("ko-KR", {
+      const SUPABASE_URL = "{{SUPABASE_URL}}";
+      const SUPABASE_ANON_KEY = "{{SUPABASE_ANON_KEY}}";
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[char]));
+      }
+
+      function formatMoney(value) {
+        return new Intl.NumberFormat("ko-KR", {
           style: "currency",
           currency: "USD",
           maximumFractionDigits: 2,
         }).format(Number(value || 0));
+      }
 
-      const formatPercent = (value) => `${Number(value || 0).toFixed(2)}%`;
+      function formatSignedMoney(value) {
+        const amount = Number(value || 0);
+        const prefix = amount > 0 ? "+" : "";
+        return `${prefix}${formatMoney(amount)}`;
+      }
 
-      const toneClass = (value) => {
+      function formatPercent(value) {
+        return `${Number(value || 0).toFixed(2)}%`;
+      }
+
+      function toneClass(value) {
         const num = Number(value || 0);
         if (num > 0) return "tone-positive";
         if (num < 0) return "tone-negative";
         return "tone-flat";
-      };
+      }
+
+      function setBanner(title, body) {
+        const el = document.getElementById("archive-banner");
+        el.innerHTML = `<strong>${escapeHtml(title)}</strong><div class="archive-note">${escapeHtml(body)}</div>`;
+      }
+
+      function normalizeRows(rows) {
+        return (Array.isArray(rows) ? rows : []).map((row) => ({
+          day: row.day || row.date || "-",
+          model_id: row.model_id || "-",
+          equity_usd: Number(row.equity_usd || row.total_equity_usd || 0),
+          total_pnl_usd: Number(row.total_pnl_usd || 0),
+          realized_pnl_usd: Number(row.realized_pnl_usd || 0),
+          unrealized_pnl_usd: Number(row.unrealized_pnl_usd || 0),
+          win_rate: Number(row.win_rate || 0),
+          closed_trades: Number(row.closed_trades || 0),
+        }));
+      }
+
+      function renderRows(rows, sourceLabel) {
+        const tbody = document.getElementById("archive-body");
+        const normalized = normalizeRows(rows)
+          .slice()
+          .sort((a, b) => {
+            const dateCmp = String(b.day || "").localeCompare(String(a.day || ""));
+            if (dateCmp !== 0) return dateCmp;
+            return String(a.model_id || "").localeCompare(String(b.model_id || ""));
+          });
+
+        document.getElementById("source-label").textContent = sourceLabel;
+        document.getElementById("row-count").textContent = String(normalized.length);
+
+        if (!normalized.length) {
+          document.getElementById("latest-day").textContent = "-";
+          document.getElementById("latest-realized").textContent = formatMoney(0);
+          tbody.innerHTML = '<tr><td colspan="8">표시할 일별 PnL 기록이 아직 없습니다.</td></tr>';
+          return;
+        }
+
+        const latestDay = normalized.reduce((best, row) => (String(row.day || "") > String(best || "") ? row.day : best), "");
+        const latestRows = normalized.filter((row) => String(row.day || "") === String(latestDay || ""));
+        const latestRealized = latestRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
+        document.getElementById("latest-day").textContent = latestDay || "-";
+        document.getElementById("latest-realized").textContent = formatMoney(latestRealized);
+
+        tbody.innerHTML = normalized
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHtml(row.day || "-")}</td>
+                <td>MODEL ${escapeHtml(String(row.model_id || "-").toUpperCase())}</td>
+                <td>${escapeHtml(formatMoney(row.equity_usd || 0))}</td>
+                <td class="${toneClass(row.total_pnl_usd)}">${escapeHtml(formatSignedMoney(row.total_pnl_usd || 0))}</td>
+                <td class="${toneClass(row.realized_pnl_usd)}">${escapeHtml(formatSignedMoney(row.realized_pnl_usd || 0))}</td>
+                <td class="${toneClass(row.unrealized_pnl_usd)}">${escapeHtml(formatSignedMoney(row.unrealized_pnl_usd || 0))}</td>
+                <td>${escapeHtml(formatPercent(row.win_rate || 0))}</td>
+                <td>${Number(row.closed_trades || 0)}</td>
+              </tr>
+            `
+          )
+          .join("");
+      }
+
+      async function loadFromStaticJson() {
+        const res = await fetch("./data/daily_pnl/summary.json", { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`static_json_${res.status}`);
+        }
+        const rows = await res.json();
+        if (!Array.isArray(rows) || !rows.length) {
+          throw new Error("static_json_empty");
+        }
+        return rows;
+      }
+
+      async function loadFromSupabase() {
+        if (
+          !window.supabase ||
+          !String(SUPABASE_URL || "").startsWith("http") ||
+          !String(SUPABASE_ANON_KEY || "").trim() ||
+          String(SUPABASE_URL).includes("{{") ||
+          String(SUPABASE_ANON_KEY).includes("{{")
+        ) {
+          throw new Error("supabase_config_missing");
+        }
+
+        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+
+        const { data, error } = await client
+          .from("daily_model_pnl")
+          .select("day,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,market")
+          .eq("market", "crypto")
+          .order("day", { ascending: false })
+          .limit(180);
+
+        if (error) throw error;
+        if (!Array.isArray(data) || !data.length) {
+          throw new Error("supabase_empty");
+        }
+
+        return data;
+      }
 
       async function loadArchive() {
-        const tbody = document.getElementById("archive-body");
         try {
-          const res = await fetch("./data/daily_pnl/summary.json", { cache: "no-store" });
-          if (!res.ok) {
-            throw new Error(`fetch_failed_${res.status}`);
-          }
-          const rows = await res.json();
-          if (!Array.isArray(rows) || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">아직 기록된 일별 PnL이 없습니다.</td></tr>';
+          const staticRows = await loadFromStaticJson();
+          renderRows(staticRows, "git summary.json");
+          setBanner("정적 아카이브 사용 중", "GitHub에 커밋된 daily_pnl summary.json을 읽었습니다.");
+          return;
+        } catch (staticError) {
+          try {
+            const liveRows = await loadFromSupabase();
+            renderRows(liveRows, "supabase fallback");
+            setBanner(
+              "Supabase 폴백 사용 중",
+              `정적 JSON을 찾지 못해 Supabase daily_model_pnl로 전환했습니다. (${String(staticError.message || staticError)})`
+            );
             return;
+          } catch (supabaseError) {
+            document.getElementById("archive-body").innerHTML =
+              `<tr><td colspan="8">아카이브를 불러오지 못했습니다. ${escapeHtml(String(supabaseError.message || supabaseError))}</td></tr>`;
+            setBanner(
+              "데이터 조회 실패",
+              `static=${String(staticError.message || staticError)} / supabase=${String(supabaseError.message || supabaseError)}`
+            );
           }
-
-          const latestDay = rows.reduce((best, row) => (String(row.date || "") > String(best || "") ? row.date : best), "");
-          const latestRows = rows.filter((row) => String(row.date || "") === String(latestDay));
-          const latestRealized = latestRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
-          document.getElementById("latest-day").textContent = latestDay || "-";
-          document.getElementById("latest-realized").textContent = formatMoney(latestRealized);
-          document.getElementById("row-count").textContent = String(rows.length);
-
-          tbody.innerHTML = rows
-            .slice()
-            .sort((a, b) => {
-              const dateCmp = String(b.date || "").localeCompare(String(a.date || ""));
-              if (dateCmp !== 0) return dateCmp;
-              return String(a.model_id || "").localeCompare(String(b.model_id || ""));
-            })
-            .map(
-              (row) => `
-                <tr>
-                  <td>${row.date || "-"}</td>
-                  <td>${row.model_id || "-"}</td>
-                  <td class="${toneClass(row.total_pnl_usd)}">${formatMoney(row.total_pnl_usd)}</td>
-                  <td class="${toneClass(row.realized_pnl_usd)}">${formatMoney(row.realized_pnl_usd)}</td>
-                  <td class="${toneClass(row.unrealized_pnl_usd)}">${formatMoney(row.unrealized_pnl_usd)}</td>
-                  <td>${formatPercent(row.win_rate)}</td>
-                  <td>${Number(row.closed_trades || 0)}</td>
-                </tr>
-              `
-            )
-            .join("");
-        } catch (error) {
-          tbody.innerHTML = `<tr><td colspan="7">아카이브를 읽지 못했습니다: ${String(error.message || error)}</td></tr>`;
         }
       }
 
