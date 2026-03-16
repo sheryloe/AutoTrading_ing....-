@@ -2187,7 +2187,8 @@ class TradingEngine:
                 )
         return rows
 
-    def _build_supabase_daily_pnl_rows(self) -> list[dict[str, Any]]:
+    def _build_supabase_daily_pnl_rows(self, now_ts: int | None = None) -> list[dict[str, Any]]:
+        snapshot_ts = int(now_ts or int(time.time()))
         with self._lock:
             table = list(self.state.daily_pnl or [])
         rows: list[dict[str, Any]] = []
@@ -2207,7 +2208,9 @@ class TradingEngine:
                     "unrealized_pnl_usd": float((row or {}).get("bybit_unrealized_pnl_usd") or 0.0),
                     "win_rate": float((row or {}).get("bybit_win_rate") or 0.0),
                     "closed_trades": int((row or {}).get("bybit_closed_trades") or 0),
+                    "updated_at": self._iso_datetime(snapshot_ts),
                     "source_json": {
+                        "snapshot_at": self._iso_datetime(snapshot_ts),
                         "total_equity_usd": float((row or {}).get("total_equity_usd") or 0.0),
                         "total_pnl_usd_all": float((row or {}).get("total_pnl_usd") or 0.0),
                     },
@@ -2255,7 +2258,8 @@ class TradingEngine:
                 )
         return rows
 
-    def _build_supabase_open_position_rows(self) -> list[dict[str, Any]]:
+    def _build_supabase_open_position_rows(self, now_ts: int | None = None) -> list[dict[str, Any]]:
+        snapshot_ts = int(now_ts or int(time.time()))
         with self._lock:
             runs = dict(self.state.model_runs or {})
         rows: list[dict[str, Any]] = []
@@ -2277,6 +2281,7 @@ class TradingEngine:
                         "side": str((pos or {}).get("side") or "long"),
                         "status": "open",
                         "opened_at": self._iso_datetime(opened_at),
+                        "updated_at": self._iso_datetime(snapshot_ts),
                         "planned_entry_price": float((pos or {}).get("entry_plan_price") or 0.0),
                         "actual_entry_price": float((pos or {}).get("avg_price_usd") or 0.0),
                         "stop_loss_price": float((pos or {}).get("stop_loss_price") or 0.0),
@@ -2299,6 +2304,7 @@ class TradingEngine:
                             "reason": str((pos or {}).get("reason") or ""),
                             "setup_state": str((pos or {}).get("setup_state") or ""),
                             "current_price": float(current or 0.0),
+                            "price_as_of": self._iso_datetime(snapshot_ts),
                             "pnl_pct": float(marked.get("pnl_pct") or 0.0),
                             "position_equity_usd": float(marked.get("position_equity_usd") or 0.0),
                         },
@@ -2372,7 +2378,7 @@ class TradingEngine:
             ),
             "daily_model_pnl": self.supabase_sync.upsert_rows(
                 "daily_model_pnl",
-                self._build_supabase_daily_pnl_rows(),
+                self._build_supabase_daily_pnl_rows(now_ts),
                 on_conflict="day,market,model_id",
             ),
             "model_setups": self.supabase_sync.upsert_rows(
@@ -2385,13 +2391,14 @@ class TradingEngine:
                 self._build_supabase_signal_audit_rows(now_ts),
                 on_conflict="cycle_at,market,model_id,symbol",
             ),
-            "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows()),
+            "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows(now_ts)),
             "recent_crypto_trades": self.supabase_sync.upsert_blob(
                 "recent_crypto_trades",
                 {"rows": self._build_recent_crypto_trade_rows(limit=120), "updated_at": self._iso_datetime(now_ts)},
             ),
         }
         errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
+        self._last_supabase_sync_errors = dict(errors)
         if errors:
             self.runtime_feedback.append_event(
                 source="supabase_sync",
@@ -2401,6 +2408,10 @@ class TradingEngine:
                 meta=errors,
                 now_ts=now_ts,
             )
+            strict_sync = str(os.environ.get("SUPABASE_SYNC_STRICT") or "").strip().lower() in {"1", "true", "yes", "on"}
+            if strict_sync:
+                failed_keys = ",".join(sorted(errors))
+                raise RuntimeError(f"supabase_sync_failed:{failed_keys}")
 
     @staticmethod
     def _parse_model_id_csv(raw: Any, fallback_all: bool = True, allowed_ids: tuple[str, ...] | None = None) -> tuple[str, ...]:

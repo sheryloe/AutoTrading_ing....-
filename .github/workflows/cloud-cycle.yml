@@ -63,6 +63,7 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           SUPABASE_SYNC_ENABLED: "true"
+          SUPABASE_SYNC_STRICT: "true"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SERVICE_MASTER_KEY: ${{ secrets.SERVICE_MASTER_KEY }}

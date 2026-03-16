@@ -69,6 +69,13 @@ def _hydrate_runtime_from_supabase() -> None:
         _hydrate_provider_secrets(client, master_key)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = str(os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return bool(default)
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _build_heartbeat_row(engine: TradingEngine, *, started_at: int, finished_at: int | None = None, error: str = "") -> dict:
     row = dict(engine._build_supabase_heartbeat_row(int(finished_at or started_at)))  # noqa: SLF001
     row["last_cycle_started_at"] = engine._iso_datetime(int(started_at))  # noqa: SLF001
@@ -85,10 +92,16 @@ def _build_heartbeat_row(engine: TradingEngine, *, started_at: int, finished_at:
     return row
 
 
-def _push_heartbeat(engine: TradingEngine, *, started_at: int, finished_at: int | None = None, error: str = "") -> None:
+def _push_heartbeat(
+    engine: TradingEngine,
+    *,
+    started_at: int,
+    finished_at: int | None = None,
+    error: str = "",
+) -> dict:
     client = getattr(engine, "supabase_sync", None)
     if not bool(getattr(client, "enabled", False)):
-        return
+        return {"ok": False, "error": "supabase_sync_disabled"}
     row = _build_heartbeat_row(engine, started_at=started_at, finished_at=finished_at, error=error)
     result = client.upsert_rows("engine_heartbeat", [row], on_conflict="engine_name")
     if not bool((result or {}).get("ok")):
@@ -103,18 +116,27 @@ def _push_heartbeat(engine: TradingEngine, *, started_at: int, finished_at: int 
             ),
             file=sys.stderr,
         )
+    return dict(result or {})
 
 
 def main() -> int:
     started = int(time.time())
+    strict_sync = _env_flag("SUPABASE_SYNC_STRICT", default=False)
     _hydrate_runtime_from_supabase()
     engine = TradingEngine(load_settings())
-    _push_heartbeat(engine, started_at=started, finished_at=started, error="")
+    if strict_sync and not bool(getattr(getattr(engine, "supabase_sync", None), "enabled", False)):
+        print(json.dumps({"ok": False, "error": "supabase_sync_disabled"}, ensure_ascii=True), file=sys.stderr)
+        return 1
+    initial_hb = _push_heartbeat(engine, started_at=started, finished_at=started, error="")
+    if strict_sync and not bool((initial_hb or {}).get("ok")):
+        return 1
     try:
         engine.run_cycle()
         engine._persist(force=True)  # noqa: SLF001
         finished = int(time.time())
-        _push_heartbeat(engine, started_at=started, finished_at=finished, error="")
+        final_hb = _push_heartbeat(engine, started_at=started, finished_at=finished, error="")
+        if strict_sync and not bool((final_hb or {}).get("ok")):
+            return 1
         payload = engine.dashboard_payload()
         summary = {
             "ok": True,
