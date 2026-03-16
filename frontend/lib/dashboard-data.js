@@ -47,7 +47,7 @@ function buildModelSummaries(dailyRows = [], tunes = []) {
     .sort((a, b) => String(a.modelId).localeCompare(String(b.modelId)));
 }
 
-function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions }) {
+function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions, openPositionCount }) {
   const latestCycleAt = setupRows[0]?.cycle_at || null;
   const latestSignalCount = latestCycleAt
     ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
@@ -57,7 +57,7 @@ function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions 
     latestPnlDay: dailyRows[0]?.day || "-",
     totalRealizedUsd: dailyRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0),
     totalClosedTrades: dailyRows.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0),
-    openPositionCount: openPositions.length,
+    openPositionCount: Number(openPositionCount ?? openPositions.length ?? 0),
     latestCycleAt,
     latestSignalCount,
     heartbeat,
@@ -85,7 +85,12 @@ export async function loadOverviewPageData() {
     supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
     supabase.from("daily_model_pnl").select("*").order("day", { ascending: false }).limit(12),
     supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(12),
-    supabase.from("positions").select("*").eq("status", "open").order("opened_at", { ascending: false }).limit(8),
+    supabase
+      .from("positions")
+      .select("*", { count: "exact" })
+      .eq("status", "open")
+      .order("opened_at", { ascending: false })
+      .limit(24),
   ]);
 
   const errors = collectErrors([heartbeatRes, dailyRes, setupsRes, positionsRes]);
@@ -93,6 +98,7 @@ export async function loadOverviewPageData() {
   const dailyRows = dailyRes.data || [];
   const recentSetups = setupsRes.data || [];
   const openPositions = positionsRes.data || [];
+  const openPositionCount = Number(positionsRes.count ?? openPositions.length ?? 0);
 
   return {
     ready: errors.length === 0,
@@ -101,7 +107,13 @@ export async function loadOverviewPageData() {
     dailyRows,
     recentSetups,
     openPositions,
-    snapshot: buildOverviewSnapshot({ heartbeat, dailyRows, setupRows: recentSetups, openPositions }),
+    snapshot: buildOverviewSnapshot({
+      heartbeat,
+      dailyRows,
+      setupRows: recentSetups,
+      openPositions,
+      openPositionCount,
+    }),
   };
 }
 
@@ -149,7 +161,12 @@ export async function loadPositionsPageData() {
 
   const [heartbeatRes, positionsRes, setupsRes, recentTradesRes] = await Promise.all([
     supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
-    supabase.from("positions").select("*").eq("status", "open").order("opened_at", { ascending: false }).limit(12),
+    supabase
+      .from("positions")
+      .select("*", { count: "exact" })
+      .eq("status", "open")
+      .order("opened_at", { ascending: false })
+      .limit(48),
     supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(18),
     supabase
       .from("engine_state_blobs")
@@ -162,6 +179,7 @@ export async function loadPositionsPageData() {
   const errors = collectErrors([heartbeatRes, positionsRes, setupsRes, recentTradesRes]);
   const heartbeat = heartbeatRes.data?.[0] || null;
   const openPositions = positionsRes.data || [];
+  const openPositionCount = Number(positionsRes.count ?? openPositions.length ?? 0);
   const setupRows = setupsRes.data || [];
   const recentTradeRows = Array.isArray(recentTradesRes.data?.payload_json?.rows) ? recentTradesRes.data.payload_json.rows : [];
   const latestCycleAt = setupRows[0]?.cycle_at || null;
@@ -178,7 +196,7 @@ export async function loadPositionsPageData() {
       latestSignalCount: latestCycleAt
         ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
         : 0,
-      openPositionCount: openPositions.length,
+      openPositionCount,
       recentTradeCount: recentTradeRows.length,
     },
   };

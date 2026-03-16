@@ -430,7 +430,7 @@ textarea {
 }
 
 .kpi-row {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
 .metric-card {
@@ -569,6 +569,94 @@ textarea {
   background: rgba(12, 22, 33, 0.8);
 }
 
+.overview-hero-grid,
+.overview-coverage-grid,
+.overview-open-grid,
+.overview-open-metrics,
+.summary-copy,
+.summary-value-stack,
+.tab-button-stats {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-hero-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.overview-hero-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.overview-support-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.overview-coverage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coverage-card,
+.overview-open-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(8, 17, 27, 0.82);
+}
+
+.coverage-card {
+  display: grid;
+  gap: 8px;
+}
+
+.coverage-card span,
+.overview-open-top span {
+  display: inline-flex;
+  width: fit-content;
+  color: var(--cyan);
+}
+
+.coverage-card strong {
+  font-family: var(--font-display), "Space Grotesk", sans-serif;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.coverage-card p,
+.overview-open-top p,
+.overview-open-metrics span {
+  margin: 0;
+  color: var(--muted);
+}
+
+.overview-open-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.overview-open-card {
+  display: grid;
+  gap: 14px;
+}
+
+.overview-open-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.overview-open-top strong {
+  display: block;
+}
+
+.overview-open-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .mini-card p {
   margin: 6px 0 0;
   line-height: 1.7;
@@ -640,8 +728,18 @@ textarea {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
 }
 
+.summary-copy {
+  gap: 4px;
+}
+
+.summary-value-stack {
+  justify-items: end;
+  gap: 4px;
+}
+
 .table-wrap {
   overflow-x: auto;
+  padding-bottom: 4px;
 }
 
 .table-wrap table {
@@ -907,7 +1005,7 @@ textarea {
 
 .tab-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -943,7 +1041,8 @@ textarea {
 .tab-button small,
 .tab-eyebrow,
 .overview-model-copy,
-.overview-model-metrics label {
+.overview-model-metrics label,
+.tab-stat {
   color: var(--muted);
 }
 
@@ -951,6 +1050,25 @@ textarea {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.tab-button-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tab-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(5, 11, 18, 0.72);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
 }
 
 .model-focus-grid,
@@ -1003,7 +1121,7 @@ textarea {
 }
 
 .overview-model-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .overview-model-copy {
@@ -1037,19 +1155,23 @@ textarea {
 }
 
 @media (max-width: 1080px) {
-  .kpi-row,
   .content-grid-two,
   .chart-grid,
   .model-summary-grid,
-  .tab-strip,
   .model-focus-grid,
-  .overview-model-grid,
   .focus-metric-grid,
   .overview-model-metrics,
   .quick-link-grid,
   .provider-grid,
   .runtime-form,
   .service-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-hero-grid,
+  .overview-coverage-grid,
+  .overview-open-metrics,
+  .tab-button-stats {
     grid-template-columns: 1fr;
   }
 }
@@ -1091,11 +1213,42 @@ textarea {
     font-size: 2rem;
   }
 
+  .mobile-nav {
+    position: sticky;
+    top: 12px;
+    z-index: 6;
+  }
+
+  .mobile-nav-links {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .mobile-nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
   .mini-card {
     flex-direction: column;
   }
 
   .mini-metrics {
     justify-items: start;
+  }
+
+  .overview-open-top,
+  .summary-line {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .summary-value-stack {
+    justify-items: start;
+  }
+
+  .table-wrap {
+    margin: 0 -2px;
   }
 }

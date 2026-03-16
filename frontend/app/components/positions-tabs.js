@@ -77,6 +77,16 @@ function openedMeta(row) {
 
 export default function PositionsTabs({ openPositions, setupRows, recentTradeRows }) {
   const [activeModel, setActiveModel] = useState(() => pickDefaultModel(openPositions, setupRows, recentTradeRows));
+  const modelSnapshots = useMemo(
+    () =>
+      MODEL_ORDER.map((modelId) => ({
+        modelId,
+        openCount: openPositions.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
+        setupCount: setupRows.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
+        tradeCount: recentTradeRows.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
+      })),
+    [openPositions, recentTradeRows, setupRows]
+  );
 
   const activePositions = useMemo(
     () => openPositions.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
@@ -99,6 +109,7 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
         {MODEL_ORDER.map((modelId) => {
           const item = getModelMeta(modelId);
           const active = activeModel === modelId;
+          const snapshot = modelSnapshots.find((row) => row.modelId === modelId);
           return (
             <button
               key={modelId}
@@ -109,6 +120,11 @@ export default function PositionsTabs({ openPositions, setupRows, recentTradeRow
               <span className="tab-eyebrow">MODEL {modelId}</span>
               <strong>{item.name}</strong>
               <small>{item.subtitle}</small>
+              <div className="tab-button-stats" aria-hidden="true">
+                <span className="tab-stat">포지션 {snapshot?.openCount || 0}</span>
+                <span className="tab-stat">setup {snapshot?.setupCount || 0}</span>
+                <span className="tab-stat">체결 {snapshot?.tradeCount || 0}</span>
+              </div>
             </button>
           );
         })}
