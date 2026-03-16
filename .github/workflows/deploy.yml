@@ -1,0 +1,26 @@
+name: Deploy Dashboard with Secrets
+
+on:
+  push:
+    branches: [ main ] # 메인 브랜치에 푸시될 때마다 실행
+  workflow_dispatch: # 수동으로 실행 버튼 누를 수도 있음
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 1. HTML 내의 빈 칸({{...}})을 실제 Secrets 값으로 채웁니다.
+      - name: Inject Secrets into HTML
+        run: |
+          sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
+          sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_ANON_KEY }}|g" docs/index.html
+
+      # 2. 결과물을 GitHub Pages 브랜치로 배포합니다.
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs # index.html이 들어있는 폴더 경로
