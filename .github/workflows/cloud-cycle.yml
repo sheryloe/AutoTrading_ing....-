@@ -3,7 +3,7 @@ name: cloud-cycle
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/8 * * * *"
+    - cron: "*/1 * * * *"
 
 permissions:
   contents: write
