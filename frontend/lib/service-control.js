@@ -22,6 +22,9 @@ const DEFAULT_RUNTIME_CONFIG = {
   SIGNAL_COOLDOWN_MINUTES: 10,
   MODEL_AUTOTUNE_INTERVAL_HOURS: 168,
   BYBIT_SYMBOLS: DEFAULT_SYMBOLS,
+  CRYPTO_DYNAMIC_UNIVERSE_ENABLED: false,
+  CRYPTO_PRIORITY_SYMBOLS: "",
+  CRYPTO_TUNE_OVERRIDES: {},
   BYBIT_MAX_POSITIONS: 3,
   BYBIT_ORDER_PCT: 0.2,
   BYBIT_ORDER_PCT_MIN: 0.15,
@@ -34,6 +37,8 @@ const DEFAULT_RUNTIME_CONFIG = {
   MACRO_REALTIME_SOURCES: "binance,bybit",
   MACRO_UNIVERSE_SOURCE: "coingecko",
   DEMO_ENABLE_MACRO: true,
+  MACRO_TREND_POOL_SIZE: 5,
+  MACRO_TREND_RESELECT_SECONDS: 14400,
 };
 
 function buildEmptyEngineState(seedUsdt) {
@@ -89,6 +94,21 @@ function toFloat(value, fallback, minValue = 0, maxValue = Number.POSITIVE_INFIN
   const parsed = Number.parseFloat(String(value ?? ""));
   if (Number.isNaN(parsed)) return fallback;
   return Math.max(minValue, Math.min(maxValue, parsed));
+}
+
+function toObject(value, fallback = {}) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return { ...value };
+  }
+  const text = String(value || "").trim();
+  if (!text) return { ...fallback };
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { ...parsed };
+    }
+  } catch {}
+  return { ...fallback };
 }
 
 function normalizeExecutionTarget(raw) {
@@ -183,6 +203,11 @@ export function normalizeRuntimeConfig(raw = {}) {
   const orderPctMin = toFloat(raw.BYBIT_ORDER_PCT_MIN, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MIN, 0.15, 0.3);
   const orderPctMax = toFloat(raw.BYBIT_ORDER_PCT_MAX, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MAX, orderPctMin, 0.3);
   const orderPctMid = Number((((orderPctMin + orderPctMax) * 0.5).toFixed(4)));
+  const tuneOverrides = toObject(raw.CRYPTO_TUNE_OVERRIDES, DEFAULT_RUNTIME_CONFIG.CRYPTO_TUNE_OVERRIDES);
+  const prioritySymbols = String(raw.CRYPTO_PRIORITY_SYMBOLS || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
 
   return {
     EXECUTION_TARGET: executionTarget,
@@ -206,6 +231,12 @@ export function normalizeRuntimeConfig(raw = {}) {
     ),
     MODEL_AUTOTUNE_INTERVAL_HOURS: [6, 12, 24, 168].includes(autotuneHours) ? autotuneHours : 168,
     BYBIT_SYMBOLS: (symbols.length ? symbols : DEFAULT_SYMBOLS.split(",")).join(","),
+    CRYPTO_DYNAMIC_UNIVERSE_ENABLED: toBool(
+      raw.CRYPTO_DYNAMIC_UNIVERSE_ENABLED,
+      DEFAULT_RUNTIME_CONFIG.CRYPTO_DYNAMIC_UNIVERSE_ENABLED
+    ),
+    CRYPTO_PRIORITY_SYMBOLS: prioritySymbols.join(","),
+    CRYPTO_TUNE_OVERRIDES: tuneOverrides,
     BYBIT_MAX_POSITIONS: maxPositions,
     BYBIT_ORDER_PCT: orderPctMid,
     BYBIT_ORDER_PCT_MIN: orderPctMin,
@@ -221,6 +252,18 @@ export function normalizeRuntimeConfig(raw = {}) {
     CRYPTO_USE_COINGECKO_DATA: flags.coingecko,
     MACRO_REALTIME_SOURCES: deriveRealtimeSources(sourceOrder, flags),
     MACRO_UNIVERSE_SOURCE: "coingecko",
+    MACRO_TREND_POOL_SIZE: toInt(
+      raw.MACRO_TREND_POOL_SIZE,
+      DEFAULT_RUNTIME_CONFIG.MACRO_TREND_POOL_SIZE,
+      5,
+      200
+    ),
+    MACRO_TREND_RESELECT_SECONDS: toInt(
+      raw.MACRO_TREND_RESELECT_SECONDS,
+      DEFAULT_RUNTIME_CONFIG.MACRO_TREND_RESELECT_SECONDS,
+      900,
+      86400
+    ),
   };
 }
 

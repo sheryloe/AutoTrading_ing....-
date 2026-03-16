@@ -37,6 +37,24 @@ def _to_str(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
+def _to_json_object(value: Any, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    fallback = dict(default or {})
+    if value is None:
+        return fallback
+    if isinstance(value, dict):
+        return dict(value)
+    text = str(value).strip()
+    if not text:
+        return fallback
+    try:
+        loaded = json.loads(text)
+    except Exception:
+        return fallback
+    if isinstance(loaded, dict):
+        return dict(loaded)
+    return fallback
+
+
 def _to_grade(value: Any, default: str = "C") -> str:
     grade = _to_str(value, default).upper()
     if grade in {"S", "A", "B", "C", "D", "E", "F", "G"}:
@@ -162,6 +180,9 @@ class Settings:
     live_meme_models: str
     live_crypto_models: str
     bybit_symbols: str
+    crypto_dynamic_universe_enabled: bool
+    crypto_priority_symbols: str
+    crypto_tune_overrides: dict[str, Any]
     telegram_polling_enabled: bool
     telegram_poll_interval_seconds: int
     telegram_language: str
@@ -368,6 +389,12 @@ class Settings:
                 _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C,D"),
             ),
             bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
+            crypto_dynamic_universe_enabled=_to_bool(data.get("CRYPTO_DYNAMIC_UNIVERSE_ENABLED"), False),
+            crypto_priority_symbols=_to_str(data.get("CRYPTO_PRIORITY_SYMBOLS"), ""),
+            crypto_tune_overrides=_to_json_object(
+                data.get("CRYPTO_TUNE_OVERRIDES") or data.get("CRYPTO_MODEL_TUNE_OVERRIDES"),
+                {},
+            ),
             telegram_polling_enabled=_to_bool(data.get("TELEGRAM_POLLING_ENABLED"), True),
             telegram_poll_interval_seconds=max(2, _to_int(data.get("TELEGRAM_POLL_INTERVAL_SECONDS"), 5)),
             telegram_language=_to_str(data.get("TELEGRAM_LANGUAGE"), "ko"),
@@ -397,7 +424,7 @@ class Settings:
             macro_top_n=max(5, min(2000, _to_int(data.get("MACRO_TOP_N"), 50))),
             macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 1))),
             macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 20))),
-            macro_trend_pool_size=max(5, min(200, _to_int(data.get("MACRO_TREND_POOL_SIZE"), 30))),
+            macro_trend_pool_size=max(5, min(200, _to_int(data.get("MACRO_TREND_POOL_SIZE"), 5))),
             macro_trend_reselect_seconds=max(900, min(86400, _to_int(data.get("MACRO_TREND_RESELECT_SECONDS"), 14400))),
             macro_realtime_sources=_to_str(data.get("MACRO_REALTIME_SOURCES"), "binance,bybit"),
             macro_realtime_cache_seconds=max(3, min(60, _to_int(data.get("MACRO_REALTIME_CACHE_SECONDS"), 12))),

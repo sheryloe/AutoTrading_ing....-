@@ -64,6 +64,9 @@ function friendlyError(error) {
   if (message === "reset_confirmation_required") {
     return `확인 문구 ${RESET_CONFIRM_TEXT} 를 정확히 입력해 주세요.`;
   }
+  if (message === "crypto_tune_overrides_invalid_json") {
+    return "Crypto tune overrides JSON 형식이 올바르지 않습니다.";
+  }
   return message;
 }
 
@@ -97,6 +100,11 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.3),
     intrabarConflictPolicy: String(initialConfig?.INTRABAR_CONFLICT_POLICY || "conservative"),
     bybitSymbols: String(initialConfig?.BYBIT_SYMBOLS || "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
+    cryptoDynamicUniverseEnabled: boolToString(Boolean(initialConfig?.CRYPTO_DYNAMIC_UNIVERSE_ENABLED)),
+    cryptoPrioritySymbols: String(initialConfig?.CRYPTO_PRIORITY_SYMBOLS || ""),
+    macroTrendPoolSize: String(initialConfig?.MACRO_TREND_POOL_SIZE || 5),
+    macroTrendReselectSeconds: String(initialConfig?.MACRO_TREND_RESELECT_SECONDS || 14400),
+    cryptoTuneOverrides: JSON.stringify(initialConfig?.CRYPTO_TUNE_OVERRIDES || {}, null, 2),
     cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
     useBinanceData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BINANCE_DATA ?? true)),
     useBybitData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BYBIT_DATA ?? true)),
@@ -186,6 +194,15 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     setRuntimeMessage("");
 
     try {
+      let parsedTuneOverrides = {};
+      try {
+        parsedTuneOverrides = JSON.parse(config.cryptoTuneOverrides || "{}");
+      } catch {
+        throw new Error("crypto_tune_overrides_invalid_json");
+      }
+      if (!parsedTuneOverrides || typeof parsedTuneOverrides !== "object" || Array.isArray(parsedTuneOverrides)) {
+        throw new Error("crypto_tune_overrides_invalid_json");
+      }
       const response = await fetch("/api/service/runtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -206,6 +223,11 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.3),
             INTRABAR_CONFLICT_POLICY: config.intrabarConflictPolicy,
             BYBIT_SYMBOLS: config.bybitSymbols,
+            CRYPTO_DYNAMIC_UNIVERSE_ENABLED: config.cryptoDynamicUniverseEnabled === "true",
+            CRYPTO_PRIORITY_SYMBOLS: config.cryptoPrioritySymbols,
+            CRYPTO_TUNE_OVERRIDES: parsedTuneOverrides,
+            MACRO_TREND_POOL_SIZE: Number(config.macroTrendPoolSize || 5),
+            MACRO_TREND_RESELECT_SECONDS: Number(config.macroTrendReselectSeconds || 14400),
             CRYPTO_DATA_SOURCE_ORDER: config.cryptoDataSourceOrder,
             CRYPTO_USE_BINANCE_DATA: config.useBinanceData === "true",
             CRYPTO_USE_BYBIT_DATA: config.useBybitData === "true",
@@ -726,6 +748,80 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             onChange={(event) => setConfig((prev) => ({ ...prev, bybitSymbols: event.target.value }))}
             placeholder="BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"
           />
+
+          <label className="field-label" htmlFor="crypto-dynamic-universe">
+            Dynamic universe
+          </label>
+          <select
+            id="crypto-dynamic-universe"
+            className="control-input"
+            value={config.cryptoDynamicUniverseEnabled}
+            onChange={(event) => setConfig((prev) => ({ ...prev, cryptoDynamicUniverseEnabled: event.target.value }))}
+          >
+            <option value="false">false / fixed universe</option>
+            <option value="true">true / rotating universe</option>
+          </select>
+
+          <label className="field-label" htmlFor="macro-trend-pool-size">
+            Dynamic pool size
+          </label>
+          <input
+            id="macro-trend-pool-size"
+            className="control-input"
+            type="number"
+            min="5"
+            max="200"
+            step="1"
+            value={config.macroTrendPoolSize}
+            onChange={(event) => setConfig((prev) => ({ ...prev, macroTrendPoolSize: event.target.value }))}
+          />
+
+          <label className="field-label" htmlFor="macro-trend-reselect-seconds">
+            Rotation interval(sec)
+          </label>
+          <input
+            id="macro-trend-reselect-seconds"
+            className="control-input"
+            type="number"
+            min="900"
+            max="86400"
+            step="900"
+            value={config.macroTrendReselectSeconds}
+            onChange={(event) => setConfig((prev) => ({ ...prev, macroTrendReselectSeconds: event.target.value }))}
+          />
+
+          <label className="field-label full-span" htmlFor="crypto-priority-symbols">
+            Dynamic priority symbols
+          </label>
+          <input
+            id="crypto-priority-symbols"
+            className="control-input full-span"
+            type="text"
+            value={config.cryptoPrioritySymbols}
+            onChange={(event) => setConfig((prev) => ({ ...prev, cryptoPrioritySymbols: event.target.value }))}
+            placeholder="BTCUSDT,ETHUSDT"
+          />
+          <p className="status-line full-span">
+            Dynamic universe가 켜지면 <strong>BYBIT_SYMBOLS</strong>는 하드 고정 universe가 아니라 참조/fallback 목록으로만 보고,
+            이 필드는 동적 Top N에 우선 포함할 심볼만 지정합니다.
+          </p>
+
+          <label className="field-label full-span" htmlFor="crypto-tune-overrides">
+            Crypto tune overrides(JSON)
+          </label>
+          <textarea
+            id="crypto-tune-overrides"
+            className="control-input full-span"
+            rows="12"
+            value={config.cryptoTuneOverrides}
+            onChange={(event) => setConfig((prev) => ({ ...prev, cryptoTuneOverrides: event.target.value }))}
+            placeholder={'{\n  "A": { "threshold_bias": -0.003, "entry_atr_mul": 1.05 },\n  "B": { "floor_atr_mul": 1.10, "mid_atr_boost": 0.18 },\n  "D": { "entry_atr_mul": 1.35, "zone_high_atr": 0.38 }\n}'}
+          />
+          <p className="status-line full-span">
+            지원 예시: <strong>threshold</strong>, <strong>threshold_bias</strong>, <strong>entry_atr_mul</strong>,
+            <strong>floor_atr_mul</strong>, <strong>mid_atr_boost</strong>, <strong>zone_half_atr</strong>,
+            <strong>zone_low_atr</strong>, <strong>zone_high_atr</strong>.
+          </p>
 
           <div className="button-row full-span">
             <button className="action-button" type="submit" disabled={runtimeSaving || !writeReady || !hasAdminToken}>

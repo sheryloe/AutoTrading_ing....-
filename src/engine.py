@@ -168,6 +168,60 @@ CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
     "C": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.46, "smallcap_trend_only": False},
     "D": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.60, "smallcap_trend_only": False},
 }
+CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
+    "A": {
+        "threshold_bias": -0.002,
+        "entry_atr_mul": 0.95,
+        "zone_half_atr": 0.40,
+        "bias_gate_min": 0.06,
+        "rebound_min": 0.06,
+        "atr_pct_max": 0.085,
+        "rsi_max": 64.0,
+        "ema_gap_min": -0.030,
+    },
+    "B": {
+        "threshold_bias": -0.002,
+        "floor_atr_mul": 1.00,
+        "mid_atr_boost": 0.12,
+        "zone_half_atr": 0.34,
+        "reclaim_min": -0.10,
+        "rebound_min": 0.14,
+        "ema_align_min": 0.39,
+        "atr_pct_max": 0.078,
+    },
+    "D": {
+        "threshold_bias": -0.002,
+        "entry_atr_mul": 1.25,
+        "zone_low_atr": 0.46,
+        "zone_high_atr": 0.34,
+        "washout_min": 0.05,
+        "rebound_min": 0.12,
+        "reset_min": 0.18,
+        "lower_bias_min": 0.04,
+        "atr_pct_max": 0.120,
+        "ema_gap_min": -0.040,
+    },
+}
+CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
+    "threshold": (0.040, 0.140),
+    "threshold_bias": (-0.020, 0.020),
+    "entry_atr_mul": (0.40, 2.20),
+    "floor_atr_mul": (0.40, 2.20),
+    "mid_atr_boost": (0.00, 0.80),
+    "zone_half_atr": (0.10, 1.20),
+    "zone_low_atr": (0.10, 1.20),
+    "zone_high_atr": (0.10, 1.20),
+    "bias_gate_min": (0.00, 0.50),
+    "rebound_min": (0.00, 0.80),
+    "reclaim_min": (-0.50, 0.50),
+    "ema_align_min": (0.00, 1.00),
+    "atr_pct_max": (0.010, 0.250),
+    "rsi_max": (20.0, 90.0),
+    "ema_gap_min": (-0.200, 0.200),
+    "washout_min": (0.00, 1.00),
+    "reset_min": (0.00, 1.00),
+    "lower_bias_min": (0.00, 1.00),
+}
 AUTOTUNE_NOTE_KO: dict[str, str] = {
     "hold": "유지",
     "hold_not_enough_samples": "표본 부족으로 유지",
@@ -1876,6 +1930,54 @@ class TradingEngine:
             if symbol not in configured:
                 configured.append(symbol)
         return tuple(configured)
+
+    def _crypto_dynamic_universe_enabled(self) -> bool:
+        return bool(getattr(self.settings, "crypto_dynamic_universe_enabled", False))
+
+    def _priority_crypto_symbols(self) -> tuple[str, ...]:
+        configured: list[str] = []
+        raw_text = str(getattr(self.settings, "crypto_priority_symbols", "") or "")
+        for raw in raw_text.replace("|", ",").replace(" ", ",").split(","):
+            symbol = str(raw or "").upper().strip()
+            if not symbol:
+                continue
+            if not symbol.endswith("USDT"):
+                symbol = f"{symbol}USDT"
+            if symbol not in configured:
+                configured.append(symbol)
+        return tuple(configured)
+
+    @staticmethod
+    def _merge_symbol_priority(priority_symbols: list[str], selected_symbols: list[str], limit: int) -> list[str]:
+        ordered: list[str] = []
+        for symbol in list(priority_symbols or []) + list(selected_symbols or []):
+            sym = str(symbol or "").upper().strip()
+            if not sym or sym in ordered:
+                continue
+            ordered.append(sym)
+            if len(ordered) >= max(1, int(limit)):
+                break
+        return ordered
+
+    def _crypto_tune_override_params(self, model_id: str) -> dict[str, float]:
+        model_key = str(model_id or "").upper().strip()
+        defaults = dict(CRYPTO_TUNE_OVERRIDE_DEFAULTS.get(model_key) or {})
+        raw_all = getattr(self.settings, "crypto_tune_overrides", {}) or {}
+        if not isinstance(raw_all, dict):
+            return defaults
+        raw = raw_all.get(model_key)
+        if not isinstance(raw, dict):
+            return defaults
+        merged = dict(defaults)
+        for key, value in raw.items():
+            if key not in CRYPTO_TUNE_OVERRIDE_LIMITS:
+                continue
+            lo, hi = CRYPTO_TUNE_OVERRIDE_LIMITS[key]
+            try:
+                merged[key] = _clamp(float(value), float(lo), float(hi))
+            except (TypeError, ValueError):
+                continue
+        return merged
 
     def _meme_market_enabled(self) -> bool:
         return bool(getattr(self.settings, "enable_meme_market", True))
@@ -9510,9 +9612,11 @@ class TradingEngine:
             for row in rows_all
             if self._rank_within_window(int(row.get("market_cap_rank") or 0), rank_lo, rank_hi)
         ]
-        configured_symbols = set(self._configured_crypto_symbols())
-        if configured_symbols:
-            selected_symbols = set(configured_symbols)
+        hard_lock_symbols = set(self._configured_crypto_symbols())
+        dynamic_universe = self._crypto_dynamic_universe_enabled()
+        priority_symbols = list(self._priority_crypto_symbols())
+        if hard_lock_symbols and not dynamic_universe:
+            selected_symbols = set(hard_lock_symbols)
             self._macro_trend_pool = sorted(selected_symbols)
             self._macro_trend_pool_next_refresh_ts = int(now_ts + int(self.settings.macro_trend_reselect_seconds))
         else:
@@ -9570,6 +9674,14 @@ class TradingEngine:
             if extra_model_symbols:
                 selected_symbols = set(selected_symbols or set())
                 selected_symbols.update(extra_model_symbols)
+            if dynamic_universe and priority_symbols:
+                selected_symbols = set(
+                    self._merge_symbol_priority(
+                        priority_symbols=priority_symbols,
+                        selected_symbols=sorted(selected_symbols or set()),
+                        limit=max(5, int(self.settings.macro_trend_pool_size)),
+                    )
+                )
 
         # Always keep open crypto positions marked-to-market even when they fall out of trend pool.
         held_symbols: set[str] = set()
@@ -9765,7 +9877,7 @@ class TradingEngine:
     def _crypto_symbol_allowed_for_model(self, model_id: str, symbol: str) -> bool:
         configured_symbols = set(self._configured_crypto_symbols())
         symbol_u = str(symbol or "").upper().strip()
-        if configured_symbols:
+        if configured_symbols and not self._crypto_dynamic_universe_enabled():
             return symbol_u in configured_symbols
         meta = dict(self._macro_meta.get(symbol) or {})
         rank = int(meta.get("market_cap_rank") or 0)
@@ -10105,6 +10217,12 @@ class TradingEngine:
         tp_mul = float(tune.get("tp_mul") or MODEL_RUNTIME_TUNE_DEFAULTS.get(model_id, {}).get("tp_mul") or 1.0)
         sl_mul = float(tune.get("sl_mul") or MODEL_RUNTIME_TUNE_DEFAULTS.get(model_id, {}).get("sl_mul") or 1.0)
         threshold_raw = self._bybit_entry_threshold(model_id)
+        plan_cfg = self._crypto_tune_override_params(model_id)
+        threshold_raw = _clamp(
+            float(plan_cfg.get("threshold") or (float(threshold_raw) + float(plan_cfg.get("threshold_bias") or 0.0))),
+            0.040,
+            0.140,
+        )
         chase_block = self._crypto_overheat_chase_block(model_id, feats)
         feats["chase_block"] = 1.0 if chase_block else 0.0
         current_price = float(feats.get("current_price") or 0.0)
@@ -10128,12 +10246,12 @@ class TradingEngine:
                     float(feats.get("lower_range_bias") or 0.0),
                     float(feats.get("support_closeness") or 0.0),
                 )
-                >= 0.08
+                >= float(plan_cfg.get("bias_gate_min") or 0.08)
                 and float(feats.get("range_36_pct") or 0.0) >= 0.006
-                and float(feats.get("atr_pct") or 0.0) <= 0.082
-                and float(feats.get("rsi") or 0.0) <= 62.0
-                and float(feats.get("ema_gap_pct") or 0.0) >= -0.026
-                and float(feats.get("rebound_strength") or 0.0) >= 0.10
+                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.082)
+                and float(feats.get("rsi") or 0.0) <= float(plan_cfg.get("rsi_max") or 62.0)
+                and float(feats.get("ema_gap_pct") or 0.0) >= float(plan_cfg.get("ema_gap_min") or -0.026)
+                and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.10)
                 and not chase_block
             )
             score = (
@@ -10147,14 +10265,14 @@ class TradingEngine:
                 - (0.024 * float(feats.get("volatility_penalty") or 0.0))
                 - (0.010 * float(feats.get("upper_range_bias") or 0.0))
             )
-            entry_price = min(current_price, low_12 + (0.75 * atr_abs))
+            entry_price = min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 0.75) * atr_abs))
             stop_price = low_36 - (0.90 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
             plan = self._finalize_crypto_trade_plan(
                 current_price=current_price,
                 entry_price=entry_price,
-                zone_low=entry_price - (0.35 * atr_abs),
-                zone_high=entry_price + (0.35 * atr_abs),
+                zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
+                zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.35) * atr_abs),
                 stop_price=stop_price,
                 targets=[
                     max(mid_12, entry_price + (risk * (1.10 * tp_mul))),
@@ -10168,10 +10286,10 @@ class TradingEngine:
             strategy = "B-SupportReclaimPlanner"
             gate_ok = bool(
                 allowed
-                and float(feats.get("reclaim_strength") or 0.0) >= -0.06
-                and float(feats.get("rebound_strength") or 0.0) >= 0.18
-                and float(feats.get("ema_alignment") or 0.0) >= 0.42
-                and float(feats.get("atr_pct") or 0.0) <= 0.075
+                and float(feats.get("reclaim_strength") or 0.0) >= float(plan_cfg.get("reclaim_min") or -0.06)
+                and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.18)
+                and float(feats.get("ema_alignment") or 0.0) >= float(plan_cfg.get("ema_align_min") or 0.42)
+                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.075)
                 and not chase_block
             )
             score = (
@@ -10184,14 +10302,17 @@ class TradingEngine:
                 - (0.026 * float(feats.get("volatility_penalty") or 0.0))
                 - (0.018 * float(feats.get("overheat_penalty") or 0.0))
             )
-            entry_price = max(min(current_price, mid_12), low_12 + (0.85 * atr_abs))
+            entry_price = max(
+                min(current_price, mid_12 + (float(plan_cfg.get("mid_atr_boost") or 0.0) * atr_abs)),
+                low_12 + (float(plan_cfg.get("floor_atr_mul") or 0.85) * atr_abs),
+            )
             stop_price = low_12 - (1.05 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
             plan = self._finalize_crypto_trade_plan(
                 current_price=current_price,
                 entry_price=entry_price,
-                zone_low=entry_price - (0.30 * atr_abs),
-                zone_high=entry_price + (0.30 * atr_abs),
+                zone_low=entry_price - (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
+                zone_high=entry_price + (float(plan_cfg.get("zone_half_atr") or 0.30) * atr_abs),
                 stop_price=stop_price,
                 targets=[
                     max(high_12 - (0.05 * atr_abs), entry_price + (risk * (1.15 * tp_mul))),
@@ -10243,16 +10364,16 @@ class TradingEngine:
                 allowed
                 and (
                     (
-                        float(feats.get("washout_score") or 0.0) >= 0.08
-                        and float(feats.get("rebound_strength") or 0.0) >= 0.16
+                        float(feats.get("washout_score") or 0.0) >= float(plan_cfg.get("washout_min") or 0.08)
+                        and float(feats.get("rebound_strength") or 0.0) >= float(plan_cfg.get("rebound_min") or 0.16)
                     )
                     or (
-                        float(feats.get("reset_score") or 0.0) >= 0.22
-                        and float(feats.get("lower_range_bias") or 0.0) >= 0.06
+                        float(feats.get("reset_score") or 0.0) >= float(plan_cfg.get("reset_min") or 0.22)
+                        and float(feats.get("lower_range_bias") or 0.0) >= float(plan_cfg.get("lower_bias_min") or 0.06)
                     )
                 )
-                and float(feats.get("atr_pct") or 0.0) <= 0.115
-                and float(feats.get("ema_gap_pct") or 0.0) >= -0.035
+                and float(feats.get("atr_pct") or 0.0) <= float(plan_cfg.get("atr_pct_max") or 0.115)
+                and float(feats.get("ema_gap_pct") or 0.0) >= float(plan_cfg.get("ema_gap_min") or -0.035)
                 and not chase_block
             )
             score = (
@@ -10265,14 +10386,14 @@ class TradingEngine:
                 - (0.026 * float(feats.get("volatility_penalty") or 0.0))
                 - (0.012 * float(feats.get("upper_range_bias") or 0.0))
             )
-            entry_price = min(current_price, low_12 + (1.05 * atr_abs))
+            entry_price = min(current_price, low_12 + (float(plan_cfg.get("entry_atr_mul") or 1.05) * atr_abs))
             stop_price = low_12 - (1.15 * atr_abs * sl_mul)
             risk = max(entry_price - stop_price, current_price * 0.002)
             plan = self._finalize_crypto_trade_plan(
                 current_price=current_price,
                 entry_price=entry_price,
-                zone_low=entry_price - (0.40 * atr_abs),
-                zone_high=entry_price + (0.28 * atr_abs),
+                zone_low=entry_price - (float(plan_cfg.get("zone_low_atr") or 0.40) * atr_abs),
+                zone_high=entry_price + (float(plan_cfg.get("zone_high_atr") or 0.28) * atr_abs),
                 stop_price=stop_price,
                 targets=[
                     max(mid_12, entry_price + (risk * (1.05 * tp_mul))),

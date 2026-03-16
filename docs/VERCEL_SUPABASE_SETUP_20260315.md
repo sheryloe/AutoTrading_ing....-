@@ -264,6 +264,32 @@ It also syncs:
 - active runtime config snapshot into `engine_runtime_config`
 - per-model signal audit rows into `model_signal_audit`
 
+### Runtime keys worth knowing
+
+- `CRYPTO_DYNAMIC_UNIVERSE_ENABLED`
+  - `false`: `BYBIT_SYMBOLS` is a hard fixed universe
+  - `true`: the engine rotates the universe from trend data
+- `CRYPTO_PRIORITY_SYMBOLS`
+  - only used when dynamic universe is enabled
+  - these symbols are merged in first as priority candidates
+- `MACRO_TREND_POOL_SIZE`
+  - how many symbols the dynamic universe keeps
+- `MACRO_TREND_RESELECT_SECONDS`
+  - how often the dynamic universe rotates
+  - recommended starting point: `14400` for 4 hours
+- `CRYPTO_TUNE_OVERRIDES`
+  - JSON object stored in the runtime profile
+  - lets you bias `A/B/D` toward shallower pullbacks without code changes
+  - example:
+
+```json
+{
+  "A": { "threshold_bias": -0.003, "entry_atr_mul": 1.05, "zone_half_atr": 0.42 },
+  "B": { "floor_atr_mul": 1.10, "mid_atr_boost": 0.18, "zone_half_atr": 0.36 },
+  "D": { "entry_atr_mul": 1.35, "zone_low_atr": 0.50, "zone_high_atr": 0.38 }
+}
+```
+
 ## 9-1. Runtime diagnostics validation
 
 After running `cloud-cycle` once, validate these tables in `Supabase > SQL Editor`.
