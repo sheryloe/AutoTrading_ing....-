@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automethemoney | Quantitative Strategy Report</title>
+    <title>Automethemoney Pro | Multi-Model Trading System</title>
     
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -14,243 +14,246 @@
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
     <style>
-        body { font-family: "Pretendard", sans-serif; background: #0f172a; color: #cbd5e1; }
-        .glass-card { background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
-        .glass-card:hover { border-color: rgba(99, 102, 241, 0.4); transform: translateY(-5px); }
-        .logic-list li { font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.25rem; display: flex; align-items: flex-start; gap: 0.5rem; }
-        .logic-list li::before { content: "•"; color: #6366f1; }
+        body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
+        .tab-content { display: none; animation: fadeIn 0.4s ease-out; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .glass-panel { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .gradient-text { background: linear-gradient(90deg, #6366f1, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .pnl-plus { color: #10b981; } .pnl-minus { color: #f43f5e; }
     </style>
 </head>
-<body class="p-4 lg:p-10">
+<body class="min-h-screen">
 
-    <div class="max-w-7xl mx-auto space-y-12">
-        <header class="flex flex-col md:flex-row justify-between items-end border-b border-slate-800 pb-8 gap-6">
-            <div class="text-left">
-                <div class="flex items-center gap-3 mb-2">
-                    <span class="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded">V2.4 PRO</span>
-                    <h1 class="text-4xl font-black text-white italic tracking-tighter uppercase">Automethemoney</h1>
+    <header class="sticky top-0 z-50 bg-[#0b0f1a]/80 backdrop-blur-md border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl shadow-lg">
+                    <i data-lucide="activity" class="text-white w-6 h-6"></i>
                 </div>
-                <p class="text-slate-400 max-w-xl text-sm leading-relaxed">
-                    본 시스템은 4가지 독립적 알고리즘(A~D)을 동시 운용하여 시장 변동성을 헤지합니다. 
-                    각 모델은 추세, 회귀, 돌파, 확률 예측을 담당하며 상호 보완적인 포트폴리오를 구성합니다.
-                </p>
-            </div>
-            <div class="flex flex-col items-end gap-2 font-mono">
-                <div class="text-[10px] text-slate-500 uppercase tracking-widest">System Node Alpha-1</div>
-                <div class="badge badge-success badge-outline gap-2 p-3 text-xs font-bold">
-                    <span class="w-1.5 h-1.5 rounded-full bg-success animate-ping"></span>
-                    STRATEGY SYNCED
-                </div>
-            </div>
-        </header>
-
-        <section id="daily-log">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-black text-white italic uppercase tracking-wider">Daily Performance List</h2>
-                <div class="text-[10px] opacity-40 font-mono">Live Data Streamed from GitHub Actions</div>
+                <h1 class="text-xl font-black italic tracking-tighter text-white uppercase">Automethemoney <span class="text-xs font-normal opacity-50">v2.4</span></h1>
             </div>
             
-            <div class="glass-card rounded-3xl overflow-hidden shadow-2xl">
+            <div class="tabs tabs-boxed bg-slate-900 border border-white/5 p-1">
+                <a class="tab tab-md font-bold transition-all active-tab px-8" id="tab-leaderboard" onclick="switchTab('leaderboard')">Leaderboard</a>
+                <a class="tab tab-md font-bold transition-all px-8" id="tab-guide" onclick="switchTab('guide')">System Guide</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-6">
+        
+        <div id="content-leaderboard" class="tab-content active space-y-8">
+            
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-panel p-6">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Assets PnL</div>
+                    <div class="text-2xl font-black text-white">+12.42%</div>
+                </div>
+                <div class="glass-panel p-6 border-l-4 border-indigo-500">
+                    <div class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1 italic text-left">Top Performer</div>
+                    <div class="text-2xl font-black text-white text-left">Model A <span class="text-xs text-success ml-2">+1.4%</span></div>
+                </div>
+                <div class="glass-panel p-6">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Win Rate</div>
+                    <div class="text-2xl font-black text-white">64.2%</div>
+                </div>
+                <div class="glass-panel p-6">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Active Models</div>
+                    <div class="text-2xl font-black text-white">4 Models</div>
+                </div>
+            </div>
+
+            <div class="glass-panel p-8">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-lg font-black text-white italic uppercase tracking-widest">Multi-Model Equity Curve</h2>
+                    <div class="flex gap-4 text-[10px] font-mono">
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> A</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> B</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> C</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-500"></span> D</span>
+                    </div>
+                </div>
+                <div id="multi-model-chart" style="min-height: 400px;"></div>
+            </div>
+
+            <div class="glass-panel overflow-hidden">
+                <div class="p-6 border-b border-white/5 flex justify-between items-center">
+                    <h2 class="text-lg font-black text-white italic uppercase">Daily Performance List</h2>
+                    <span class="badge badge-primary badge-sm font-mono" id="current-date">2026-03-16</span>
+                </div>
                 <div class="overflow-x-auto">
-                    <table class="table table-lg w-full text-left">
-                        <thead class="bg-slate-900/50 text-slate-500 uppercase text-[10px] tracking-widest">
+                    <table class="table table-zebra w-full">
+                        <thead class="bg-black/20 text-slate-500 text-[10px] uppercase">
                             <tr>
-                                <th class="py-6 pl-8">Date</th>
-                                <th>Model</th>
+                                <th class="py-4">Model ID</th>
                                 <th>Trading Logic</th>
+                                <th>Trades</th>
                                 <th>PnL (%)</th>
                                 <th class="text-right">Net Profit</th>
-                                <th class="pr-8 text-center">Status</th>
+                                <th class="text-center">Status</th>
                             </tr>
                         </thead>
-                        <tbody id="pnl-table-body" class="divide-y divide-slate-800/50">
-                            <tr class="hover:bg-slate-700/20 transition-colors">
-                                <td class="pl-8 font-mono text-xs opacity-60">2026-03-16</td>
-                                <td class="font-bold text-white">Model A</td>
-                                <td><span class="badge badge-ghost text-[10px]">Trend-Following</span></td>
-                                <td class="text-success font-black text-lg">+1.42%</td>
-                                <td class="text-right font-mono text-sm opacity-80">₩ 42,600</td>
-                                <td class="pr-8 text-center"><div class="badge badge-success badge-xs">WIN</div></td>
-                            </tr>
-                            <tr class="hover:bg-slate-700/20 transition-colors">
-                                <td class="pl-8 font-mono text-xs opacity-60">2026-03-16</td>
-                                <td class="font-bold text-white">Model D</td>
-                                <td><span class="badge badge-ghost text-[10px]">Deep-Learning</span></td>
-                                <td class="text-error font-black text-lg">-0.25%</td>
-                                <td class="text-right font-mono text-sm opacity-80">-₩ 7,500</td>
-                                <td class="pr-8 text-center"><div class="badge badge-error badge-xs">LOSS</div></td>
-                            </tr>
-                        </tbody>
+                        <tbody id="pnl-table-body" class="font-mono text-sm">
+                            </tbody>
                     </table>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section id="model-details">
-            <div class="flex items-center gap-4 mb-8">
-                <h2 class="text-xl font-black text-white italic uppercase tracking-wider">Model Technical Specs</h2>
-                <div class="h-[1px] flex-grow bg-slate-800"></div>
+        <div id="content-guide" class="tab-content space-y-12 py-10">
+            
+            <div class="max-w-4xl mx-auto space-y-16">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <a href="https://github.com/sheryloe/Automethemoney" class="glass-panel p-8 text-center hover:bg-indigo-600/10 transition-all group">
+                        <i data-lucide="github" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform"></i>
+                        <h3 class="font-black text-white uppercase">Repository</h3>
+                        <p class="text-xs opacity-50">Source code & History</p>
+                    </a>
+                    <a href="https://github.com/sheryloe/Automethemoney/wiki" class="glass-panel p-8 text-center hover:bg-purple-600/10 transition-all group">
+                        <i data-lucide="book-open" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform"></i>
+                        <h3 class="font-black text-white uppercase text-center">Wiki Docs</h3>
+                        <p class="text-xs opacity-50 text-center">Detailed User Guide</p>
+                    </a>
+                    <a href="#feedback" class="glass-panel p-8 text-center hover:bg-emerald-600/10 transition-all group">
+                        <i data-lucide="message-square" class="w-8 h-8 mx-auto mb-4 group-hover:scale-110 transition-transform text-center"></i>
+                        <h3 class="font-black text-white uppercase text-center">Feedback</h3>
+                        <p class="text-xs opacity-50 text-center">Issues & Discussion</p>
+                    </a>
+                </div>
+
+                <section class="space-y-6 text-left">
+                    <h2 class="text-3xl font-black italic underline decoration-indigo-500 decoration-8 underline-offset-8 mb-10">System Architecture</h2>
+                    <div class="flex flex-col md:flex-row gap-12 items-center">
+                        <div class="flex-1 space-y-4">
+                            <p class="leading-relaxed text-slate-400">
+                                <strong>Automethemoney</strong>는 Python 기반의 매매 봇과 GitHub Actions의 스케줄러를 결합한 완전 자동화 시스템입니다. 
+                                시장의 노이즈를 제거하기 위해 4가지 독립된 전략(Multi-Strategy)을 병렬 가동하며, 각 모델의 리스크 한도를 동적으로 관리합니다.
+                            </p>
+                            <div class="p-6 bg-slate-900 rounded-2xl border border-white/5">
+                                <h4 class="font-bold text-white mb-2">How it works:</h4>
+                                <ol class="text-sm space-y-2 opacity-70 font-mono">
+                                    <li>1. GitHub Actions 트리거 (매일 정해진 시간)</li>
+                                    <li>2. Python 매매 엔진 구동 (API 연결)</li>
+                                    <li>3. 모델별 데이터 분석 및 주문 체결</li>
+                                    <li>4. 결과 JSON 저장 및 대시보드 업데이트</li>
+                                </ol>
+                            </div>
+                        </div>
+                        <div class="w-full md:w-80 glass-panel p-6 flex flex-col gap-6 items-center">
+                            <div class="flex flex-col items-center gap-1 text-center">
+                                <i data-lucide="database" class="text-indigo-500"></i>
+                                <span class="text-[10px] font-bold">Data Fetching</span>
+                            </div>
+                            <div class="h-10 w-[2px] bg-slate-800"></div>
+                            <div class="flex flex-col items-center gap-1 text-center">
+                                <i data-lucide="cpu" class="text-purple-500"></i>
+                                <span class="text-[10px] font-bold text-center">Core Logic</span>
+                            </div>
+                            <div class="h-10 w-[2px] bg-slate-800"></div>
+                            <div class="flex flex-col items-center gap-1 text-center">
+                                <i data-lucide="layout-dashboard" class="text-emerald-500"></i>
+                                <span class="text-[10px] font-bold">Web Update</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="space-y-8 text-left">
+                    <h2 class="text-2xl font-black italic uppercase">Technical Models Logic</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-white/5">
+                            <h4 class="font-bold text-indigo-400 mb-2">Model A (Trend Following)</h4>
+                            <p class="text-xs opacity-60">이동평균선 정배열 구간에서 RSI 필터를 통과한 강세 종목만 추종합니다. \(EMA_{20} > EMA_{60}\) 조건 충족 시 진입.</p>
+                        </div>
+                        <div class="p-6 bg-slate-800/50 rounded-2xl border border-white/5 text-left">
+                            <h4 class="font-bold text-emerald-400 mb-2 text-left">Model B (Mean Reversion)</h4>
+                            <p class="text-xs opacity-60 text-left">볼린저 밴드 하단(\(2\sigma\)) 이탈 시 단기 반등을 노립니다. 거래량 감소가 확인된 지점에서 매수 진입.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="feedback" class="pt-20 border-t border-white/5 text-center">
+                    <h2 class="text-2xl font-black mb-8 italic italic">Community Feedback</h2>
+                    <div class="glass-panel p-6 rounded-3xl">
+                        <script src="https://giscus.app/client.js" data-repo="sheryloe/Automethemoney" data-repo-id="R_kgDON7u0mg" data-category="Announcements" data-category-id="DIC_kwDON7u0ms4CnM1U" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="transparent_dark" data-lang="ko" crossorigin="anonymous" async></script>
+                    </div>
+                </section>
             </div>
+        </div>
+    </main>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between">
-                    <div>
-                        <div class="flex justify-between items-start mb-6">
-                            <div class="bg-indigo-500 text-white p-3 rounded-2xl shadow-lg shadow-indigo-500/20 italic font-black">A</div>
-                            <div class="text-right">
-                                <span class="block text-[10px] text-indigo-400 font-bold uppercase">Type</span>
-                                <span class="text-sm font-bold text-white">Trend Following</span>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-white mb-4">EMA 골든크로스 & RSI 필터</h3>
-                        <p class="text-xs text-slate-400 leading-relaxed mb-6">
-                            지수이동평균(EMA)의 정배열 상태에서 가격이 20일 이평선에 눌림목을 형성할 때 진입합니다. 
-                            과매수 구간에서의 추격 매수를 방지하기 위해 RSI 지표를 결합합니다.
-                        </p>
-                        <ul class="logic-list mb-6">
-                            <li><strong>Signal:</strong> \(EMA_{20} > EMA_{60} > EMA_{120}\)</li>
-                            <li><strong>Entry:</strong> \(Price \leq EMA_{20} \times 1.01\) AND \(RSI_{14} < 65\)</li>
-                            <li><strong>Exit:</strong> \(EMA_{10}\) 이탈 또는 고점 대비 3% 익절/손절</li>
-                        </ul>
-                    </div>
-                    <div class="pt-6 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono">
-                        <span class="text-slate-500">Win Rate: 58%</span>
-                        <span class="text-slate-500">Risk/Reward: 1:2.5</span>
-                    </div>
-                </div>
-
-                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between text-left">
-                    <div>
-                        <div class="flex justify-between items-start mb-6">
-                            <div class="bg-rose-500 text-white p-3 rounded-2xl shadow-lg shadow-rose-500/20 italic font-black">B</div>
-                            <div class="text-right text-left">
-                                <span class="block text-[10px] text-rose-400 font-bold uppercase text-left">Type</span>
-                                <span class="text-sm font-bold text-white text-left text-left">Mean Reversion</span>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-white mb-4 text-left text-left">볼린저 밴드 역추세 스캘핑</h3>
-                        <p class="text-xs text-slate-400 leading-relaxed mb-6 text-left text-left text-left">
-                            가격이 통계적 변동 범위인 볼린저 밴드 하단(\(2\sigma\))을 이탈할 때 단기 반등을 노립니다. 
-                            거래량 급감(VSA) 분석을 통해 하락 압력의 소멸을 확인한 후 진입합니다.
-                        </p>
-                        <ul class="logic-list mb-6 text-left">
-                            <li><strong>Signal:</strong> \(Price < BB_{Lower}(20, 2)\)</li>
-                            <li><strong>Filter:</strong> \(Volume < AvgVolume_{20} \times 0.7\)</li>
-                            <li><strong>Target:</strong> \(BB_{Middle}\) (20일 평균선) 터치 시 청산</li>
-                        </ul>
-                    </div>
-                    <div class="pt-6 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono">
-                        <span class="text-slate-500">Win Rate: 72%</span>
-                        <span class="text-slate-500 text-left text-left">Timeframe: 15m</span>
-                    </div>
-                </div>
-
-                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between text-left">
-                    <div>
-                        <div class="flex justify-between items-start mb-6">
-                            <div class="bg-amber-500 text-white p-3 rounded-2xl shadow-lg shadow-amber-500/20 italic font-black text-left">C</div>
-                            <div class="text-right text-left">
-                                <span class="block text-[10px] text-amber-400 font-bold uppercase text-left">Type</span>
-                                <span class="text-sm font-bold text-white text-left">Volatility Breakout</span>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-white mb-4 text-left text-left">K-Value 변동성 돌파</h3>
-                        <p class="text-xs text-slate-400 leading-relaxed mb-6 text-left text-left">
-                            전일 고가와 저가의 변동폭에 특정 계수(\(K\))를 곱한 값을 당일 시가에 더해 
-                            돌파 시 매수합니다. 장 종료 시 전량 매도하여 오버나이트 리스크를 배제합니다.
-                        </p>
-                        <ul class="logic-list mb-6 text-left text-left">
-                            <li><strong>Formula:</strong> \(Target = Open + (PrevHigh - PrevLow) \times K\)</li>
-                            <li><strong>Parameter:</strong> \(K = 0.5\) (최적화 가변값)</li>
-                            <li><strong>Exit:</strong> 당일 종가(Market Close) 일괄 청산</li>
-                        </ul>
-                    </div>
-                    <div class="pt-6 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-left">
-                        <span class="text-slate-500 text-left">MDD Focus: 2.1%</span>
-                        <span class="text-slate-500 text-left text-left text-left">Asset: Crypto/ETF</span>
-                    </div>
-                </div>
-
-                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between text-left">
-                    <div>
-                        <div class="flex justify-between items-start mb-6">
-                            <div class="bg-cyan-500 text-white p-3 rounded-2xl shadow-lg shadow-cyan-500/20 italic font-black text-left">D</div>
-                            <div class="text-right text-left text-left">
-                                <span class="block text-[10px] text-cyan-400 font-bold uppercase text-left">Type</span>
-                                <span class="text-sm font-bold text-white text-left">Deep Learning</span>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-white mb-4 text-left">LSTM 시계열 예측 모델</h3>
-                        <p class="text-xs text-slate-400 leading-relaxed mb-6 text-left text-left text-left text-left">
-                            OHLCV 데이터뿐만 아니라 보조지표 12종을 Feature로 입력받는 3층 LSTM 신경망입니다. 
-                            향후 1시간 내 가격이 \(+0.5\%\) 상승할 확률이 70% 이상일 때 가중치를 부여합니다.
-                        </p>
-                        <ul class="logic-list mb-6 text-left">
-                            <li><strong>Layers:</strong> \(LSTM(64) \rightarrow LSTM(32) \rightarrow Dense(1)\)</li>
-                            <li><strong>Inputs:</strong> Price, Vol, MACD, Stoch, MFI, ATR</li>
-                            <li><strong>Activation:</strong> Sigmoid (Probability Output)</li>
-                        </ul>
-                    </div>
-                    <div class="pt-6 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-left">
-                        <span class="text-slate-500 text-left text-left">Loss Function: MSE</span>
-                        <span class="text-slate-500 text-left text-left text-left">Optimizer: Adam</span>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="glass-card rounded-3xl p-8 shadow-xl">
-            <h3 class="text-xl font-black text-white italic mb-8 uppercase tracking-wider">Equity Curve Analysis</h3>
-            <div id="pnl-chart" style="min-height: 350px;"></div>
-        </section>
-
-        <footer class="flex flex-col items-center py-20 gap-8 opacity-40">
-            <div class="flex gap-6">
-                <i data-lucide="shield-check" class="w-5 h-5"></i>
-                <i data-lucide="cpu" class="w-5 h-5"></i>
-                <i data-lucide="database" class="w-5 h-5"></i>
-            </div>
-            <p class="text-[10px] font-mono tracking-[0.4em] uppercase">Built with precision by Sheryloe © 2026</p>
-        </footer>
-    </div>
+    <footer class="footer footer-center p-10 bg-black/20 text-slate-600">
+        <aside>
+            <p class="font-bold uppercase tracking-widest text-[10px]">Automethemoney Multi-Strategy Dash</p> 
+            <p>© 2026 Developed by Sheryloe. All rights reserved.</p>
+        </aside>
+    </footer>
 
     <script>
         lucide.createIcons();
 
-        // 수익 차트 설정
-        var options = {
-            series: [{
-                name: '누적 수익률',
-                data: [0, 1.2, 0.8, 2.5, 3.4, 3.1, 4.8, 6.2, 5.9, 7.5, 9.2, 11.4, 12.8]
-            }],
-            chart: {
-                type: 'area',
-                height: 350,
-                toolbar: { show: false },
-                zoom: { enabled: false },
-                background: 'transparent',
-                foreColor: '#64748b'
-            },
-            dataLabels: { enabled: false },
-            stroke: { curve: 'smooth', width: 3, colors: ['#6366f1'] },
-            fill: {
-                type: 'gradient',
-                gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 90, 100] }
-            },
+        // [1] 탭 전환 로직
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active', 'bg-slate-700', 'text-white'));
+            
+            document.getElementById(`content-${tabName}`).classList.add('active');
+            const targetTab = document.getElementById(`tab-${tabName}`);
+            targetTab.classList.add('tab-active', 'bg-slate-700', 'text-white');
+
+            if(tabName === 'leaderboard') {
+                // 탭 전환 시 차트 리사이즈 필요
+                window.dispatchEvent(new Event('resize'));
+            }
+        }
+
+        // [2] 모델별 수익 곡선 차트 (Multi-Series)
+        const chartOptions = {
+            series: [
+                { name: 'Model A (Trend)', data: [0, 1.2, 0.8, 2.5, 4.2, 3.8, 5.5, 6.4, 7.8, 8.5] },
+                { name: 'Model B (Mean)', data: [0, 0.5, 1.2, 1.1, 1.8, 2.5, 2.2, 3.1, 4.0, 4.5] },
+                { name: 'Model C (Break)', data: [0, 0.2, 0.5, 1.4, 1.2, 2.8, 3.5, 4.2, 4.5, 5.2] },
+                { name: 'Model D (Deep)', data: [0, -0.4, 0.2, 0.5, 0.8, 0.6, 1.4, 1.8, 2.2, 2.4] }
+            ],
+            chart: { height: 400, type: 'line', toolbar: { show: false }, background: 'transparent', foreColor: '#64748b' },
+            colors: ['#6366f1', '#10b981', '#f59e0b', '#06b6d4'],
+            stroke: { curve: 'smooth', width: 3 },
             grid: { borderColor: '#1e293b', strokeDashArray: 4 },
-            xaxis: {
-                categories: ['03/04', '03/05', '03/06', '03/07', '03/08', '03/09', '03/10', '03/11', '03/12', '03/13', '03/14', '03/15', '03/16'],
-                axisBorder: { show: false },
-                axisTicks: { show: false }
-            },
-            yaxis: {
-                labels: { formatter: (v) => v.toFixed(1) + "%" }
-            },
+            xaxis: { categories: ['D-9','D-8','D-7','D-6','D-5','D-4','D-3','D-2','D-1','Today'], axisBorder: {show: false} },
+            yaxis: { labels: { formatter: (v) => v + "%" } },
+            legend: { show: false },
             tooltip: { theme: 'dark' }
         };
 
-        var chart = new ApexCharts(document.querySelector("#pnl-chart"), options);
+        const chart = new ApexCharts(document.querySelector("#multi-model-chart"), chartOptions);
         chart.render();
+
+        // [3] 일별 모델 데이터 로딩 (샘플)
+        const sampleData = [
+            { id: "Model A", logic: "Trend Follower", trades: 12, pnl: 1.4, profit: 32000, status: "Win" },
+            { id: "Model B", logic: "Mean Reversion", trades: 8, pnl: 0.8, profit: 15400, status: "Win" },
+            { id: "Model C", logic: "Breakout", trades: 5, pnl: 0.5, profit: 8900, status: "Win" },
+            { id: "Model D", logic: "AI-Forecaster", trades: 15, pnl: -0.2, profit: -4200, status: "Loss" }
+        ];
+
+        const tbody = document.getElementById('pnl-table-body');
+        sampleData.forEach(item => {
+            tbody.innerHTML += `
+                <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-left text-left">
+                    <td class="py-4 font-black text-white text-left">${item.id}</td>
+                    <td class="text-xs opacity-60 text-left">${item.logic}</td>
+                    <td class="text-left">${item.trades}</td>
+                    <td class="font-bold ${item.pnl >= 0 ? 'pnl-plus' : 'pnl-minus'} text-left">${item.pnl >= 0 ? '+' : ''}${item.pnl}%</td>
+                    <td class="text-right opacity-80 text-left">₩ ${item.profit.toLocaleString()}</td>
+                    <td class="text-center"><span class="badge ${item.status === 'Win' ? 'badge-success' : 'badge-error'} badge-xs text-[8px] font-black">${item.status}</span></td>
+                </tr>
+            `;
+        });
+
+        // 초기 탭 설정
+        switchTab('leaderboard');
     </script>
 </body>
 </html>
