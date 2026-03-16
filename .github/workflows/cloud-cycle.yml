@@ -65,7 +65,7 @@ jobs:
           SUPABASE_SYNC_ENABLED: "true"
           SUPABASE_SYNC_STRICT: "true"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERVICE_MASTER_KEY: ${{ secrets.SERVICE_MASTER_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
