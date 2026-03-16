@@ -17,26 +17,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 핵심: 치환이 안 되면 여기서 에러를 내도록 설계
+      # 1. HTML 내의 빈 칸({{...}})을 실제 비밀 키로 채웁니다.
       - name: Inject Secrets into HTML
         run: |
-          # 파일 존재 여부 체크
-          if [ ! -f "docs/index.html" ]; then
-            echo "❌ docs/index.html 파일을 찾을 수 없습니다!"
+          # docs 폴더 내에 index.html이 있는지 확인
+          if [ -f "docs/index.html" ]; then
+            # 실제 시크릿 이름인 SUPABASE_SECRET_KEY를 ANON_KEY 자리에 주입
+            sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
+            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
+            echo "✅ Secrets injected into docs/index.html"
+          else
+            echo "❌ Error: docs/index.html not found!"
             exit 1
           fi
 
-          # 따옴표(")를 사용하여 공백이나 특수문자 대응
-          sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
-          sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_ANON_KEY }}|g" docs/index.html
-          
-          # 치환 확인 (보안을 위해 첫 5글자만 출력)
-          grep "const URL =" docs/index.html | cut -c 1-30
-
+      # 2. 아티팩트 업로드 (빌드된 파일을 GitHub 서버에 임시 저장)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './docs'
 
+      # 3. 실제 배포
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
