@@ -157,10 +157,10 @@ MEME_C_SL_CONFIRM_SECONDS = 90
 MEME_C_SL_RECOVERY_RESET_FACTOR = 0.70
 MEME_C_REENTRY_WAIT_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
-    "A": {"threshold": 0.074, "tp_mul": 1.00, "sl_mul": 0.92},
+    "A": {"threshold": 0.069, "tp_mul": 1.00, "sl_mul": 0.92},
     "B": {"threshold": 0.076, "tp_mul": 1.08, "sl_mul": 0.90},
     "C": {"threshold": 0.080, "tp_mul": 1.18, "sl_mul": 0.86},
-    "D": {"threshold": 0.072, "tp_mul": 0.98, "sl_mul": 0.94},
+    "D": {"threshold": 0.067, "tp_mul": 1.02, "sl_mul": 0.94},
 }
 CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
     "A": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.52, "smallcap_trend_only": False},
@@ -10124,22 +10124,28 @@ class TradingEngine:
             strategy = "A-RangeReversionPlanner"
             gate_ok = bool(
                 allowed
-                and float(feats.get("lower_range_bias") or 0.0) >= 0.12
-                and float(feats.get("range_36_pct") or 0.0) >= 0.008
-                and float(feats.get("atr_pct") or 0.0) <= 0.065
-                and float(feats.get("rsi") or 0.0) <= 58.0
-                and float(feats.get("ema_gap_pct") or 0.0) >= -0.018
+                and max(
+                    float(feats.get("lower_range_bias") or 0.0),
+                    float(feats.get("support_closeness") or 0.0),
+                )
+                >= 0.08
+                and float(feats.get("range_36_pct") or 0.0) >= 0.006
+                and float(feats.get("atr_pct") or 0.0) <= 0.082
+                and float(feats.get("rsi") or 0.0) <= 62.0
+                and float(feats.get("ema_gap_pct") or 0.0) >= -0.026
+                and float(feats.get("rebound_strength") or 0.0) >= 0.10
                 and not chase_block
             )
             score = (
-                (0.060 * float(feats.get("oversold_score") or 0.0))
-                + (0.050 * float(feats.get("support_closeness") or 0.0))
-                + (0.034 * float(feats.get("stability_score") or 0.0))
-                + (0.030 * float(feats.get("rebound_strength") or 0.0))
+                (0.058 * float(feats.get("oversold_score") or 0.0))
+                + (0.048 * float(feats.get("support_closeness") or 0.0))
+                + (0.032 * float(feats.get("stability_score") or 0.0))
+                + (0.040 * float(feats.get("rebound_strength") or 0.0))
+                + (0.020 * float(feats.get("ema_alignment") or 0.0))
                 + (0.022 * float(feats.get("quality_score") or 0.0))
                 + (0.024 * max(0.0, float(feats.get("mean_reversion_gap") or 0.0)))
-                - (0.030 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.014 * float(feats.get("upper_range_bias") or 0.0))
+                - (0.024 * float(feats.get("volatility_penalty") or 0.0))
+                - (0.010 * float(feats.get("upper_range_bias") or 0.0))
             )
             entry_price = min(current_price, low_12 + (0.75 * atr_abs))
             stop_price = low_36 - (0.90 * atr_abs * sl_mul)
@@ -10157,7 +10163,7 @@ class TradingEngine:
                 ],
                 ttl_minutes=30,
             )
-            gate_reason = "레인지 하단 재진입 + 저변동 + 지지 근접"
+            gate_reason = "레인지 하단 재진입 + 완화된 반등 확인 + 지지 근접"
         elif model_id == "B":
             strategy = "B-SupportReclaimPlanner"
             gate_ok = bool(
@@ -10235,19 +10241,29 @@ class TradingEngine:
             strategy = "D-ResetBouncePlanner"
             gate_ok = bool(
                 allowed
-                and float(feats.get("washout_score") or 0.0) >= 0.14
-                and float(feats.get("lower_range_bias") or 0.0) >= 0.10
-                and float(feats.get("atr_pct") or 0.0) <= 0.095
+                and (
+                    (
+                        float(feats.get("washout_score") or 0.0) >= 0.08
+                        and float(feats.get("rebound_strength") or 0.0) >= 0.16
+                    )
+                    or (
+                        float(feats.get("reset_score") or 0.0) >= 0.22
+                        and float(feats.get("lower_range_bias") or 0.0) >= 0.06
+                    )
+                )
+                and float(feats.get("atr_pct") or 0.0) <= 0.115
+                and float(feats.get("ema_gap_pct") or 0.0) >= -0.035
                 and not chase_block
             )
             score = (
-                (0.060 * float(feats.get("washout_score") or 0.0))
-                + (0.038 * float(feats.get("reset_score") or 0.0))
+                (0.050 * float(feats.get("washout_score") or 0.0))
+                + (0.046 * float(feats.get("reset_score") or 0.0))
                 + (0.028 * float(feats.get("lower_range_bias") or 0.0))
-                + (0.024 * float(feats.get("rebound_strength") or 0.0))
+                + (0.034 * float(feats.get("rebound_strength") or 0.0))
+                + (0.018 * max(0.0, float(feats.get("reclaim_strength") or 0.0)))
                 + (0.020 * float(feats.get("quality_score") or 0.0))
-                - (0.032 * float(feats.get("volatility_penalty") or 0.0))
-                - (0.016 * float(feats.get("upper_range_bias") or 0.0))
+                - (0.026 * float(feats.get("volatility_penalty") or 0.0))
+                - (0.012 * float(feats.get("upper_range_bias") or 0.0))
             )
             entry_price = min(current_price, low_12 + (1.05 * atr_abs))
             stop_price = low_12 - (1.15 * atr_abs * sl_mul)
@@ -10265,7 +10281,7 @@ class TradingEngine:
                 ],
                 ttl_minutes=35,
             )
-            gate_reason = "급락 후 안정화 + 리셋 바운스 구간"
+            gate_reason = "급락/리셋 이후 완화된 바운스 확인 구간"
         if chase_block:
             score -= float(chase_penalty)
         score = _clamp(score, score_lo, score_hi)
