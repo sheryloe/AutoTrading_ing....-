@@ -21,14 +21,10 @@ jobs:
       # 2. HTML 내의 플레이스홀더를 실제 비밀 키로 교체
       - name: Inject Secrets into HTML
         run: |
-          if [ -f "docs/index.html" ]; then
-            sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
-            sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_SECRET_KEY }}|g" docs/index.html
-            echo "✅ Secrets injected successfully."
-          else
-            echo "❌ Error: docs/index.html not found!"
-            exit 1
-          fi
+          # URL과 ANON_KEY를 정확히 주입
+          sed -i "s|{{SUPABASE_URL}}|${{ secrets.SUPABASE_URL }}|g" docs/index.html
+          sed -i "s|{{SUPABASE_ANON_KEY}}|${{ secrets.SUPABASE_ANON_KEY }}|g" docs/index.html
+          echo "✅ Anon Key injected (Safe for browser)"
 
       # 3. 아티팩트 업로드 (빌드된 파일을 GitHub 서버에 임시 저장)
       - name: Upload artifact
