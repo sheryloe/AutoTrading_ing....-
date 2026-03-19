@@ -1977,6 +1977,30 @@ class TradingEngine:
     def _crypto_dynamic_universe_enabled(self) -> bool:
         return bool(getattr(self.settings, "crypto_dynamic_universe_enabled", False))
 
+    def _crypto_fixed_symbol_lock(self, symbol: str) -> bool:
+        configured_symbols = set(self._configured_crypto_symbols())
+        symbol_u = str(symbol or "").upper().strip()
+        return bool(configured_symbols and not self._crypto_dynamic_universe_enabled() and symbol_u in configured_symbols)
+
+    @staticmethod
+    def _merge_realtime_quote_meta(
+        prev: dict[str, Any],
+        incoming: dict[str, Any],
+        default_source: str,
+    ) -> dict[str, Any]:
+        return {
+            "change_24h": float(incoming.get("change_24h") or prev.get("change_24h") or 0.0),
+            "volume_24h": max(
+                float(incoming.get("volume_24h") or 0.0),
+                float(prev.get("volume_24h") or 0.0),
+            ),
+            "market_cap": float(incoming.get("market_cap") or prev.get("market_cap") or 0.0),
+            "market_cap_rank": int(incoming.get("market_cap_rank") or prev.get("market_cap_rank") or 0),
+            "realtime_source": str(incoming.get("realtime_source") or prev.get("realtime_source") or default_source),
+            "fallback_source": str(incoming.get("fallback_source") or prev.get("realtime_source") or ""),
+            "forced_symbol_fetch": True,
+        }
+
     def _priority_crypto_symbols(self) -> tuple[str, ...]:
         configured: list[str] = []
         raw_text = str(getattr(self.settings, "crypto_priority_symbols", "") or "")
@@ -9808,20 +9832,7 @@ class TradingEngine:
                     rt_prices[symbol] = px
                     prev = dict(rt_meta.get(symbol) or {})
                     forced_row = dict(forced_meta.get(symbol) or {})
-                    rt_meta[symbol] = {
-                        "change_24h": float(forced_row.get("change_24h") or prev.get("change_24h") or 0.0),
-                        "volume_24h": max(
-                            float(forced_row.get("volume_24h") or 0.0),
-                            float(prev.get("volume_24h") or 0.0),
-                        ),
-                        "realtime_source": str(
-                            forced_row.get("realtime_source") or prev.get("realtime_source") or "forced_symbol"
-                        ),
-                        "fallback_source": str(
-                            forced_row.get("fallback_source") or prev.get("realtime_source") or ""
-                        ),
-                        "forced_symbol_fetch": True,
-                    }
+                    rt_meta[symbol] = self._merge_realtime_quote_meta(prev, forced_row, "forced_symbol")
 
         missing_force_fetch_symbols = [
             sym for sym in force_fetch_symbols if sym not in rt_prices and sym not in row_symbols_all
@@ -9842,20 +9853,7 @@ class TradingEngine:
                     rt_prices[symbol] = px
                     prev = dict(rt_meta.get(symbol) or {})
                     cg_row = dict(cg_meta.get(symbol) or {})
-                    rt_meta[symbol] = {
-                        "change_24h": float(cg_row.get("change_24h") or prev.get("change_24h") or 0.0),
-                        "volume_24h": max(
-                            float(cg_row.get("volume_24h") or 0.0),
-                            float(prev.get("volume_24h") or 0.0),
-                        ),
-                        "market_cap": float(cg_row.get("market_cap") or prev.get("market_cap") or 0.0),
-                        "market_cap_rank": int(cg_row.get("market_cap_rank") or prev.get("market_cap_rank") or 0),
-                        "realtime_source": str(
-                            cg_row.get("realtime_source") or prev.get("realtime_source") or "coingecko_symbol"
-                        ),
-                        "fallback_source": str(prev.get("realtime_source") or ""),
-                        "forced_symbol_fetch": True,
-                    }
+                    rt_meta[symbol] = self._merge_realtime_quote_meta(prev, cg_row, "coingecko_symbol")
 
         # Price map can include held symbols outside current rank window (mark-to-market stability).
         for row in rows_all:
@@ -10032,10 +10030,12 @@ class TradingEngine:
         return tuple(ordered)
 
     def _crypto_symbol_allowed_for_model(self, model_id: str, symbol: str) -> bool:
-        configured_symbols = set(self._configured_crypto_symbols())
         symbol_u = str(symbol or "").upper().strip()
+        if self._crypto_fixed_symbol_lock(symbol_u):
+            return True
+        configured_symbols = set(self._configured_crypto_symbols())
         if configured_symbols and not self._crypto_dynamic_universe_enabled():
-            return symbol_u in configured_symbols
+            return False
         meta = dict(self._macro_meta.get(symbol) or {})
         rank = int(meta.get("market_cap_rank") or 0)
         if rank <= 0:
@@ -10382,12 +10382,7 @@ class TradingEngine:
 
     def _crypto_score_profile(self, model_id: str, symbol: str, trend_bundle: dict[str, Any]) -> dict[str, Any]:
         feats = self._crypto_feature_pack(symbol, trend_bundle, model_id=model_id)
-        configured_symbols = set(self._configured_crypto_symbols())
-        fixed_symbol_lock = bool(
-            configured_symbols
-            and not self._crypto_dynamic_universe_enabled()
-            and str(symbol or "").upper().strip() in configured_symbols
-        )
+        fixed_symbol_lock = self._crypto_fixed_symbol_lock(symbol)
         allowed = self._crypto_symbol_allowed_for_model(model_id, symbol)
         feature_rank = int(feats.get("market_cap_rank") or 0)
         rank_min, rank_max_model = self._crypto_rank_band_for_model(model_id)

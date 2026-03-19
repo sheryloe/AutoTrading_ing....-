@@ -21,6 +21,7 @@ state.reconcile_backup_*.json
 build/
 *.spec
 node_modules/
+.npm-cache/
 .next/
 out/
 
