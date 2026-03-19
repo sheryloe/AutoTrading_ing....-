@@ -10382,10 +10382,16 @@ class TradingEngine:
 
     def _crypto_score_profile(self, model_id: str, symbol: str, trend_bundle: dict[str, Any]) -> dict[str, Any]:
         feats = self._crypto_feature_pack(symbol, trend_bundle, model_id=model_id)
+        configured_symbols = set(self._configured_crypto_symbols())
+        fixed_symbol_lock = bool(
+            configured_symbols
+            and not self._crypto_dynamic_universe_enabled()
+            and str(symbol or "").upper().strip() in configured_symbols
+        )
         allowed = self._crypto_symbol_allowed_for_model(model_id, symbol)
         feature_rank = int(feats.get("market_cap_rank") or 0)
         rank_min, rank_max_model = self._crypto_rank_band_for_model(model_id)
-        if feature_rank > 0 and not self._rank_within_window(feature_rank, rank_min, rank_max_model):
+        if not fixed_symbol_lock and feature_rank > 0 and not self._rank_within_window(feature_rank, rank_min, rank_max_model):
             allowed = False
         with self._lock:
             run = (self.state.model_runs or {}).get(self._market_run_key("crypto", model_id)) or {}
