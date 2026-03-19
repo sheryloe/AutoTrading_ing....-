@@ -2322,6 +2322,69 @@ class MacroMarketClient:
                 }
         return quotes, meta
 
+    def fetch_coingecko_quotes_for_symbols(
+        self,
+        symbols: list[str] | tuple[str, ...] | set[str],
+        api_key: str = "",
+    ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+        requested: list[str] = []
+        requested_bases: list[str] = []
+        for raw in list(symbols or []):
+            sym = str(raw or "").upper().strip()
+            if not sym:
+                continue
+            if not sym.endswith("USDT"):
+                sym = f"{sym}USDT"
+            if sym in requested:
+                continue
+            requested.append(sym)
+            requested_bases.append(sym.removesuffix("USDT"))
+        if not requested_bases:
+            return {}, {}
+
+        params: dict[str, Any] = {
+            "vs_currency": "usd",
+            "symbols": ",".join(requested_bases),
+            "include_tokens": "all",
+            "order": "market_cap_desc",
+            "per_page": max(1, min(250, len(requested_bases) * 4)),
+            "page": 1,
+            "sparkline": "false",
+            "price_change_percentage": "24h",
+        }
+        if api_key:
+            params["x_cg_demo_api_key"] = str(api_key).strip()
+        res = self.session.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params=params,
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        if not isinstance(rows, list):
+            return {}, {}
+
+        quotes: dict[str, float] = {}
+        meta: dict[str, dict[str, Any]] = {}
+        wanted = set(requested_bases)
+        for row in rows:
+            base_symbol = str(row.get("symbol") or "").upper().strip()
+            if not base_symbol or base_symbol not in wanted:
+                continue
+            symbol = f"{base_symbol}USDT"
+            price = float(row.get("current_price") or 0.0)
+            if price <= 0.0 or symbol in quotes:
+                continue
+            quotes[symbol] = price
+            meta[symbol] = {
+                "change_24h": float(row.get("price_change_percentage_24h_in_currency") or 0.0),
+                "volume_24h": float(row.get("total_volume") or 0.0),
+                "market_cap": float(row.get("market_cap") or 0.0),
+                "market_cap_rank": int(row.get("market_cap_rank") or 0),
+                "realtime_source": "coingecko_symbol",
+            }
+        return quotes, meta
+
     def _fetch_binance_quotes(
         self,
         binance_api_key: str = "",

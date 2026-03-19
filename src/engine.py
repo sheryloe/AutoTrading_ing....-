@@ -9823,6 +9823,40 @@ class TradingEngine:
                         "forced_symbol_fetch": True,
                     }
 
+        missing_force_fetch_symbols = [
+            sym for sym in force_fetch_symbols if sym not in rt_prices and sym not in row_symbols_all
+        ]
+        if missing_force_fetch_symbols and bool(getattr(self.settings, "crypto_use_coingecko_data", True)):
+            try:
+                cg_prices, cg_meta = self.macro.fetch_coingecko_quotes_for_symbols(
+                    missing_force_fetch_symbols,
+                    api_key=self.settings.coingecko_api_key,
+                )
+            except Exception:
+                cg_prices, cg_meta = {}, {}
+            if cg_prices:
+                for symbol, price in cg_prices.items():
+                    px = float(price or 0.0)
+                    if px <= 0.0:
+                        continue
+                    rt_prices[symbol] = px
+                    prev = dict(rt_meta.get(symbol) or {})
+                    cg_row = dict(cg_meta.get(symbol) or {})
+                    rt_meta[symbol] = {
+                        "change_24h": float(cg_row.get("change_24h") or prev.get("change_24h") or 0.0),
+                        "volume_24h": max(
+                            float(cg_row.get("volume_24h") or 0.0),
+                            float(prev.get("volume_24h") or 0.0),
+                        ),
+                        "market_cap": float(cg_row.get("market_cap") or prev.get("market_cap") or 0.0),
+                        "market_cap_rank": int(cg_row.get("market_cap_rank") or prev.get("market_cap_rank") or 0),
+                        "realtime_source": str(
+                            cg_row.get("realtime_source") or prev.get("realtime_source") or "coingecko_symbol"
+                        ),
+                        "fallback_source": str(prev.get("realtime_source") or ""),
+                        "forced_symbol_fetch": True,
+                    }
+
         # Price map can include held symbols outside current rank window (mark-to-market stability).
         for row in rows_all:
             base_symbol = str(row.get("symbol") or "").upper().strip()
@@ -9871,8 +9905,8 @@ class TradingEngine:
                     "change_1h": 0.0,
                     "change_24h": float(rt_row.get("change_24h") or 0.0),
                     "volume_24h": float(rt_row.get("volume_24h") or 0.0),
-                    "market_cap": 0.0,
-                    "market_cap_rank": int(prev_rank),
+                    "market_cap": float(rt_row.get("market_cap") or 0.0),
+                    "market_cap_rank": int(rt_row.get("market_cap_rank") or prev_rank),
                     "source": "realtime_only",
                     "realtime_source": str(rt_row.get("realtime_source") or ""),
                 }
@@ -9897,8 +9931,8 @@ class TradingEngine:
                     "change_1h": 0.0,
                     "change_24h": float(rt_row.get("change_24h") or 0.0),
                     "volume_24h": float(rt_row.get("volume_24h") or 0.0),
-                    "market_cap": float((self._macro_meta.get(symbol) or {}).get("market_cap") or 0.0),
-                    "market_cap_rank": int(prev_rank),
+                    "market_cap": float(rt_row.get("market_cap") or (self._macro_meta.get(symbol) or {}).get("market_cap") or 0.0),
+                    "market_cap_rank": int(rt_row.get("market_cap_rank") or prev_rank),
                     "source": "realtime_backfill",
                     "realtime_source": str(rt_row.get("realtime_source") or ""),
                 }
