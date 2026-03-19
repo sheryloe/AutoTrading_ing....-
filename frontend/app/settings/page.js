@@ -76,6 +76,24 @@ export default async function SettingsPage() {
         </p>
       </section>
 
+      {diagnostics?.sourceConfigRepaired ? (
+        <section className="warning-card">
+          <strong>Demo data sources were auto-repaired</strong>
+          {(diagnostics?.sourceWarnings || []).map((msg) => (
+            <p key={msg}>{msg}</p>
+          ))}
+          <p>
+            Effective source order: <code>{diagnostics?.sourceOrderValue || "-"}</code>
+          </p>
+          <p>
+            Effective source flags: <code>{diagnostics?.sourceFlagSummary || "-"}</code>
+          </p>
+          <p>
+            Effective realtime quotes: <code>{diagnostics?.realtimeSourceValue || "-"}</code>
+          </p>
+        </section>
+      ) : null}
+
       <section className="warning-card">
         <strong>Reset reminder</strong>
         <p>Saving the runtime profile does not wipe the current demo seed, positions, or PnL.</p>

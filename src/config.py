@@ -62,6 +62,53 @@ def _to_grade(value: Any, default: str = "C") -> str:
     return default
 
 
+CRYPTO_SOURCE_ORDER_DEFAULT = ("binance", "bybit", "coingecko")
+CRYPTO_REALTIME_SOURCE_DEFAULT = ("binance", "bybit")
+
+
+def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]:
+    payload = dict(raw or {})
+    requested_raw = _to_str(payload.get("CRYPTO_DATA_SOURCE_ORDER") or payload.get("MARKET_DATA_SOURCE_ORDER"), "")
+    requested: list[str] = []
+    for item in requested_raw.split(","):
+        provider = str(item or "").strip().lower()
+        if provider not in CRYPTO_SOURCE_ORDER_DEFAULT:
+            continue
+        if provider not in requested:
+            requested.append(provider)
+    ordered: list[str] = list(requested or CRYPTO_SOURCE_ORDER_DEFAULT)
+    for provider in CRYPTO_SOURCE_ORDER_DEFAULT:
+        if provider not in ordered:
+            ordered.append(provider)
+
+    flags = {
+        "binance": _to_bool(payload.get("CRYPTO_USE_BINANCE_DATA"), True),
+        "bybit": _to_bool(payload.get("CRYPTO_USE_BYBIT_DATA"), True),
+        "coingecko": _to_bool(payload.get("CRYPTO_USE_COINGECKO_DATA"), True),
+    }
+    all_disabled = not any(flags.values())
+    realtime_disabled = not bool(flags["binance"] or flags["bybit"])
+
+    if all_disabled:
+        flags = {"binance": True, "bybit": True, "coingecko": True}
+        ordered = list(CRYPTO_SOURCE_ORDER_DEFAULT)
+    elif realtime_disabled:
+        flags["binance"] = True
+        flags["bybit"] = True
+
+    realtime_sources = [provider for provider in ordered if provider in CRYPTO_REALTIME_SOURCE_DEFAULT and flags[provider]]
+    if not realtime_sources:
+        realtime_sources = list(CRYPTO_REALTIME_SOURCE_DEFAULT)
+
+    payload["CRYPTO_DATA_SOURCE_ORDER"] = ",".join(ordered)
+    payload["CRYPTO_USE_BINANCE_DATA"] = bool(flags["binance"])
+    payload["CRYPTO_USE_BYBIT_DATA"] = bool(flags["bybit"])
+    payload["CRYPTO_USE_COINGECKO_DATA"] = bool(flags["coingecko"])
+    payload["MACRO_REALTIME_SOURCES"] = ",".join(realtime_sources)
+    payload["MACRO_UNIVERSE_SOURCE"] = "coingecko"
+    return payload
+
+
 @dataclass
 class Settings:
     trade_mode: str
@@ -179,6 +226,10 @@ class Settings:
     crypto_autotrade_models: str
     live_meme_models: str
     live_crypto_models: str
+    crypto_data_source_order: str
+    crypto_use_binance_data: bool
+    crypto_use_bybit_data: bool
+    crypto_use_coingecko_data: bool
     bybit_symbols: str
     crypto_dynamic_universe_enabled: bool
     crypto_priority_symbols: str
@@ -243,6 +294,7 @@ class Settings:
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Settings":
+        data = normalize_runtime_data_sources(data)
         trade_mode = _to_str(data.get("TRADE_MODE"), "paper").lower()
         if trade_mode not in {"paper", "live"}:
             trade_mode = "paper"
@@ -388,6 +440,10 @@ class Settings:
                 data.get("LIVE_CRYPTO_MODELS"),
                 _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C,D"),
             ),
+            crypto_data_source_order=_to_str(data.get("CRYPTO_DATA_SOURCE_ORDER"), "binance,bybit,coingecko").lower(),
+            crypto_use_binance_data=_to_bool(data.get("CRYPTO_USE_BINANCE_DATA"), True),
+            crypto_use_bybit_data=_to_bool(data.get("CRYPTO_USE_BYBIT_DATA"), True),
+            crypto_use_coingecko_data=_to_bool(data.get("CRYPTO_USE_COINGECKO_DATA"), True),
             bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
             crypto_dynamic_universe_enabled=_to_bool(data.get("CRYPTO_DYNAMIC_UNIVERSE_ENABLED"), False),
             crypto_priority_symbols=_to_str(data.get("CRYPTO_PRIORITY_SYMBOLS"), ""),
@@ -482,6 +538,7 @@ def load_settings(env_path: str = ".env") -> Settings:
     env_file = dict(dotenv_values(env_path))
     merged = dict(env_file)
     merged.update(dict(os.environ))
+    merged = normalize_runtime_data_sources(merged)
     settings = Settings.from_mapping(merged)
     runtime_path = Path(settings.runtime_settings_file)
     if runtime_path.exists():
@@ -492,6 +549,7 @@ def load_settings(env_path: str = ".env") -> Settings:
         if isinstance(runtime, dict) and runtime:
             with_runtime = dict(merged)
             with_runtime.update(runtime)
+            with_runtime = normalize_runtime_data_sources(with_runtime)
             settings = Settings.from_mapping(with_runtime)
     return settings
 
@@ -507,6 +565,7 @@ def save_runtime_overrides(settings: Settings, updates: dict[str, Any]) -> None:
         except Exception:
             pass
     payload.update(updates)
+    payload = normalize_runtime_data_sources(payload)
     runtime_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 

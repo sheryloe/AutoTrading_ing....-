@@ -81,6 +81,34 @@ function conflictPolicyHelp(value) {
   return "같은 캔들에서 TP와 SL이 모두 닿으면 SL을 우선 반영합니다.";
 }
 
+function sourceGuardForConfig(config) {
+  const orderBlank = !String(config?.cryptoDataSourceOrder || "").trim();
+  const useBinance = String(config?.useBinanceData || "true") === "true";
+  const useBybit = String(config?.useBybitData || "true") === "true";
+  const useCoingecko = String(config?.useCoingeckoData || "true") === "true";
+  const allDisabled = !useBinance && !useBybit && !useCoingecko;
+  const realtimeDisabled = !useBinance && !useBybit;
+  if (allDisabled) {
+    return {
+      autoRepair: true,
+      message: "All crypto data sources are off. Saving will restore the default demo source set.",
+    };
+  }
+  if (realtimeDisabled) {
+    return {
+      autoRepair: true,
+      message: "Realtime quote sources are off. Saving will restore Binance + Bybit so paper trading can keep running.",
+    };
+  }
+  if (orderBlank) {
+    return {
+      autoRepair: true,
+      message: "The source order is blank. Saving will restore the default demo order.",
+    };
+  }
+  return { autoRepair: false, message: "" };
+}
+
 export default function ControlConsole({ initialConfig, runtimeUpdatedAt, providerStatuses, writeReady }) {
   const router = useRouter();
   const [adminToken, setAdminToken] = useState("");
@@ -177,6 +205,11 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     };
   }, [config.enableLiveExecution, config.executionTarget, config.liveEnableCrypto, config.liveExecutionArmed, providerStatuses]);
 
+  const sourceGuard = useMemo(
+    () => sourceGuardForConfig(config),
+    [config.cryptoDataSourceOrder, config.useBinanceData, config.useBybitData, config.useCoingeckoData]
+  );
+
   function updateProviderForm(provider, field, value) {
     setProviderForms((prev) => ({
       ...prev,
@@ -240,6 +273,9 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
         throw new Error(payload.error || "runtime_save_failed");
       }
       setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 8분 배치부터 새 규칙이 반영됩니다.");
+      if (sourceGuard.autoRepair) {
+        setRuntimeMessage("Runtime profile saved. Default demo data sources were restored so the next batch can keep paper trading alive.");
+      }
       router.refresh();
     } catch (error) {
       setRuntimeError(friendlyError(error));
@@ -736,6 +772,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             onChange={(event) => setConfig((prev) => ({ ...prev, cryptoDataSourceOrder: event.target.value }))}
             placeholder="binance,bybit,coingecko"
           />
+          {sourceGuard.autoRepair ? <p className="error-line full-span">{sourceGuard.message}</p> : null}
 
           <label className="field-label full-span" htmlFor="bybit-symbols">
             추적 심볼

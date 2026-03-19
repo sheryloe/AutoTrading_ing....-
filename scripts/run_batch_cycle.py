@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.config import load_settings
+from src.config import load_settings, normalize_runtime_data_sources
 from src.engine import TradingEngine
 from src.supabase_sync import SupabaseSyncClient
 
@@ -61,8 +61,13 @@ def _hydrate_runtime_from_supabase() -> None:
     runtime_result = client.fetch_blob(SERVICE_RUNTIME_BLOB_KEY)
     runtime_payload = runtime_result.get("payload") if bool(runtime_result.get("ok")) else None
     if isinstance(runtime_payload, dict) and runtime_payload:
+        normalized_payload = normalize_runtime_data_sources(runtime_payload)
+        if json.dumps(normalized_payload, ensure_ascii=True, sort_keys=True) != json.dumps(
+            runtime_payload, ensure_ascii=True, sort_keys=True
+        ):
+            client.upsert_blob(SERVICE_RUNTIME_BLOB_KEY, normalized_payload)
         runtime_path = Path(str(os.environ.get("RUNTIME_SETTINGS_FILE") or "runtime_settings.json"))
-        runtime_path.write_text(json.dumps(runtime_payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        runtime_path.write_text(json.dumps(normalized_payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
     master_key = str(os.environ.get("SERVICE_MASTER_KEY") or "").strip()
     if master_key:

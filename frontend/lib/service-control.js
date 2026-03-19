@@ -149,6 +149,46 @@ function deriveRealtimeSources(order, flags) {
   return (enabled.length ? enabled : ["binance", "bybit"]).join(",");
 }
 
+function normalizeSourceConfig(raw = {}) {
+  const sourceOrderRaw = String(raw.CRYPTO_DATA_SOURCE_ORDER || raw.MARKET_DATA_SOURCE_ORDER || "").trim();
+  let sourceOrder = normalizeSourceOrder(sourceOrderRaw || DEFAULT_SOURCE_ORDER);
+  let flags = {
+    binance: toBool(raw.CRYPTO_USE_BINANCE_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_BINANCE_DATA),
+    bybit: toBool(raw.CRYPTO_USE_BYBIT_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_BYBIT_DATA),
+    coingecko: toBool(raw.CRYPTO_USE_COINGECKO_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_COINGECKO_DATA),
+  };
+  const warnings = [];
+  let autoRepaired = false;
+  const orderBlank = !sourceOrderRaw;
+
+  if (orderBlank) {
+    autoRepaired = true;
+    warnings.push("Crypto data source order was blank, so the default demo source order was restored.");
+    sourceOrder = normalizeSourceOrder(DEFAULT_SOURCE_ORDER);
+  }
+
+  const allDisabled = !flags.binance && !flags.bybit && !flags.coingecko;
+  const realtimeDisabled = !flags.binance && !flags.bybit;
+  if (allDisabled) {
+    autoRepaired = true;
+    warnings.push("All crypto data sources were disabled, so the default demo source set was restored.");
+    flags = { binance: true, bybit: true, coingecko: true };
+    sourceOrder = normalizeSourceOrder(DEFAULT_SOURCE_ORDER);
+  } else if (realtimeDisabled) {
+    autoRepaired = true;
+    warnings.push("Realtime crypto sources were disabled, so Binance and Bybit quotes were restored for paper trading.");
+    flags = { ...flags, binance: true, bybit: true };
+  }
+
+  return {
+    sourceOrder,
+    flags,
+    warnings,
+    autoRepaired,
+    realtimeSources: deriveRealtimeSources(sourceOrder, flags),
+  };
+}
+
 function normalizeProviderStatus(provider, row) {
   const definition = getServiceProviderDef(provider);
   const meta = row?.meta_json && typeof row.meta_json === "object" ? row.meta_json : {};
@@ -188,10 +228,15 @@ function computeLiveStatus(runtimeConfig, providerStatuses) {
   };
 }
 
-function buildRuntimeDiagnostics(runtimeConfig, providerStatuses) {
+function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConfig = runtimeConfig) {
   const configuredSymbols = normalizeSymbolList(runtimeConfig.BYBIT_SYMBOLS);
   const dynamicUniverseEnabled = Boolean(runtimeConfig.CRYPTO_DYNAMIC_UNIVERSE_ENABLED);
   const liveStatus = computeLiveStatus(runtimeConfig, providerStatuses);
+  const sourceConfig = normalizeSourceConfig(rawRuntimeConfig || {});
+  const sourceFlags = sourceConfig.flags;
+  const sourceFlagSummary = `binance ${sourceFlags.binance ? "on" : "off"} / bybit ${
+    sourceFlags.bybit ? "on" : "off"
+  } / coingecko ${sourceFlags.coingecko ? "on" : "off"}`;
 
   return {
     configSourceLabel: "Supabase runtime profile",
@@ -209,6 +254,12 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses) {
     symbolSummary: dynamicUniverseEnabled
       ? "A symbol can still end up as symbol_not_allowed when it falls outside the rotating universe."
       : "A symbol must be present in BYBIT_SYMBOLS to be eligible when dynamic rotation is off.",
+    sourceConfigHealthy: !sourceConfig.autoRepaired,
+    sourceConfigRepaired: sourceConfig.autoRepaired,
+    sourceWarnings: sourceConfig.warnings,
+    sourceOrderValue: sourceConfig.sourceOrder.join(","),
+    sourceFlagSummary,
+    realtimeSourceValue: sourceConfig.realtimeSources,
   };
 }
 
@@ -223,12 +274,9 @@ export function normalizeRuntimeConfig(raw = {}) {
     DEFAULT_RUNTIME_CONFIG.MODEL_AUTOTUNE_INTERVAL_HOURS,
     6
   );
-  const sourceOrder = normalizeSourceOrder(raw.CRYPTO_DATA_SOURCE_ORDER || raw.MARKET_DATA_SOURCE_ORDER);
-  const flags = {
-    binance: toBool(raw.CRYPTO_USE_BINANCE_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_BINANCE_DATA),
-    bybit: toBool(raw.CRYPTO_USE_BYBIT_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_BYBIT_DATA),
-    coingecko: toBool(raw.CRYPTO_USE_COINGECKO_DATA, DEFAULT_RUNTIME_CONFIG.CRYPTO_USE_COINGECKO_DATA),
-  };
+  const sourceConfig = normalizeSourceConfig(raw);
+  const sourceOrder = sourceConfig.sourceOrder;
+  const flags = sourceConfig.flags;
   const demoSeedUsdt = toFloat(raw.DEMO_SEED_USDT, DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT, 50, 1_000_000);
   const maxPositions = toInt(raw.BYBIT_MAX_POSITIONS, DEFAULT_RUNTIME_CONFIG.BYBIT_MAX_POSITIONS, 1, 10);
   const orderPctMin = toFloat(raw.BYBIT_ORDER_PCT_MIN, DEFAULT_RUNTIME_CONFIG.BYBIT_ORDER_PCT_MIN, 0.15, 0.3);
@@ -281,7 +329,7 @@ export function normalizeRuntimeConfig(raw = {}) {
     CRYPTO_USE_BINANCE_DATA: flags.binance,
     CRYPTO_USE_BYBIT_DATA: flags.bybit,
     CRYPTO_USE_COINGECKO_DATA: flags.coingecko,
-    MACRO_REALTIME_SOURCES: deriveRealtimeSources(sourceOrder, flags),
+    MACRO_REALTIME_SOURCES: sourceConfig.realtimeSources,
     MACRO_UNIVERSE_SOURCE: "coingecko",
     MACRO_TREND_POOL_SIZE: toInt(
       raw.MACRO_TREND_POOL_SIZE,
@@ -316,7 +364,7 @@ export async function loadServiceControlData() {
       runtimeUpdatedAt: null,
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
-      diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses),
+      diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses, DEFAULT_RUNTIME_CONFIG),
       errors: ["Supabase 서버 연결이 준비되지 않았습니다."],
     };
   }
@@ -348,7 +396,7 @@ export async function loadServiceControlData() {
     runtimeUpdatedAt: runtimeRes.data?.updated_at || null,
     providerStatuses,
     liveStatus: computeLiveStatus(runtimeConfig, providerStatuses),
-    diagnostics: buildRuntimeDiagnostics(runtimeConfig, providerStatuses),
+    diagnostics: buildRuntimeDiagnostics(runtimeConfig, providerStatuses, runtimePayload || runtimeConfig),
     errors: [runtimeRes.error?.message, secretsRes.error?.message].filter(Boolean),
   };
 }
