@@ -154,12 +154,20 @@ export async function loadPositionsPageData() {
       heartbeat: null,
       openPositions: [],
       setupRows: [],
+      signalAuditRows: [],
       recentTradeRows: [],
-      snapshot: null,
+      snapshot: {
+        latestCycleAt: null,
+        latestSignalCount: 0,
+        openPositionCount: 0,
+        latestSignalAuditCycleAt: null,
+        latestSignalAuditCount: 0,
+        recentTradeCount: 0,
+      },
     };
   }
 
-  const [heartbeatRes, positionsRes, setupsRes, recentTradesRes] = await Promise.all([
+  const [heartbeatRes, positionsRes, setupsRes, signalAuditRes, recentTradesRes] = await Promise.all([
     supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
     supabase
       .from("positions")
@@ -169,6 +177,12 @@ export async function loadPositionsPageData() {
       .limit(48),
     supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(18),
     supabase
+      .from("model_signal_audit")
+      .select("*")
+      .eq("market", "crypto")
+      .order("cycle_at", { ascending: false })
+      .limit(160),
+    supabase
       .from("engine_state_blobs")
       .select("payload_json,updated_at")
       .eq("blob_key", "recent_crypto_trades")
@@ -176,13 +190,15 @@ export async function loadPositionsPageData() {
       .maybeSingle(),
   ]);
 
-  const errors = collectErrors([heartbeatRes, positionsRes, setupsRes, recentTradesRes]);
+  const errors = collectErrors([heartbeatRes, positionsRes, setupsRes, signalAuditRes, recentTradesRes]);
   const heartbeat = heartbeatRes.data?.[0] || null;
   const openPositions = positionsRes.data || [];
   const openPositionCount = Number(positionsRes.count ?? openPositions.length ?? 0);
   const setupRows = setupsRes.data || [];
+  const signalAuditRows = signalAuditRes.data || [];
   const recentTradeRows = Array.isArray(recentTradesRes.data?.payload_json?.rows) ? recentTradesRes.data.payload_json.rows : [];
   const latestCycleAt = setupRows[0]?.cycle_at || null;
+  const latestSignalAuditCycleAt = signalAuditRows[0]?.cycle_at || null;
 
   return {
     ready: errors.length === 0,
@@ -190,6 +206,7 @@ export async function loadPositionsPageData() {
     heartbeat,
     openPositions,
     setupRows,
+    signalAuditRows,
     recentTradeRows,
     snapshot: {
       latestCycleAt,
@@ -197,6 +214,10 @@ export async function loadPositionsPageData() {
         ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
         : 0,
       openPositionCount,
+      latestSignalAuditCycleAt,
+      latestSignalAuditCount: latestSignalAuditCycleAt
+        ? signalAuditRows.filter((row) => String(row.cycle_at || "") === String(latestSignalAuditCycleAt)).length
+        : 0,
       recentTradeCount: recentTradeRows.length,
     },
   };

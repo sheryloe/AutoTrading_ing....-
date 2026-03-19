@@ -5,32 +5,36 @@ import { loadServiceControlData } from "../../lib/service-control";
 
 export const dynamic = "force-dynamic";
 
-function conflictPolicyLabel(value) {
-  const normalized = String(value || "conservative").toLowerCase();
-  if (normalized === "aggressive") return "TP 우선";
-  if (normalized === "neutral") return "open 기준 근접 우선";
-  return "SL 우선";
+function symbolModeValue(diagnostics) {
+  return diagnostics?.dynamicUniverseEnabled ? "dynamic" : "fixed";
+}
+
+function symbolMeta(diagnostics) {
+  const symbols = diagnostics?.configuredSymbols || [];
+  if (!symbols.length) return "no configured symbols";
+  const preview = symbols.slice(0, 3).join(", ");
+  return symbols.length > 3 ? `${preview} +${symbols.length - 3}` : preview;
 }
 
 export default async function SettingsPage() {
   const control = await loadServiceControlData();
-  const configuredProviderCount = Object.values(control.providerStatuses || {}).filter((item) => item?.configured).length;
+  const diagnostics = control.diagnostics || {};
 
   return (
     <>
       <PageHeader
-        eyebrow="설정"
-        title="운영 입력과 서비스 콘솔"
-        description="실행 키, 데이터 provider vault, runtime profile을 이 화면에서만 관리합니다. 개요나 포지션 화면에는 입력 폼을 두지 않고 운영 콘솔로 분리했습니다."
+        eyebrow="Settings"
+        title="Service Console"
+        description="Manage provider vault credentials and the runtime profile in one place. This page now also explains why new symbols may still not produce real Bybit fills."
         actions={[
-          { href: "/", label: "개요로 이동", tone: "ghost" },
-          { href: "/positions", label: "포지션 보기", tone: "primary" },
+          { href: "/", label: "Overview", tone: "ghost" },
+          { href: "/positions", label: "Execution Trail", tone: "primary" },
         ]}
       />
 
       {control.errors?.length ? (
         <section className="warning-card">
-          <strong>설정 데이터를 일부 불러오지 못했습니다.</strong>
+          <strong>Could not fully load settings data.</strong>
           {control.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
@@ -39,34 +43,43 @@ export default async function SettingsPage() {
 
       <section className="kpi-row">
         <MetricCard
-          label="저장 준비 상태"
-          value={control.writeReady ? "쓰기 가능" : "읽기 전용"}
-          meta="Vercel 서버 환경변수 기준"
+          label="Write status"
+          value={control.writeReady ? "ready" : "read only"}
+          meta="Vercel + Supabase admin env"
           tone={control.writeReady ? "green" : "amber"}
         />
         <MetricCard
           label="Execution target"
           value={String(control.runtimeConfig?.EXECUTION_TARGET || "paper")}
-          meta={`arm ${control.runtimeConfig?.LIVE_EXECUTION_ARMED ? "on" : "off"}`}
+          meta={`armed ${control.runtimeConfig?.LIVE_EXECUTION_ARMED ? "yes" : "no"}`}
           tone="cyan"
         />
         <MetricCard
-          label="캔들 충돌 규칙"
-          value={conflictPolicyLabel(control.runtimeConfig?.INTRABAR_CONFLICT_POLICY)}
-          meta={String(control.runtimeConfig?.INTRABAR_CONFLICT_POLICY || "conservative")}
+          label="Symbol mode"
+          value={symbolModeValue(diagnostics)}
+          meta={diagnostics?.symbolModeLabel || "-"}
           tone="amber"
         />
         <MetricCard
-          label="설정된 provider"
-          value={String(configuredProviderCount)}
-          meta="Bybit / Binance / CoinGecko 기준"
+          label="Configured symbols"
+          value={String(diagnostics?.configuredSymbolCount || 0)}
+          meta={symbolMeta(diagnostics)}
         />
       </section>
 
       <section className="warning-card">
-        <strong>리셋 정책</strong>
-        <p>런타임 프로필을 다시 저장해도 현재 데모 시드, 누적 손익, 오픈 포지션은 유지됩니다.</p>
-        <p>시드를 새로 적용하려면 아래의 하드 리셋 섹션에서 명시적으로 다시 시작해야 합니다.</p>
+        <strong>{diagnostics?.liveOrderRoutingLabel || "Demo-only crypto execution path"}</strong>
+        <p>{diagnostics?.liveOrderSummary}</p>
+        <p>{diagnostics?.symbolSummary}</p>
+        <p>
+          Runtime config source: <code>{diagnostics?.configSourceValue || "-"}</code>
+        </p>
+      </section>
+
+      <section className="warning-card">
+        <strong>Reset reminder</strong>
+        <p>Saving the runtime profile does not wipe the current demo seed, positions, or PnL.</p>
+        <p>Use the hard reset section only when you intentionally want to restart the crypto demo state.</p>
       </section>
 
       <ControlConsole

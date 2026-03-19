@@ -2367,6 +2367,7 @@ class TradingEngine:
                         "ts_epoch": ts,
                         "model_id": model_id,
                         "model_name": self._market_model_name("crypto", model_id),
+                        "source": "crypto_demo",
                         "side": side,
                         "position_side": position_side,
                         "event_kind": event_kind,
@@ -2501,6 +2502,14 @@ class TradingEngine:
         if model_id is None:
             return True
         return self._is_live_model_enabled(market, model_id)
+
+    def _should_sync_bybit_account(self) -> bool:
+        return bool(
+            self.bybit.enabled
+            and str(self.settings.trade_mode or "paper").lower() == "live"
+            and bool(self.settings.enable_live_execution)
+            and bool(self.settings.live_enable_crypto)
+        )
 
     def _is_market_autotrade_enabled(self, market: str) -> bool:
         # Keep demo strategy evaluation running for both markets.
@@ -9672,6 +9681,11 @@ class TradingEngine:
                         self.state.bybit_error = f"macro_fetch_failed: {exc}"
                 return {}
         rows_all = list(rows or [])
+        row_symbols_all = {
+            f"{str(row.get('symbol') or '').upper().strip()}USDT"
+            for row in rows_all
+            if str(row.get("symbol") or "").upper().strip()
+        }
         rank_lo, rank_hi = self._macro_rank_window()
         rows = [
             row
@@ -9771,6 +9785,47 @@ class TradingEngine:
             selected_symbols = set(selected_symbols or set())
             selected_symbols.update(held_symbols)
 
+        force_fetch_symbols = sorted(
+            sym
+            for sym in set(selected_symbols or set()).union(held_symbols)
+            if str(sym or "").upper().strip()
+        )
+        missing_force_fetch_symbols = [
+            sym for sym in force_fetch_symbols if sym not in rt_prices and sym not in row_symbols_all
+        ]
+        if missing_force_fetch_symbols:
+            try:
+                forced_prices, forced_meta = self.macro.fetch_realtime_quotes_for_symbols(
+                    missing_force_fetch_symbols,
+                    sources_csv=self.settings.macro_realtime_sources,
+                    binance_api_key=self.settings.binance_api_key,
+                    binance_api_secret=self.settings.binance_api_secret,
+                )
+            except Exception:
+                forced_prices, forced_meta = {}, {}
+            if forced_prices:
+                for symbol, price in forced_prices.items():
+                    px = float(price or 0.0)
+                    if px <= 0.0:
+                        continue
+                    rt_prices[symbol] = px
+                    prev = dict(rt_meta.get(symbol) or {})
+                    forced_row = dict(forced_meta.get(symbol) or {})
+                    rt_meta[symbol] = {
+                        "change_24h": float(forced_row.get("change_24h") or prev.get("change_24h") or 0.0),
+                        "volume_24h": max(
+                            float(forced_row.get("volume_24h") or 0.0),
+                            float(prev.get("volume_24h") or 0.0),
+                        ),
+                        "realtime_source": str(
+                            forced_row.get("realtime_source") or prev.get("realtime_source") or "forced_symbol"
+                        ),
+                        "fallback_source": str(
+                            forced_row.get("fallback_source") or prev.get("realtime_source") or ""
+                        ),
+                        "forced_symbol_fetch": True,
+                    }
+
         # Price map can include held symbols outside current rank window (mark-to-market stability).
         for row in rows_all:
             base_symbol = str(row.get("symbol") or "").upper().strip()
@@ -9857,6 +9912,8 @@ class TradingEngine:
                     hist = hist[-240:]
                 self._bybit_price_history[symbol] = hist
 
+        missing_fixed_symbols = sorted(sym for sym in hard_lock_symbols if sym not in prices)
+
         # Guard held symbols from abrupt one-cycle quote jumps (source mismatch/stale feed).
         if held_anchor_prices:
             jump_guard = float(CRYPTO_HELD_PRICE_JUMP_GUARD_PCT)
@@ -9893,7 +9950,10 @@ class TradingEngine:
         self._macro_meta = meta
         if not self.bybit.enabled:
             with self._lock:
-                self.state.bybit_error = ""
+                if missing_fixed_symbols and not dynamic_universe:
+                    self.state.bybit_error = "fixed_symbol_quote_missing: " + ",".join(missing_fixed_symbols[:12])
+                else:
+                    self.state.bybit_error = ""
         return prices
 
     def _macro_rank_window(self) -> tuple[int, int]:
@@ -12099,7 +12159,7 @@ class TradingEngine:
                 self.state.memecoin_error = f"wallet_sync_failed: {exc}"
 
     def _sync_bybit(self, now: int, force: bool = False) -> None:
-        if not self.bybit.enabled:
+        if not self._should_sync_bybit_account():
             with self._lock:
                 self.state.bybit_error = ""
                 self.state.bybit_assets = []

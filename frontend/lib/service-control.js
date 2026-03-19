@@ -41,6 +41,13 @@ const DEFAULT_RUNTIME_CONFIG = {
   MACRO_TREND_RESELECT_SECONDS: 14400,
 };
 
+function normalizeSymbolList(raw) {
+  return String(raw || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+}
+
 function buildEmptyEngineState(seedUsdt) {
   const seed = Number(seedUsdt || DEFAULT_RUNTIME_CONFIG.DEMO_SEED_USDT);
   return {
@@ -181,6 +188,30 @@ function computeLiveStatus(runtimeConfig, providerStatuses) {
   };
 }
 
+function buildRuntimeDiagnostics(runtimeConfig, providerStatuses) {
+  const configuredSymbols = normalizeSymbolList(runtimeConfig.BYBIT_SYMBOLS);
+  const dynamicUniverseEnabled = Boolean(runtimeConfig.CRYPTO_DYNAMIC_UNIVERSE_ENABLED);
+  const liveStatus = computeLiveStatus(runtimeConfig, providerStatuses);
+
+  return {
+    configSourceLabel: "Supabase runtime profile",
+    configSourceValue: `engine_state_blobs.${SERVICE_RUNTIME_BLOB_KEY}`,
+    configuredSymbols,
+    configuredSymbolCount: configuredSymbols.length,
+    dynamicUniverseEnabled,
+    symbolModeLabel: dynamicUniverseEnabled
+      ? "Dynamic rotation mode: BYBIT_SYMBOLS is only a reference or fallback list."
+      : "Fixed universe mode: BYBIT_SYMBOLS is the enforced crypto watchlist.",
+    liveOrderRoutingLabel: "Demo-only crypto execution path",
+    liveOrderSummary: liveStatus.futureLiveEligible
+      ? "Even with bybit-live, live flags, and arm enabled, this build still keeps crypto entries on the demo execution path."
+      : "The current build does not send real Bybit crypto orders yet; it only prepares future live routing.",
+    symbolSummary: dynamicUniverseEnabled
+      ? "A symbol can still end up as symbol_not_allowed when it falls outside the rotating universe."
+      : "A symbol must be present in BYBIT_SYMBOLS to be eligible when dynamic rotation is off.",
+  };
+}
+
 export function normalizeRuntimeConfig(raw = {}) {
   const executionTarget = normalizeExecutionTarget(raw.EXECUTION_TARGET || raw.TRADE_MODE);
   const symbols = String(raw.BYBIT_SYMBOLS || DEFAULT_SYMBOLS)
@@ -285,6 +316,7 @@ export async function loadServiceControlData() {
       runtimeUpdatedAt: null,
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
+      diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses),
       errors: ["Supabase 서버 연결이 준비되지 않았습니다."],
     };
   }
@@ -316,6 +348,7 @@ export async function loadServiceControlData() {
     runtimeUpdatedAt: runtimeRes.data?.updated_at || null,
     providerStatuses,
     liveStatus: computeLiveStatus(runtimeConfig, providerStatuses),
+    diagnostics: buildRuntimeDiagnostics(runtimeConfig, providerStatuses),
     errors: [runtimeRes.error?.message, secretsRes.error?.message].filter(Boolean),
   };
 }

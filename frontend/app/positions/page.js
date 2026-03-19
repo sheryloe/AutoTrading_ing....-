@@ -1,4 +1,4 @@
-import { Activity, Crosshair, TimerReset, Wallet } from "lucide-react";
+import { Activity, Crosshair, SearchCheck, Wallet } from "lucide-react";
 import MetricCard from "../components/metric-card";
 import PageHeader from "../components/page-header";
 import PositionsTabs from "../components/positions-tabs";
@@ -14,18 +14,18 @@ export default async function PositionsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="포지션"
-        title="모델별 실행 상태와 체결 흐름"
-        description="오픈 포지션, 최신 진입 계획, 최근 체결 로그를 모델 단위로 분리해서 봅니다. intrabar 체결과 종료도 여기서 바로 확인할 수 있습니다."
+        eyebrow="Positions"
+        title="Execution State And Audit Trail"
+        description="Review open positions, recent crypto fills, and the latest signal-audit rows that explain why a symbol was accepted or filtered."
         actions={[
-          { href: "/settings", label: "설정 열기", tone: "primary" },
-          { href: "/models", label: "모델 성과 보기", tone: "ghost" },
+          { href: "/settings", label: "Open Settings", tone: "primary" },
+          { href: "/models", label: "Model Performance", tone: "ghost" },
         ]}
       />
 
       {!data.ready ? (
         <section className="warning-card">
-          <strong>포지션 데이터를 불러오지 못했습니다.</strong>
+          <strong>Could not load position data.</strong>
           {data.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
@@ -34,30 +34,30 @@ export default async function PositionsPage() {
 
       <section className="kpi-row">
         <MetricCard
-          label="엔진 하트비트"
-          value={data.heartbeat ? formatTs(data.heartbeat.last_seen_at) : "데이터 없음"}
-          meta={data.heartbeat?.engine_name || "엔진 미확인"}
+          label="Engine heartbeat"
+          value={data.heartbeat ? formatTs(data.heartbeat.last_seen_at) : "-"}
+          meta={data.heartbeat?.engine_name || "engine offline"}
           tone="cyan"
           icon={Activity}
         />
         <MetricCard
-          label="오픈 포지션"
+          label="Open positions"
           value={String(snapshot?.openPositionCount || 0)}
-          meta="전체 모델 합계"
+          meta="all crypto models"
           tone="amber"
           icon={Wallet}
         />
         <MetricCard
-          label="최신 사이클"
-          value={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
-          meta={`최신 신호 ${snapshot?.latestSignalCount || 0}건`}
+          label="Latest signal audit"
+          value={snapshot?.latestSignalAuditCycleAt ? formatTs(snapshot.latestSignalAuditCycleAt) : "-"}
+          meta={`rows ${snapshot?.latestSignalAuditCount || 0}`}
           tone="green"
-          icon={TimerReset}
+          icon={SearchCheck}
         />
         <MetricCard
-          label="최근 체결 로그"
+          label="Recent crypto fills"
           value={String(snapshot?.recentTradeCount || 0)}
-          meta="intrabar / 배치 포함"
+          meta="demo path trade log"
           icon={Crosshair}
         />
       </section>
@@ -65,6 +65,7 @@ export default async function PositionsPage() {
       <PositionsTabs
         openPositions={data.openPositions}
         setupRows={data.setupRows}
+        signalAuditRows={data.signalAuditRows}
         recentTradeRows={data.recentTradeRows}
       />
     </>

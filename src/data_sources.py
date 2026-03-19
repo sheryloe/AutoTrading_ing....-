@@ -2250,6 +2250,78 @@ class MacroMarketClient:
             return dict(self._rt_cache_quotes), dict(self._rt_cache_meta)
         return {}, {}
 
+    def fetch_realtime_quotes_for_symbols(
+        self,
+        symbols: list[str] | tuple[str, ...] | set[str],
+        sources_csv: str = "binance,bybit",
+        binance_api_key: str = "",
+        binance_api_secret: str = "",
+    ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+        requested: list[str] = []
+        for raw in list(symbols or []):
+            sym = str(raw or "").upper().strip()
+            if not sym:
+                continue
+            if not sym.endswith("USDT"):
+                sym = f"{sym}USDT"
+            if sym not in requested:
+                requested.append(sym)
+        if not requested:
+            return {}, {}
+
+        sources = [
+            s.strip().lower()
+            for s in str(sources_csv or "binance,bybit").split(",")
+            if s.strip()
+        ]
+        if not sources:
+            sources = ["binance", "bybit"]
+        key = tuple(sorted(set(sources)))
+
+        quotes: dict[str, float] = {}
+        meta: dict[str, dict[str, Any]] = {}
+        if "binance" in key:
+            for symbol in requested:
+                try:
+                    row = self._fetch_binance_quote(symbol, binance_api_key=binance_api_key)
+                except Exception:
+                    row = None
+                if not isinstance(row, dict):
+                    continue
+                price = float(row.get("price") or 0.0)
+                if price <= 0.0:
+                    continue
+                quotes[symbol] = price
+                meta[symbol] = {
+                    "change_24h": float(row.get("change_24h") or 0.0),
+                    "volume_24h": float(row.get("volume_24h") or 0.0),
+                    "realtime_source": "binance_symbol",
+                    "api_key_auth": bool(str(binance_api_key or "").strip()),
+                    "api_credentials_configured": bool(
+                        str(binance_api_key or "").strip() and str(binance_api_secret or "").strip()
+                    ),
+                }
+        if "bybit" in key:
+            for symbol in requested:
+                try:
+                    row = self._fetch_bybit_public_quote(symbol)
+                except Exception:
+                    row = None
+                if not isinstance(row, dict):
+                    continue
+                price = float(row.get("price") or 0.0)
+                if price <= 0.0:
+                    continue
+                prev = dict(meta.get(symbol) or {})
+                quotes[symbol] = price
+                meta[symbol] = {
+                    "change_24h": float(row.get("change_24h") or prev.get("change_24h") or 0.0),
+                    "volume_24h": max(float(row.get("volume_24h") or 0.0), float(prev.get("volume_24h") or 0.0)),
+                    "realtime_source": "bybit_public_symbol",
+                    "fallback_source": str(prev.get("realtime_source") or ""),
+                }
+        return quotes, meta
+
     def _fetch_binance_quotes(
         self,
         binance_api_key: str = "",
@@ -2289,6 +2361,40 @@ class MacroMarketClient:
             }
         return quotes, meta
 
+    def _fetch_binance_quote(
+        self,
+        symbol: str,
+        binance_api_key: str = "",
+    ) -> dict[str, Any] | None:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return None
+        headers: dict[str, str] = {}
+        api_key = str(binance_api_key or "").strip()
+        if api_key:
+            headers["X-MBX-APIKEY"] = api_key
+        res = self.session.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={"symbol": sym},
+            headers=headers or None,
+            timeout=self.timeout_seconds,
+        )
+        if res.status_code == 400:
+            return None
+        res.raise_for_status()
+        row = res.json()
+        if not isinstance(row, dict):
+            return None
+        price = float(row.get("lastPrice") or 0.0)
+        if price <= 0.0:
+            return None
+        return {
+            "symbol": sym,
+            "price": float(price),
+            "change_24h": float(row.get("priceChangePercent") or 0.0),
+            "volume_24h": float(row.get("quoteVolume") or 0.0),
+        }
+
     def _fetch_bybit_public_quotes(self) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
         quotes: dict[str, float] = {}
         meta: dict[str, dict[str, Any]] = {}
@@ -2316,6 +2422,35 @@ class MacroMarketClient:
                 "realtime_source": "bybit_public",
             }
         return quotes, meta
+
+    def _fetch_bybit_public_quote(self, symbol: str) -> dict[str, Any] | None:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return None
+        res = self.session.get(
+            "https://api.bybit.com/v5/market/tickers",
+            params={"category": "linear", "symbol": sym},
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        body = res.json()
+        rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+        if not isinstance(rows, list):
+            return None
+        for row in rows:
+            row_symbol = str(row.get("symbol") or "").upper().strip()
+            if row_symbol != sym:
+                continue
+            price = float(row.get("lastPrice") or 0.0)
+            if price <= 0.0:
+                return None
+            return {
+                "symbol": sym,
+                "price": float(price),
+                "change_24h": float(row.get("price24hPcnt") or 0.0) * 100.0,
+                "volume_24h": float(row.get("turnover24h") or 0.0),
+            }
+        return None
 
     def fetch_binance_5m_closes(
         self,

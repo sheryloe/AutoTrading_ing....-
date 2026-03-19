@@ -63,6 +63,15 @@ a {
   text-decoration: none;
 }
 
+code {
+  padding: 0.08rem 0.38rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 16, 25, 0.92);
+  font-family: var(--font-display), "Space Grotesk", monospace;
+  font-size: 0.88em;
+}
+
 button,
 input,
 select,
