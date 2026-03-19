@@ -9673,13 +9673,10 @@ class TradingEngine:
                 coingecko_api_key=self.settings.coingecko_api_key,
             )
         except Exception as exc:  # noqa: BLE001
-            if rt_prices:
-                rows = []
-            else:
-                if not self.bybit.enabled:
-                    with self._lock:
-                        self.state.bybit_error = f"macro_fetch_failed: {exc}"
-                return {}
+            rows = []
+            if not self.bybit.enabled:
+                with self._lock:
+                    self.state.bybit_error = f"macro_fetch_failed: {exc}"
         rows_all = list(rows or [])
         row_symbols_all = {
             f"{str(row.get('symbol') or '').upper().strip()}USDT"
