@@ -28,18 +28,29 @@ jobs:
       - name: Inject public Supabase config into Pages HTML
         env:
           SUPABASE_URL_SECRET: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL_SECRET_NEXT_PUBLIC: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY_SECRET_NEXT_PUBLIC: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_URL_VAR: ${{ vars.SUPABASE_URL }}
+          SUPABASE_URL_VAR_NEXT_PUBLIC: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY_VAR: ${{ vars.SUPABASE_ANON_KEY }}
+          SUPABASE_ANON_KEY_VAR_NEXT_PUBLIC: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import os
 
-          supabase_url = (os.environ.get("SUPABASE_URL_SECRET", "").strip() or os.environ.get("SUPABASE_URL_VAR", "").strip())
+          supabase_url = (
+              os.environ.get("SUPABASE_URL_SECRET", "").strip()
+              or os.environ.get("SUPABASE_URL_SECRET_NEXT_PUBLIC", "").strip()
+              or os.environ.get("SUPABASE_URL_VAR", "").strip()
+              or os.environ.get("SUPABASE_URL_VAR_NEXT_PUBLIC", "").strip()
+          )
           supabase_anon_key = (
               os.environ.get("SUPABASE_ANON_KEY_SECRET", "").strip()
+              or os.environ.get("SUPABASE_ANON_KEY_SECRET_NEXT_PUBLIC", "").strip()
               or os.environ.get("SUPABASE_ANON_KEY_VAR", "").strip()
+              or os.environ.get("SUPABASE_ANON_KEY_VAR_NEXT_PUBLIC", "").strip()
           )
 
           replacements = {
