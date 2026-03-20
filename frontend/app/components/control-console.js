@@ -277,7 +277,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "runtime_save_failed");
       }
-      setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 8분 배치부터 새 규칙이 반영됩니다.");
+      setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 1분 배치부터 새 규칙이 반영됩니다.");
       if (sourceGuard.autoRepair) {
         setRuntimeMessage("Runtime profile saved. Default demo data sources were restored so the next batch can keep paper trading alive.");
       }
@@ -425,7 +425,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           </p>
           {!writeReady ? (
             <p className="error-line">
-              먼저 Vercel에 `SERVICE_ADMIN_TOKEN`, `SERVICE_MASTER_KEY`, `SUPABASE_SECRET_KEY`를 모두 넣어야 저장 기능이 활성화됩니다.
+              먼저 Vercel에 `SERVICE_ADMIN_TOKEN`, `SERVICE_MASTER_KEY`, `SUPABASE_SERVICE_ROLE_KEY`(또는 `SUPABASE_SECRET_KEY`)를 모두 넣어야 저장 기능이 활성화됩니다.
             </p>
           ) : null}
           {writeReady && !hasAdminToken ? <p className="error-line">저장 전에 관리자 토큰을 한 번 입력해 주세요.</p> : null}
@@ -938,7 +938,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <p className="status-line full-span">
-            실행 문구는 <strong>{RESET_CONFIRM_TEXT}</strong> 입니다. 이 리셋은 현재 Supabase에 쌓인 선물 데모 상태를 즉시 비우고, 다음 8분 배치가 시드 {resetSeedUsdt || "10000"} USDT에서 다시 시작하게 만듭니다.
+            실행 문구는 <strong>{RESET_CONFIRM_TEXT}</strong> 입니다. 이 리셋은 현재 Supabase에 쌓인 선물 데모 상태를 즉시 비우고, 다음 1분 배치가 시드 {resetSeedUsdt || "10000"} USDT에서 다시 시작하게 만듭니다.
           </p>
 
           <div className="button-row full-span">

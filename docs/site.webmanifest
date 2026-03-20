@@ -1,10 +1,10 @@
 {
   "name": "AI_Auto",
   "short_name": "AI_Auto",
-  "description": "???? futures demo ???? ??? ?? ??.",
+  "description": "AI_Auto 선물 데모 대시보드와 리포트.",
   "lang": "ko-KR",
-  "start_url": "https://sheryloe.github.io/AutoTrading_ing....-/",
-  "scope": "https://sheryloe.github.io/AutoTrading_ing....-/",
+  "start_url": "https://sheryloe.github.io/Automethemoney/",
+  "scope": "https://sheryloe.github.io/Automethemoney/",
   "display": "standalone",
   "background_color": "#081019",
   "theme_color": "#081019"

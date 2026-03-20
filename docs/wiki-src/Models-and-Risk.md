@@ -1,6 +1,6 @@
 # 모델과 리스크 기준
 
-> [Prev: Runtime Configuration](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Runtime-Configuration) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Data State Reference](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Data-State-Reference)
+> [Prev: Runtime Configuration](https://github.com/sheryloe/Automethemoney/wiki/Runtime-Configuration) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Data State Reference](https://github.com/sheryloe/Automethemoney/wiki/Data-State-Reference)
 
 ---
 
