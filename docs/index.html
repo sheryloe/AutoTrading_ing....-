@@ -157,6 +157,8 @@
         const MODEL_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D" };
         const MODEL_TARGETS = { A: "stat-model-a", B: "stat-model-b", C: "stat-model-c", D: "stat-model-d" };
         const EQUITY_BASE = 10000;
+        const DAILY_PNL_HISTORY_DAYS = 60;
+        const DAILY_PNL_ROWS_LIMIT = DAILY_PNL_HISTORY_DAYS * MODEL_IDS.length;
 
         let _supabase;
         let _chart;
@@ -214,6 +216,27 @@
             return ((realized + openUnrealized) / EQUITY_BASE) * 100;
         }
 
+        function buildLatestByModel(dailyRows) {
+            const latestByModel = new Map();
+            for (const row of dailyRows) {
+                const modelId = String(row.model_id || "").toUpperCase();
+                if (!modelId || latestByModel.has(modelId)) continue;
+                latestByModel.set(modelId, row);
+            }
+            return latestByModel;
+        }
+
+        function buildOpenPositionsByModel(positions) {
+            const map = new Map();
+            MODEL_IDS.forEach((modelId) => map.set(modelId, []));
+            for (const row of positions) {
+                const modelId = String(row.model_id || "").toUpperCase();
+                if (!map.has(modelId)) map.set(modelId, []);
+                map.get(modelId).push(row);
+            }
+            return map;
+        }
+
         function setHeadline(heartbeat, positions) {
             const target = document.getElementById("headline-status");
             if (!target) return;
@@ -224,13 +247,7 @@
             target.innerText = `3월 20일부터 계속 동작중 · 최근 동기화 ${dateLabel(heartbeat.last_seen_at)} · OPEN ${positions.length}건`;
         }
 
-        function renderSummaryCards(dailyRows, positions) {
-            const latestByModel = new Map();
-            for (const row of dailyRows) {
-                const modelId = String(row.model_id || "").toUpperCase();
-                if (!latestByModel.has(modelId)) latestByModel.set(modelId, row);
-            }
-
+        function renderSummaryCards(latestByModel, positionsByModel) {
             MODEL_IDS.forEach((modelId) => {
                 const latest = latestByModel.get(modelId);
                 const el = document.getElementById(MODEL_TARGETS[modelId]);
@@ -240,7 +257,7 @@
                     el.classList.remove("pnl-plus", "pnl-minus");
                     return;
                 }
-                const modelPositions = positions.filter((row) => String(row.model_id || "").toUpperCase() === modelId);
+                const modelPositions = positionsByModel.get(modelId) || [];
                 const pct = liveModelPct(latest, modelPositions);
                 el.innerText = formatPct(pct);
                 el.classList.toggle("pnl-plus", pct >= 0);
@@ -248,7 +265,7 @@
             });
         }
 
-        function renderChart(dailyRows, positions) {
+        function renderChart(dailyRows, positionsByModel, latestByModel) {
             const mount = document.querySelector("#multi-model-chart");
             if (!mount) return;
             const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "")))]
@@ -276,15 +293,10 @@
                 lookup[modelId][day] = Number(modelReturnPct(row).toFixed(2));
             });
 
-            const latestByModel = new Map();
-            dailyRows.forEach((row) => {
-                const modelId = String(row.model_id || "").toUpperCase();
-                if (!latestByModel.has(modelId)) latestByModel.set(modelId, row);
-            });
             const latestDay = orderedDays[orderedDays.length - 1];
             if (latestDay) {
                 MODEL_IDS.forEach((modelId) => {
-                    const modelPositions = positions.filter((row) => String(row.model_id || "").toUpperCase() === modelId);
+                    const modelPositions = positionsByModel.get(modelId) || [];
                     const latest = latestByModel.get(modelId);
                     if (latest) {
                         lookup[modelId][latestDay] = Number(liveModelPct(latest, modelPositions).toFixed(2));
@@ -385,16 +397,15 @@
             const [dailyRes, positionsRes, heartbeatRes] = await Promise.all([
                 _supabase
                     .from("daily_model_pnl")
-                    .select("day,model_id,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,market,updated_at")
+                    .select("day,model_id,total_pnl_usd,realized_pnl_usd")
                     .eq("market", "crypto")
                     .order("day", { ascending: false })
-                    .limit(120),
+                    .limit(DAILY_PNL_ROWS_LIMIT),
                 _supabase
                     .from("positions")
-                    .select("model_id,symbol,side,status,opened_at,updated_at,unrealized_pnl_usd,position_meta")
+                    .select("model_id,unrealized_pnl_usd")
                     .eq("status", "open")
-                    .order("opened_at", { ascending: false })
-                    .limit(24),
+                    .limit(80),
                 _supabase
                     .from("engine_heartbeat")
                     .select("last_seen_at")
@@ -415,10 +426,12 @@
             const dailyRows = Array.isArray(dailyRes.data) ? dailyRes.data : [];
             const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
             const heartbeat = heartbeatRes.data?.[0] || null;
+            const latestByModel = buildLatestByModel(dailyRows);
+            const positionsByModel = buildOpenPositionsByModel(positions);
 
             setHeadline(heartbeat, positions);
-            renderSummaryCards(dailyRows, positions);
-            renderChart(dailyRows, positions);
+            renderSummaryCards(latestByModel, positionsByModel);
+            renderChart(dailyRows, positionsByModel, latestByModel);
             renderDailyPnlLog(dailyRows);
         }
 

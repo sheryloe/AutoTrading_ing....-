@@ -2155,9 +2155,6 @@ class TradingEngine:
             return "dynamic"
         return "rank_lock"
 
-    def _crypto_dynamic_universe_enabled(self) -> bool:
-        return bool(self._crypto_universe_mode() == "dynamic")
-
     def _crypto_fixed_symbol_lock(self, symbol: str) -> bool:
         configured_symbols = set(self._configured_crypto_symbols())
         symbol_u = str(symbol or "").upper().strip()

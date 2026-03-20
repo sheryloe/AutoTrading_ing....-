@@ -114,14 +114,11 @@ def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]
 def normalize_runtime_universe_mode(raw: dict[str, Any] | None) -> dict[str, Any]:
     payload = dict(raw or {})
     mode_raw = _to_str(payload.get("CRYPTO_UNIVERSE_MODE"), "").lower()
-    legacy_dynamic = _to_bool(payload.get("CRYPTO_DYNAMIC_UNIVERSE_ENABLED"), False)
     if mode_raw in CRYPTO_UNIVERSE_MODE_VALUES:
         mode = mode_raw
     else:
-        # Legacy migration policy: dynamic=true is migrated to rank_lock.
+        # Legacy migration policy: unknown or legacy dynamic flags resolve to rank_lock.
         mode = CRYPTO_UNIVERSE_MODE_DEFAULT
-        if legacy_dynamic:
-            mode = CRYPTO_UNIVERSE_MODE_DEFAULT
     payload["CRYPTO_UNIVERSE_MODE"] = mode
     payload["CRYPTO_DYNAMIC_UNIVERSE_ENABLED"] = bool(mode == "dynamic")
     return payload

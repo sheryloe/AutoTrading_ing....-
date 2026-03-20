@@ -1,90 +1,106 @@
 # Automethemoney
 
-`Automethemoney`는 크립토 선물 데모 자동매매를 운영자 시점에서 관리하는 콘솔형 프로젝트입니다.
-Next.js 운영 화면, Python 엔진, Supabase 상태 저장, GitHub Actions 배치를 하나의 흐름으로 묶어 모델 성과와 포지션을 계속 추적합니다.
+Automethemoney는 Python 트레이딩 엔진, Supabase 상태 저장, Next.js 운영 콘솔, GitHub Pages 리포트, GitHub Actions 배치를 묶어 운용하는 자동매매 프로젝트입니다.
 
-- 저장소: `https://github.com/sheryloe/Automethemoney`
+- Repository: `https://github.com/sheryloe/Automethemoney`
 - GitHub Pages: `https://sheryloe.github.io/Automethemoney/`
 
-## 2026-03-17 기준 현재 상태
+## 현재 운영 기준 (2026-03-20)
 
-- 모델 `A/B/C/D` 크립토 플래너 운영
-- `signal -> setup -> position -> pnl` 전 구간에서 `long/short` 지원
-- GitHub Actions `cloud-cycle`은 `1분`마다 기동
-- 기본 스캔 간격은 `SCAN_INTERVAL_SECONDS=480` 기준
-- 실행 타깃 기본값은 `paper`
-- GitHub Pages는 모델 카드와 그래프 중심으로 정리
-- Supabase 동기화는 heartbeat, setup, positions, daily PnL까지 연결
+- 유니버스: `CRYPTO_UNIVERSE_MODE=rank_lock` (시총 상위 1~20 고정 운용)
+- 모델: `A/B/C/D` 동시 운용, `long/short` 시그널 생성
+- 사이클: 1분 주기 (`SCAN_INTERVAL_SECONDS=60`)
+- 스케줄: GitHub Actions `cloud-cycle` + 외부 cron 연계 구조 유지
+- Supabase 보존 정책: 최근 7일 (`SUPABASE_HISTORY_RETENTION_DAYS=7`)
+- Prune 주기: 6시간 (`SUPABASE_PRUNE_INTERVAL_SECONDS=21600`)
 
-## 핵심 기능
+## 아키텍처
 
-- 모델별 setup, 오픈 포지션, 최근 체결, 일별 손익 추적
-- intrabar 체결 시뮬레이션과 TP/SL 반영
-- Supabase 기반 런타임 설정 저장과 상태 조회
-- GitHub Actions 기반 서버리스 배치 운영
-- GitHub Pages 요약 화면과 Next.js 운영 콘솔 분리
+1. `scripts/run_batch_cycle.py`가 1회 사이클 실행
+2. 엔진이 시그널/포지션/손익 상태 계산
+3. 결과를 Supabase(`engine_heartbeat`, `model_setups`, `model_signal_audit`, `positions`, `daily_model_pnl`)에 동기화
+4. Next.js 콘솔과 GitHub Pages가 Supabase를 조회해 대시보드 반영
+
+## 런타임 설정 우선순위
+
+설정 해석 우선순위는 아래와 같습니다.
+
+1. ENV
+2. runtime profile (`runtime_settings.json`)
+3. 코드 기본값
+
+즉, runtime profile이 있어도 ENV가 항상 우선합니다.
 
 ## 저장소 구조
 
+- `src/`: 트레이딩 엔진 및 데이터/동기화 로직
+- `scripts/`: 배치 실행, 리포트, 유지보수 스크립트
 - `frontend/`: Next.js 운영 콘솔
-- `src/`: Python 트레이딩 엔진
-- `scripts/`: 배치 실행 및 보조 스크립트
-- `docs/`: GitHub Pages와 운영 문서
-- `wiki/`: 운영 메모와 로드맵
+- `docs/`: GitHub Pages 및 공개 데이터
+- `wiki/`: 운영 문서
 
-## 주요 데이터 테이블
+## 빠른 시작
 
-- `engine_heartbeat`
-- `engine_runtime_config`
-- `model_setups`
-- `model_signal_audit`
-- `positions`
-- `daily_model_pnl`
-- `engine_state_blobs`
-
-스키마와 설정 문서:
-
-- `docs/SUPABASE_CORE_SCHEMA_20260315.sql`
-- `docs/SUPABASE_SCHEMA_20260315.sql`
-- `docs/VERCEL_SUPABASE_SETUP_20260315.md`
-
-## 운영 흐름
-
-1. GitHub Actions가 1분마다 `scripts/run_batch_cycle.py`를 실행합니다.
-2. 엔진은 런타임 설정과 시장 데이터를 읽어 setup과 포지션을 갱신합니다.
-3. 결과는 Supabase와 `docs/data/daily_pnl/`에 반영됩니다.
-4. Next.js 콘솔과 GitHub Pages가 이 상태를 읽어 화면에 보여줍니다.
-
-## 로컬 실행
-
-프런트 설치:
-
-```bash
-cd frontend
-npm install
-```
-
-파이썬 의존성 설치:
+### 1) Python 의존성 설치
 
 ```bash
 pip install -r requirements.txt
 ```
 
-문법 점검:
+### 2) 런타임 설정 준비
 
 ```bash
-python -m py_compile src/engine.py scripts/run_batch_cycle.py
+copy .env.example .env
+copy runtime_settings.example.json runtime_settings.json
 ```
 
-## 문서 바로가기
+### 3) 단일 배치 사이클 실행
 
-- `wiki/Home.md`
-- `wiki/Service-Roadmap.md`
-- `docs/wiki-src/Home.md`
+```bash
+python scripts/run_batch_cycle.py
+```
 
-## 다음 확인 항목
+### 4) 웹 서버 실행 (로컬)
 
-- A/D 모델 숏 빈도와 체결 품질 추가 검증
-- `paper`와 `live` 권한/자금/문서 완전 분리
-- 운영 Kill Switch와 손실 제한 가드 명확화
-- Notion 연동 경로가 준비되면 운영 로그 동기화 추가
+```bash
+python web_app.py
+```
+
+### 5) Next.js 콘솔 실행 (선택)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## 운영 리셋
+
+서비스 초기화는 기존 API 경로를 사용합니다.
+
+- Endpoint: `POST /api/service/reset`
+- Body:
+  - `adminToken`
+  - `seedUsdt` (예: `10000`)
+  - `confirmText` (`"RESET FUTURES DEMO"`)
+
+## Supabase 관련 문서
+
+- `docs/SUPABASE_CORE_SCHEMA_20260315.sql`
+- `docs/SUPABASE_SCHEMA_20260315.sql`
+- `docs/SUPABASE_PATCH_TOP20_20260320.sql`
+- `docs/VERCEL_SUPABASE_SETUP_20260315.md`
+
+## 최근 반영 포인트
+
+- Top20 확장 시 FK 안정화: `instruments` 선행 upsert
+- 7일 보존 정책 + prune interval 도입
+- 최신 사이클 count 집계 정확도 보정
+- GitHub Pages 기준 문구 `3월 20일부터 계속 동작중` 반영
+
+## 점검 체크리스트
+
+- `cloud-cycle` 스케줄이 `*/1 * * * *`인지 확인
+- heartbeat가 분 단위로 연속 갱신되는지 확인
+- 최신 사이클에서 모델 A/B/C/D 신호가 정상 집계되는지 확인
+- Supabase prune 후 최근 데이터가 유지되는지 확인
