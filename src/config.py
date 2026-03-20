@@ -64,6 +64,8 @@ def _to_grade(value: Any, default: str = "C") -> str:
 
 CRYPTO_SOURCE_ORDER_DEFAULT = ("binance", "bybit", "coingecko")
 CRYPTO_REALTIME_SOURCE_DEFAULT = ("binance", "bybit")
+CRYPTO_UNIVERSE_MODE_DEFAULT = "rank_lock"
+CRYPTO_UNIVERSE_MODE_VALUES = {"rank_lock", "fixed_symbols", "dynamic"}
 
 
 def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -106,6 +108,22 @@ def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]
     payload["CRYPTO_USE_COINGECKO_DATA"] = bool(flags["coingecko"])
     payload["MACRO_REALTIME_SOURCES"] = ",".join(realtime_sources)
     payload["MACRO_UNIVERSE_SOURCE"] = "coingecko"
+    return payload
+
+
+def normalize_runtime_universe_mode(raw: dict[str, Any] | None) -> dict[str, Any]:
+    payload = dict(raw or {})
+    mode_raw = _to_str(payload.get("CRYPTO_UNIVERSE_MODE"), "").lower()
+    legacy_dynamic = _to_bool(payload.get("CRYPTO_DYNAMIC_UNIVERSE_ENABLED"), False)
+    if mode_raw in CRYPTO_UNIVERSE_MODE_VALUES:
+        mode = mode_raw
+    else:
+        # Legacy migration policy: dynamic=true is migrated to rank_lock.
+        mode = CRYPTO_UNIVERSE_MODE_DEFAULT
+        if legacy_dynamic:
+            mode = CRYPTO_UNIVERSE_MODE_DEFAULT
+    payload["CRYPTO_UNIVERSE_MODE"] = mode
+    payload["CRYPTO_DYNAMIC_UNIVERSE_ENABLED"] = bool(mode == "dynamic")
     return payload
 
 
@@ -230,6 +248,7 @@ class Settings:
     crypto_use_binance_data: bool
     crypto_use_bybit_data: bool
     crypto_use_coingecko_data: bool
+    crypto_universe_mode: str
     bybit_symbols: str
     crypto_dynamic_universe_enabled: bool
     crypto_priority_symbols: str
@@ -282,6 +301,8 @@ class Settings:
     supabase_url: str
     supabase_secret_key: str
     supabase_sync_timeout_seconds: int
+    supabase_history_retention_days: int
+    supabase_prune_interval_seconds: int
     openai_budget_state_file: str
     model_file: str
     state_file: str
@@ -295,6 +316,7 @@ class Settings:
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> "Settings":
         data = normalize_runtime_data_sources(data)
+        data = normalize_runtime_universe_mode(data)
         trade_mode = _to_str(data.get("TRADE_MODE"), "paper").lower()
         if trade_mode not in {"paper", "live"}:
             trade_mode = "paper"
@@ -306,7 +328,7 @@ class Settings:
             enable_meme_market=_to_bool(data.get("ENABLE_MEME_MARKET"), False),
             live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
             live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
-            scan_interval_seconds=max(5, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 480)),
+            scan_interval_seconds=max(60, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 60)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),
             take_profit_pct=max(0.01, _to_float(data.get("TAKE_PROFIT_PCT"), 0.18)),
@@ -444,6 +466,12 @@ class Settings:
             crypto_use_binance_data=_to_bool(data.get("CRYPTO_USE_BINANCE_DATA"), True),
             crypto_use_bybit_data=_to_bool(data.get("CRYPTO_USE_BYBIT_DATA"), True),
             crypto_use_coingecko_data=_to_bool(data.get("CRYPTO_USE_COINGECKO_DATA"), True),
+            crypto_universe_mode=(
+                _to_str(data.get("CRYPTO_UNIVERSE_MODE"), CRYPTO_UNIVERSE_MODE_DEFAULT).lower()
+                if _to_str(data.get("CRYPTO_UNIVERSE_MODE"), CRYPTO_UNIVERSE_MODE_DEFAULT).lower()
+                in CRYPTO_UNIVERSE_MODE_VALUES
+                else CRYPTO_UNIVERSE_MODE_DEFAULT
+            ),
             bybit_symbols=_to_str(data.get("BYBIT_SYMBOLS"), "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
             crypto_dynamic_universe_enabled=_to_bool(data.get("CRYPTO_DYNAMIC_UNIVERSE_ENABLED"), False),
             crypto_priority_symbols=_to_str(data.get("CRYPTO_PRIORITY_SYMBOLS"), ""),
@@ -513,6 +541,14 @@ class Settings:
                 "",
             ),
             supabase_sync_timeout_seconds=max(5, _to_int(data.get("SUPABASE_SYNC_TIMEOUT_SECONDS"), 15)),
+            supabase_history_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_HISTORY_RETENTION_DAYS"), 7)),
+            ),
+            supabase_prune_interval_seconds=max(
+                300,
+                _to_int(data.get("SUPABASE_PRUNE_INTERVAL_SECONDS"), 21600),
+            ),
             openai_budget_state_file=_to_str(data.get("OPENAI_BUDGET_STATE_FILE"), "reports/openai_budget_state.json"),
             model_file=_to_str(data.get("MODEL_FILE"), "model_online.json"),
             state_file=_to_str(data.get("STATE_FILE"), "state.json"),
@@ -539,6 +575,7 @@ def load_settings(env_path: str = ".env") -> Settings:
     merged = dict(env_file)
     merged.update(dict(os.environ))
     merged = normalize_runtime_data_sources(merged)
+    merged = normalize_runtime_universe_mode(merged)
     settings = Settings.from_mapping(merged)
     runtime_path = Path(settings.runtime_settings_file)
     if runtime_path.exists():
@@ -547,9 +584,11 @@ def load_settings(env_path: str = ".env") -> Settings:
         except Exception:
             runtime = {}
         if isinstance(runtime, dict) and runtime:
-            with_runtime = dict(merged)
-            with_runtime.update(runtime)
+            # ENV values must override runtime profile values.
+            with_runtime = dict(runtime)
+            with_runtime.update(merged)
             with_runtime = normalize_runtime_data_sources(with_runtime)
+            with_runtime = normalize_runtime_universe_mode(with_runtime)
             settings = Settings.from_mapping(with_runtime)
     return settings
 
@@ -566,6 +605,7 @@ def save_runtime_overrides(settings: Settings, updates: dict[str, Any]) -> None:
             pass
     payload.update(updates)
     payload = normalize_runtime_data_sources(payload)
+    payload = normalize_runtime_universe_mode(payload)
     runtime_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 

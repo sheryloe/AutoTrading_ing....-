@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.config import load_settings, normalize_runtime_data_sources
+from src.config import load_settings, normalize_runtime_data_sources, normalize_runtime_universe_mode
 from src.engine import TradingEngine
 from src.supabase_sync import SupabaseSyncClient
 
@@ -62,6 +62,7 @@ def _hydrate_runtime_from_supabase() -> None:
     runtime_payload = runtime_result.get("payload") if bool(runtime_result.get("ok")) else None
     if isinstance(runtime_payload, dict) and runtime_payload:
         normalized_payload = normalize_runtime_data_sources(runtime_payload)
+        normalized_payload = normalize_runtime_universe_mode(normalized_payload)
         if json.dumps(normalized_payload, ensure_ascii=True, sort_keys=True) != json.dumps(
             runtime_payload, ensure_ascii=True, sort_keys=True
         ):

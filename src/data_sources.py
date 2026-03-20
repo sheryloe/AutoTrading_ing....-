@@ -2147,6 +2147,34 @@ class MacroMarketClient:
         self._kline_cache_ts: dict[str, float] = {}
         self._kline_ohlc_cache: dict[str, list[dict[str, Any]]] = {}
         self._kline_ohlc_cache_ts: dict[str, float] = {}
+        self._usage_started_ts: int = int(time.time())
+        self._usage_counters: dict[str, int] = {
+            "top_markets_calls": 0,
+            "realtime_quotes_calls": 0,
+            "binance_quote_batch_calls": 0,
+            "bybit_quote_batch_calls": 0,
+            "binance_symbol_quote_calls": 0,
+            "bybit_symbol_quote_calls": 0,
+            "coingecko_symbol_quote_calls": 0,
+            "binance_5m_kline_calls": 0,
+            "binance_1m_kline_calls": 0,
+            "coingecko_market_page_calls": 0,
+            "cmc_market_calls": 0,
+        }
+
+    def _usage_inc(self, key: str, count: int = 1) -> None:
+        if key not in self._usage_counters:
+            self._usage_counters[key] = 0
+        self._usage_counters[key] = int(self._usage_counters.get(key, 0)) + max(0, int(count))
+
+    def usage_snapshot(self) -> dict[str, Any]:
+        now = int(time.time())
+        elapsed = max(1, int(now - int(self._usage_started_ts or now)))
+        return {
+            "started_ts": int(self._usage_started_ts),
+            "elapsed_seconds": int(elapsed),
+            "counters": {str(k): int(v) for k, v in dict(self._usage_counters).items()},
+        }
 
     def fetch_top_markets(
         self,
@@ -2155,6 +2183,7 @@ class MacroMarketClient:
         cmc_api_key: str = "",
         coingecko_api_key: str = "",
     ) -> list[dict[str, Any]]:
+        self._usage_inc("top_markets_calls", 1)
         n = max(50, min(2000, int(limit)))
         src = str(source or "coingecko").lower()
         cache_key = (src, n, bool(str(cmc_api_key).strip()), bool(str(coingecko_api_key).strip()))
@@ -2208,10 +2237,12 @@ class MacroMarketClient:
         if self._rt_cache_quotes and self._rt_cache_key == cache_key and (now - self._rt_cache_ts) < ttl:
             return dict(self._rt_cache_quotes), dict(self._rt_cache_meta)
 
+        self._usage_inc("realtime_quotes_calls", 1)
         quotes: dict[str, float] = {}
         meta: dict[str, dict[str, Any]] = {}
         if "binance" in key:
             try:
+                self._usage_inc("binance_quote_batch_calls", 1)
                 bq, bm = self._fetch_binance_quotes(
                     binance_api_key=binance_api_key,
                     binance_api_secret=binance_api_secret,
@@ -2222,6 +2253,7 @@ class MacroMarketClient:
                 pass
         if "bybit" in key:
             try:
+                self._usage_inc("bybit_quote_batch_calls", 1)
                 yq, ym = self._fetch_bybit_public_quotes()
                 for symbol, price in yq.items():
                     px = float(price or 0.0)
@@ -2283,6 +2315,7 @@ class MacroMarketClient:
         if "binance" in key:
             for symbol in requested:
                 try:
+                    self._usage_inc("binance_symbol_quote_calls", 1)
                     row = self._fetch_binance_quote(symbol, binance_api_key=binance_api_key)
                 except Exception:
                     row = None
@@ -2304,6 +2337,7 @@ class MacroMarketClient:
         if "bybit" in key:
             for symbol in requested:
                 try:
+                    self._usage_inc("bybit_symbol_quote_calls", 1)
                     row = self._fetch_bybit_public_quote(symbol)
                 except Exception:
                     row = None
@@ -2359,6 +2393,7 @@ class MacroMarketClient:
             params=params,
             timeout=self.timeout_seconds,
         )
+        self._usage_inc("coingecko_symbol_quote_calls", 1)
         res.raise_for_status()
         rows = res.json()
         if not isinstance(rows, list):
@@ -2515,19 +2550,23 @@ class MacroMarketClient:
             }
         return None
 
-    def fetch_binance_5m_closes(
+    def _fetch_binance_interval_closes(
         self,
         symbol: str,
+        *,
+        interval: str,
         limit: int = 360,
         cache_seconds: int = 90,
         binance_api_key: str = "",
+        usage_counter_key: str = "",
     ) -> list[float]:
         sym = str(symbol or "").upper().strip()
         if not sym:
             return []
         n = max(60, min(1000, int(limit)))
         ttl = max(15, min(300, int(cache_seconds)))
-        key = f"{sym}:5m:{n}:{1 if str(binance_api_key or '').strip() else 0}"
+        iv = str(interval or "5m").strip().lower()
+        key = f"{sym}:{iv}:{n}:{1 if str(binance_api_key or '').strip() else 0}"
         now = time.time()
         cached = self._kline_cache.get(key) or []
         ts = float(self._kline_cache_ts.get(key) or 0.0)
@@ -2540,10 +2579,12 @@ class MacroMarketClient:
             headers["X-MBX-APIKEY"] = api_key
         res = self.session.get(
             "https://api.binance.com/api/v3/klines",
-            params={"symbol": sym, "interval": "5m", "limit": n},
+            params={"symbol": sym, "interval": iv, "limit": n},
             headers=headers or None,
             timeout=self.timeout_seconds,
         )
+        if usage_counter_key:
+            self._usage_inc(str(usage_counter_key), 1)
         res.raise_for_status()
         rows = res.json()
         if not isinstance(rows, list):
@@ -2563,6 +2604,70 @@ class MacroMarketClient:
             self._kline_cache_ts[key] = now
             return closes
         return list(cached)
+
+    def fetch_binance_5m_closes(
+        self,
+        symbol: str,
+        limit: int = 360,
+        cache_seconds: int = 90,
+        binance_api_key: str = "",
+    ) -> list[float]:
+        return self._fetch_binance_interval_closes(
+            symbol,
+            interval="5m",
+            limit=limit,
+            cache_seconds=cache_seconds,
+            binance_api_key=binance_api_key,
+            usage_counter_key="binance_5m_kline_calls",
+        )
+
+    def fetch_binance_15m_closes(
+        self,
+        symbol: str,
+        limit: int = 500,
+        cache_seconds: int = 180,
+        binance_api_key: str = "",
+    ) -> list[float]:
+        return self._fetch_binance_interval_closes(
+            symbol,
+            interval="15m",
+            limit=limit,
+            cache_seconds=cache_seconds,
+            binance_api_key=binance_api_key,
+            usage_counter_key="binance_5m_kline_calls",
+        )
+
+    def fetch_binance_1h_closes(
+        self,
+        symbol: str,
+        limit: int = 240,
+        cache_seconds: int = 300,
+        binance_api_key: str = "",
+    ) -> list[float]:
+        return self._fetch_binance_interval_closes(
+            symbol,
+            interval="1h",
+            limit=limit,
+            cache_seconds=cache_seconds,
+            binance_api_key=binance_api_key,
+            usage_counter_key="binance_5m_kline_calls",
+        )
+
+    def fetch_binance_4h_closes(
+        self,
+        symbol: str,
+        limit: int = 240,
+        cache_seconds: int = 600,
+        binance_api_key: str = "",
+    ) -> list[float]:
+        return self._fetch_binance_interval_closes(
+            symbol,
+            interval="4h",
+            limit=limit,
+            cache_seconds=cache_seconds,
+            binance_api_key=binance_api_key,
+            usage_counter_key="binance_5m_kline_calls",
+        )
 
     def fetch_binance_1m_ohlc(
         self,
@@ -2593,6 +2698,7 @@ class MacroMarketClient:
             headers=headers or None,
             timeout=self.timeout_seconds,
         )
+        self._usage_inc("binance_1m_kline_calls", 1)
         res.raise_for_status()
         rows = res.json()
         if not isinstance(rows, list):
@@ -2638,6 +2744,7 @@ class MacroMarketClient:
             "convert": "USD",
         }
         headers = {"X-CMC_PRO_API_KEY": str(api_key).strip()}
+        self._usage_inc("cmc_market_calls", 1)
         res = self.session.get(url, params=params, headers=headers, timeout=self.timeout_seconds)
         res.raise_for_status()
         body = res.json()
@@ -2681,6 +2788,7 @@ class MacroMarketClient:
                     params=params,
                     timeout=self.timeout_seconds,
                 )
+                self._usage_inc("coingecko_market_page_calls", 1)
                 res.raise_for_status()
                 rows = res.json()
             except Exception:

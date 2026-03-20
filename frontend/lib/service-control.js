@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "./supabase-admin";
 import { getServiceProviderDef, SERVICE_PROVIDER_ORDER } from "./service-provider";
 
 export const SERVICE_RUNTIME_BLOB_KEY = "service_runtime_config";
+export const SERVICE_FREE_TIER_BLOB_KEY = "free_tier_capacity_report";
 
 const DEFAULT_SOURCE_ORDER = "binance,bybit,coingecko";
 const DEFAULT_SYMBOLS = "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT";
@@ -18,10 +19,11 @@ const DEFAULT_RUNTIME_CONFIG = {
   OPENAI_REVIEW_ENABLED: false,
   GOOGLE_TREND_ENABLED: false,
   DEMO_SEED_USDT: 10000,
-  SCAN_INTERVAL_SECONDS: 480,
+  SCAN_INTERVAL_SECONDS: 60,
   SIGNAL_COOLDOWN_MINUTES: 10,
   MODEL_AUTOTUNE_INTERVAL_HOURS: 168,
   BYBIT_SYMBOLS: DEFAULT_SYMBOLS,
+  CRYPTO_UNIVERSE_MODE: "rank_lock",
   CRYPTO_DYNAMIC_UNIVERSE_ENABLED: false,
   CRYPTO_PRIORITY_SYMBOLS: "",
   CRYPTO_TUNE_OVERRIDES: {},
@@ -36,10 +38,23 @@ const DEFAULT_RUNTIME_CONFIG = {
   CRYPTO_USE_COINGECKO_DATA: true,
   MACRO_REALTIME_SOURCES: "binance,bybit",
   MACRO_UNIVERSE_SOURCE: "coingecko",
+  MACRO_RANK_MIN: 1,
+  MACRO_RANK_MAX: 20,
   DEMO_ENABLE_MACRO: true,
-  MACRO_TREND_POOL_SIZE: 5,
+  MACRO_TREND_POOL_SIZE: 20,
   MACRO_TREND_RESELECT_SECONDS: 14400,
 };
+
+function normalizeUniverseMode(raw = {}) {
+  const requested = String(raw.CRYPTO_UNIVERSE_MODE || "").trim().toLowerCase();
+  const legacyDynamic = toBool(raw.CRYPTO_DYNAMIC_UNIVERSE_ENABLED, false);
+  if (["rank_lock", "fixed_symbols", "dynamic"].includes(requested)) {
+    return requested;
+  }
+  // Legacy migration policy: dynamic=true is migrated to rank_lock.
+  if (legacyDynamic) return "rank_lock";
+  return "rank_lock";
+}
 
 function normalizeSymbolList(raw) {
   return String(raw || "")
@@ -83,6 +98,10 @@ function collectMutationErrors(results = []) {
     .map((result) => result?.error?.message)
     .filter(Boolean)
     .map((message) => String(message));
+}
+
+function mapRowsByKey(rows = [], key = "provider") {
+  return new Map((rows || []).map((row) => [row?.[key], row]));
 }
 
 function toBool(value, fallback) {
@@ -200,7 +219,7 @@ function normalizeProviderStatus(provider, row) {
     configured: Boolean(row),
     updated_at: row?.updated_at || null,
     meta_json: meta,
-    api_key_hint: String(meta.api_key_hint || "미설정"),
+    api_key_hint: String(meta.api_key_hint || "not_set"),
   };
 }
 
@@ -230,7 +249,8 @@ function computeLiveStatus(runtimeConfig, providerStatuses) {
 
 function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConfig = runtimeConfig) {
   const configuredSymbols = normalizeSymbolList(runtimeConfig.BYBIT_SYMBOLS);
-  const dynamicUniverseEnabled = Boolean(runtimeConfig.CRYPTO_DYNAMIC_UNIVERSE_ENABLED);
+  const universeMode = String(runtimeConfig.CRYPTO_UNIVERSE_MODE || "rank_lock");
+  const dynamicUniverseEnabled = universeMode === "dynamic";
   const liveStatus = computeLiveStatus(runtimeConfig, providerStatuses);
   const sourceConfig = normalizeSourceConfig(rawRuntimeConfig || {});
   const sourceFlags = sourceConfig.flags;
@@ -243,15 +263,22 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
     configSourceValue: `engine_state_blobs.${SERVICE_RUNTIME_BLOB_KEY}`,
     configuredSymbols,
     configuredSymbolCount: configuredSymbols.length,
+    universeMode,
     dynamicUniverseEnabled,
-    symbolModeLabel: dynamicUniverseEnabled
+    symbolModeLabel:
+      universeMode === "rank_lock"
+        ? "Rank lock mode: top market-cap tradable symbols are selected from rank range each cycle."
+        : dynamicUniverseEnabled
       ? "Dynamic rotation mode: BYBIT_SYMBOLS is only a reference or fallback list."
       : "Fixed universe mode: BYBIT_SYMBOLS is the enforced crypto watchlist.",
     liveOrderRoutingLabel: "Demo-only crypto execution path",
     liveOrderSummary: liveStatus.futureLiveEligible
       ? "Even with bybit-live, live flags, and arm enabled, this build still keeps crypto entries on the demo execution path."
       : "The current build does not send real Bybit crypto orders yet; it only prepares future live routing.",
-    symbolSummary: dynamicUniverseEnabled
+    symbolSummary:
+      universeMode === "rank_lock"
+        ? "Rank lock mode ignores BYBIT_SYMBOLS and keeps tradable market-cap symbols inside the rank window."
+        : dynamicUniverseEnabled
       ? "A symbol can still end up as symbol_not_allowed when it falls outside the rotating universe."
       : "A symbol must be present in BYBIT_SYMBOLS to be eligible when dynamic rotation is off.",
     sourceConfigHealthy: !sourceConfig.autoRepaired,
@@ -265,6 +292,8 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
 
 export function normalizeRuntimeConfig(raw = {}) {
   const executionTarget = normalizeExecutionTarget(raw.EXECUTION_TARGET || raw.TRADE_MODE);
+  const universeMode = normalizeUniverseMode(raw);
+  const dynamicUniverseEnabled = universeMode === "dynamic";
   const symbols = String(raw.BYBIT_SYMBOLS || DEFAULT_SYMBOLS)
     .split(",")
     .map((item) => item.trim().toUpperCase())
@@ -301,7 +330,7 @@ export function normalizeRuntimeConfig(raw = {}) {
     GOOGLE_TREND_ENABLED: false,
     DEMO_ENABLE_MACRO: true,
     DEMO_SEED_USDT: demoSeedUsdt,
-    SCAN_INTERVAL_SECONDS: toInt(raw.SCAN_INTERVAL_SECONDS, DEFAULT_RUNTIME_CONFIG.SCAN_INTERVAL_SECONDS, 300),
+    SCAN_INTERVAL_SECONDS: toInt(raw.SCAN_INTERVAL_SECONDS, DEFAULT_RUNTIME_CONFIG.SCAN_INTERVAL_SECONDS, 60),
     SIGNAL_COOLDOWN_MINUTES: toInt(
       raw.SIGNAL_COOLDOWN_MINUTES,
       DEFAULT_RUNTIME_CONFIG.SIGNAL_COOLDOWN_MINUTES,
@@ -310,10 +339,8 @@ export function normalizeRuntimeConfig(raw = {}) {
     ),
     MODEL_AUTOTUNE_INTERVAL_HOURS: [6, 12, 24, 168].includes(autotuneHours) ? autotuneHours : 168,
     BYBIT_SYMBOLS: (symbols.length ? symbols : DEFAULT_SYMBOLS.split(",")).join(","),
-    CRYPTO_DYNAMIC_UNIVERSE_ENABLED: toBool(
-      raw.CRYPTO_DYNAMIC_UNIVERSE_ENABLED,
-      DEFAULT_RUNTIME_CONFIG.CRYPTO_DYNAMIC_UNIVERSE_ENABLED
-    ),
+    CRYPTO_UNIVERSE_MODE: universeMode,
+    CRYPTO_DYNAMIC_UNIVERSE_ENABLED: dynamicUniverseEnabled,
     CRYPTO_PRIORITY_SYMBOLS: prioritySymbols.join(","),
     CRYPTO_TUNE_OVERRIDES: tuneOverrides,
     BYBIT_MAX_POSITIONS: maxPositions,
@@ -331,6 +358,8 @@ export function normalizeRuntimeConfig(raw = {}) {
     CRYPTO_USE_COINGECKO_DATA: flags.coingecko,
     MACRO_REALTIME_SOURCES: sourceConfig.realtimeSources,
     MACRO_UNIVERSE_SOURCE: "coingecko",
+    MACRO_RANK_MIN: toInt(raw.MACRO_RANK_MIN, DEFAULT_RUNTIME_CONFIG.MACRO_RANK_MIN, 1, 5000),
+    MACRO_RANK_MAX: toInt(raw.MACRO_RANK_MAX, DEFAULT_RUNTIME_CONFIG.MACRO_RANK_MAX, 1, 5000),
     MACRO_TREND_POOL_SIZE: toInt(
       raw.MACRO_TREND_POOL_SIZE,
       DEFAULT_RUNTIME_CONFIG.MACRO_TREND_POOL_SIZE,
@@ -362,6 +391,8 @@ export async function loadServiceControlData() {
       writeReady: false,
       runtimeConfig: { ...DEFAULT_RUNTIME_CONFIG },
       runtimeUpdatedAt: null,
+      freeTierReport: null,
+      freeTierUpdatedAt: null,
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
       diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses, DEFAULT_RUNTIME_CONFIG),
@@ -369,35 +400,47 @@ export async function loadServiceControlData() {
     };
   }
 
-  const [runtimeRes, secretsRes] = await Promise.all([
+  const [runtimeRes, secretsRes, freeTierRes] = await Promise.all([
     supabase
       .from("engine_state_blobs")
       .select("payload_json,updated_at")
       .eq("blob_key", SERVICE_RUNTIME_BLOB_KEY)
       .maybeSingle(),
     supabase.from("service_secrets").select("provider,updated_at,meta_json").order("provider", { ascending: true }),
+    supabase
+      .from("engine_state_blobs")
+      .select("payload_json,updated_at")
+      .eq("blob_key", SERVICE_FREE_TIER_BLOB_KEY)
+      .maybeSingle(),
   ]);
 
   const runtimePayload = runtimeRes.data?.payload_json;
   const rows = Array.isArray(secretsRes.data) ? secretsRes.data : [];
+  const providerRowMap = mapRowsByKey(rows, "provider");
   const providerStatuses = Object.fromEntries(
     SERVICE_PROVIDER_ORDER.map((provider) => {
-      const row = rows.find((item) => item.provider === provider) || null;
+      const row = providerRowMap.get(provider) || null;
       return [provider, normalizeProviderStatus(provider, row)];
     })
   );
   const runtimeConfig = normalizeRuntimeConfig(
     runtimePayload && typeof runtimePayload === "object" ? runtimePayload : {}
   );
+  const freeTierReport =
+    freeTierRes?.data?.payload_json && typeof freeTierRes.data.payload_json === "object"
+      ? freeTierRes.data.payload_json
+      : null;
 
   return {
     writeReady,
     runtimeConfig,
     runtimeUpdatedAt: runtimeRes.data?.updated_at || null,
+    freeTierReport,
+    freeTierUpdatedAt: freeTierRes?.data?.updated_at || null,
     providerStatuses,
     liveStatus: computeLiveStatus(runtimeConfig, providerStatuses),
     diagnostics: buildRuntimeDiagnostics(runtimeConfig, providerStatuses, runtimePayload || runtimeConfig),
-    errors: [runtimeRes.error?.message, secretsRes.error?.message].filter(Boolean),
+    errors: [runtimeRes.error?.message, secretsRes.error?.message, freeTierRes?.error?.message].filter(Boolean),
   };
 }
 
@@ -538,3 +581,4 @@ export async function hardResetServiceDemo({ seedUsdt = DEFAULT_RUNTIME_CONFIG.D
     clearedTables: ["positions", "model_setups", "daily_model_pnl", "model_runtime_tunes"],
   };
 }
+

@@ -7,16 +7,7 @@ import StatusBadge from "./status-badge";
 import TablePanel from "./table-panel";
 import { formatMoney, formatNumber, formatPct, formatPrice, formatTs } from "../../lib/formatters";
 import { getModelMeta, MODEL_ORDER } from "../../lib/model-meta";
-
-function pickDefaultModel(openPositions, setupRows, signalAuditRows, recentTradeRows) {
-  const ids = new Set([
-    ...openPositions.map((item) => String(item.model_id || "").toUpperCase()),
-    ...setupRows.map((item) => String(item.model_id || "").toUpperCase()),
-    ...signalAuditRows.map((item) => String(item.model_id || "").toUpperCase()),
-    ...recentTradeRows.map((item) => String(item.model_id || "").toUpperCase()),
-  ]);
-  return MODEL_ORDER.find((id) => ids.has(id)) || "A";
-}
+import { groupRowsByModel, pickDefaultModel, summarizeAuditRows } from "../../lib/positions-view";
 
 function tradeTone(row) {
   const eventKind = String(row.event_kind || "").toLowerCase();
@@ -123,17 +114,6 @@ function auditLabel(status) {
   return normalized || "-";
 }
 
-function summarizeAuditRows(rows) {
-  const counts = new Map();
-  for (const row of rows) {
-    const status = String(row.audit_status || "unknown");
-    counts.set(status, Number(counts.get(status) || 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([status, count]) => ({ status, count }))
-    .sort((a, b) => b.count - a.count);
-}
-
 function booleanLabel(value) {
   return value ? "Y" : "-";
 }
@@ -144,33 +124,36 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
   );
 
   const modelSnapshots = useMemo(
-    () =>
-      MODEL_ORDER.map((modelId) => ({
+    () => {
+      const openByModel = groupRowsByModel(openPositions);
+      const setupByModel = groupRowsByModel(setupRows);
+      const auditByModel = groupRowsByModel(signalAuditRows);
+      const tradesByModel = groupRowsByModel(recentTradeRows);
+      return MODEL_ORDER.map((modelId) => ({
         modelId,
-        openCount: openPositions.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
-        setupCount: setupRows.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
-        auditCount: signalAuditRows.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
-        tradeCount: recentTradeRows.filter((item) => String(item.model_id || "").toUpperCase() === modelId).length,
-      })),
+        openCount: openByModel[modelId]?.length || 0,
+        setupCount: setupByModel[modelId]?.length || 0,
+        auditCount: auditByModel[modelId]?.length || 0,
+        tradeCount: tradesByModel[modelId]?.length || 0,
+      }));
+    },
     [openPositions, recentTradeRows, setupRows, signalAuditRows]
   );
 
-  const activePositions = useMemo(
-    () => openPositions.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
-    [activeModel, openPositions]
+  const groupedRows = useMemo(
+    () => ({
+      openByModel: groupRowsByModel(openPositions),
+      setupByModel: groupRowsByModel(setupRows),
+      auditByModel: groupRowsByModel(signalAuditRows),
+      tradeByModel: groupRowsByModel(recentTradeRows),
+    }),
+    [openPositions, recentTradeRows, setupRows, signalAuditRows]
   );
-  const activeSetups = useMemo(
-    () => setupRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
-    [activeModel, setupRows]
-  );
-  const activeAudits = useMemo(
-    () => signalAuditRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
-    [activeModel, signalAuditRows]
-  );
-  const activeTrades = useMemo(
-    () => recentTradeRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
-    [activeModel, recentTradeRows]
-  );
+
+  const activePositions = groupedRows.openByModel[activeModel] || [];
+  const activeSetups = groupedRows.setupByModel[activeModel] || [];
+  const activeAudits = groupedRows.auditByModel[activeModel] || [];
+  const activeTrades = groupedRows.tradeByModel[activeModel] || [];
 
   const latestAuditCycleAt = activeAudits[0]?.cycle_at || null;
   const latestAuditRows = useMemo(

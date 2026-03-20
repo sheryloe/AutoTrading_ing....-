@@ -386,6 +386,24 @@ MEME_EXCLUDE_TOP_RANK_MAX = 500
 CRYPTO_TREND_RANK_MIN = 11
 CRYPTO_TREND_RANK_MAX = 1000
 CRYPTO_HELD_PRICE_JUMP_GUARD_PCT = 0.35
+CRYPTO_UNIVERSE_MODE_VALUES = {"rank_lock", "fixed_symbols", "dynamic"}
+CRYPTO_RANK_LOCK_TARGET_COUNT = 20
+CRYPTO_RANK_LOCK_EXCLUDED_BASES = {
+    "USDT",
+    "USDC",
+    "DAI",
+    "FDUSD",
+    "TUSD",
+    "USDE",
+    "USDD",
+    "PYUSD",
+    "BUSD",
+    "USDS",
+    "USD0",
+    "USD1",
+    "FRAX",
+    "EURC",
+}
 
 MEME_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
     "개밈(DOG)": ("DOGE", "SHIB", "FLOKI", "BONK", "WIF", "DOG"),
@@ -573,6 +591,10 @@ class TradingEngine:
         self._feedback_cache_ts = 0.0
         self._feedback_cache_ttl_seconds = 60.0
         self._repo_root = Path(__file__).resolve().parents[1]
+        self._free_tier_report_path = self._repo_root / "reports" / "free_tier_capacity_report.json"
+        self._free_tier_capacity_report: dict[str, Any] = {}
+        self._last_supabase_prune_ts = 0
+        self._last_supabase_sync_errors: dict[str, Any] = {}
         self._git_daily_report_kv_key = "git_daily_pnl_report_state"
 
         self._ensure_model_runs()
@@ -1935,6 +1957,156 @@ class TradingEngine:
             },
         }
 
+    def _build_free_tier_capacity_report(self, now_ts: int | None = None) -> dict[str, Any]:
+        now = int(now_ts or time.time())
+        scan_interval = max(60, int(self.settings.scan_interval_seconds))
+        cycles_per_day = max(1, int(86400 / scan_interval))
+
+        macro_usage = self.macro.usage_snapshot() if hasattr(self.macro, "usage_snapshot") else {}
+        macro_elapsed = max(1, int(macro_usage.get("elapsed_seconds") or 1))
+        macro_counters = dict(macro_usage.get("counters") or {})
+        macro_daily_est: dict[str, float] = {}
+        for key, value in macro_counters.items():
+            macro_daily_est[str(key)] = float(value) * (86400.0 / float(macro_elapsed))
+
+        openai_state = dict(self.openai_advisor.dashboard_payload(now))
+        openai_budget = dict(openai_state.get("budget") or {})
+        openai_policy = dict(openai_state.get("policy") or {})
+        openai_enabled = bool(openai_state.get("enabled"))
+        openai_daily_budget = float(openai_budget.get("daily_budget_usd") or 0.0)
+        openai_monthly_budget = float(openai_budget.get("monthly_budget_usd") or 0.0)
+        openai_review_cost = float(openai_budget.get("estimated_review_cost_usd") or 0.0)
+        openai_review_interval = max(300, int(openai_policy.get("candidate_review_interval_seconds") or 600))
+        openai_reviews_per_day = (86400.0 / float(openai_review_interval)) if openai_enabled else 0.0
+        openai_predicted_day_spend = float(openai_reviews_per_day * openai_review_cost)
+        openai_headroom_daily = float(openai_daily_budget - openai_predicted_day_spend)
+        openai_headroom_monthly = float(openai_monthly_budget - (openai_predicted_day_spend * 30.0))
+        openai_pass = bool((not openai_enabled) or (openai_headroom_daily >= 0.0 and openai_headroom_monthly >= 0.0))
+
+        google_status = self.trend.google_runtime_status() if hasattr(self.trend, "google_runtime_status") else {}
+        google_enabled = bool((google_status or {}).get("enabled"))
+        google_interval = max(300, int((google_status or {}).get("interval_seconds") or 21600))
+        google_daily_cap = int((google_status or {}).get("daily_cap") or 0)
+        google_predicted_calls = (86400.0 / float(google_interval)) if google_enabled else 0.0
+        google_headroom = float(google_daily_cap - google_predicted_calls) if google_daily_cap > 0 else 0.0
+        google_pass = bool((not google_enabled) or (google_daily_cap <= 0) or (google_headroom >= 0.0))
+
+        solscan_status = self.solscan.usage_snapshot() if hasattr(self.solscan, "usage_snapshot") else {}
+        solscan_enabled = bool((solscan_status or {}).get("enabled"))
+        solscan_window_used = float((solscan_status or {}).get("window_used_cu") or 0.0)
+        solscan_window_seconds = max(60, int((solscan_status or {}).get("window_seconds") or 300))
+        solscan_next_window_seconds = int((solscan_status or {}).get("next_window_seconds") or solscan_window_seconds)
+        solscan_window_elapsed = max(1, int(solscan_window_seconds - solscan_next_window_seconds))
+        solscan_daily_est_cu = (
+            float(solscan_window_used) * (86400.0 / float(solscan_window_elapsed))
+            if solscan_enabled
+            else 0.0
+        )
+        solscan_monthly_limit = float((solscan_status or {}).get("monthly_limit_cu") or 0.0)
+        solscan_monthly_remaining = float((solscan_status or {}).get("monthly_remaining_cu") or 0.0)
+        solscan_daily_cap = (solscan_monthly_limit / 30.0) if solscan_monthly_limit > 0.0 else 0.0
+        solscan_headroom_daily = (
+            float(solscan_daily_cap - solscan_daily_est_cu) if solscan_daily_cap > 0.0 else 0.0
+        )
+        solscan_backoff = int((solscan_status or {}).get("backoff_seconds") or 0)
+        solscan_pass = bool(
+            (not solscan_enabled)
+            or (
+                solscan_backoff <= 0
+                and solscan_monthly_remaining > 0.0
+                and (solscan_daily_cap <= 0.0 or solscan_headroom_daily >= 0.0)
+            )
+        )
+
+        market_limits = {
+            "top_markets_calls": 3000.0,
+            "realtime_quotes_calls": 120000.0,
+            "binance_5m_kline_calls": 180000.0,
+            "binance_1m_kline_calls": 180000.0,
+        }
+        worst_ratio = 0.0
+        worst_key = ""
+        for key, limit in market_limits.items():
+            ratio = float(macro_daily_est.get(key) or 0.0) / float(limit)
+            if ratio > worst_ratio:
+                worst_ratio = ratio
+                worst_key = str(key)
+        market_pass = bool(worst_ratio <= 1.0)
+        market_headroom = float(1.0 - worst_ratio)
+
+        providers = {
+            "openai": {
+                "enabled": openai_enabled,
+                "predicted_day_spend_usd": float(openai_predicted_day_spend),
+                "daily_budget_usd": float(openai_daily_budget),
+                "monthly_budget_usd": float(openai_monthly_budget),
+                "headroom_daily_usd": float(openai_headroom_daily),
+                "headroom_monthly_usd": float(openai_headroom_monthly),
+                "status": "pass" if openai_pass else "fail",
+                "pass": bool(openai_pass),
+            },
+            "google_gemini": {
+                "enabled": google_enabled,
+                "predicted_calls_per_day": float(google_predicted_calls),
+                "daily_cap_calls": int(google_daily_cap),
+                "headroom_calls": float(google_headroom),
+                "status": "pass" if google_pass else "fail",
+                "pass": bool(google_pass),
+            },
+            "solscan": {
+                "enabled": solscan_enabled,
+                "predicted_daily_cu": float(solscan_daily_est_cu),
+                "daily_budget_cu": float(solscan_daily_cap),
+                "monthly_remaining_cu": float(solscan_monthly_remaining),
+                "backoff_seconds": int(solscan_backoff),
+                "headroom_daily_cu": float(solscan_headroom_daily),
+                "status": "pass" if solscan_pass else "fail",
+                "pass": bool(solscan_pass),
+            },
+            "market_data": {
+                "enabled": True,
+                "observed_daily_est": {str(k): float(v) for k, v in macro_daily_est.items()},
+                "limits": {str(k): float(v) for k, v in market_limits.items()},
+                "worst_ratio": float(worst_ratio),
+                "worst_metric": str(worst_key),
+                "headroom_ratio": float(market_headroom),
+                "status": "pass" if market_pass else "fail",
+                "pass": bool(market_pass),
+            },
+        }
+        bottlenecks = [provider for provider, row in providers.items() if not bool((row or {}).get("pass"))]
+        overall_pass = bool(not bottlenecks)
+        return {
+            "generated_at_ts": int(now),
+            "generated_at_iso": str(self._iso_datetime(now) or ""),
+            "scan_interval_seconds": int(scan_interval),
+            "cycles_per_day": int(cycles_per_day),
+            "universe_mode": str(self._crypto_universe_mode()),
+            "overall_status": "pass" if overall_pass else "fail",
+            "pass": bool(overall_pass),
+            "bottlenecks": list(bottlenecks),
+            "providers": providers,
+            "observed": {
+                "macro_usage": {
+                    "elapsed_seconds": int(macro_elapsed),
+                    "counters": {str(k): int(v) for k, v in macro_counters.items()},
+                }
+            },
+        }
+
+    def _persist_free_tier_capacity_report(self, now_ts: int) -> dict[str, Any]:
+        report = self._build_free_tier_capacity_report(now_ts=now_ts)
+        self._free_tier_capacity_report = dict(report)
+        try:
+            self._free_tier_report_path.parent.mkdir(parents=True, exist_ok=True)
+            self._free_tier_report_path.write_text(
+                json.dumps(report, ensure_ascii=True, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        return report
+
     @staticmethod
     def _configured_meme_strategy_ids(raw: Any, fallback_all: bool = True) -> tuple[str, ...]:
         text = str(raw or "").replace("|", ",").replace(" ", ",")
@@ -1974,13 +2146,26 @@ class TradingEngine:
                 configured.append(symbol)
         return tuple(configured)
 
+    def _crypto_universe_mode(self) -> str:
+        mode = str(getattr(self.settings, "crypto_universe_mode", "rank_lock") or "rank_lock").lower().strip()
+        if mode in CRYPTO_UNIVERSE_MODE_VALUES:
+            return mode
+        # Legacy fallback path
+        if bool(getattr(self.settings, "crypto_dynamic_universe_enabled", False)):
+            return "dynamic"
+        return "rank_lock"
+
     def _crypto_dynamic_universe_enabled(self) -> bool:
-        return bool(getattr(self.settings, "crypto_dynamic_universe_enabled", False))
+        return bool(self._crypto_universe_mode() == "dynamic")
 
     def _crypto_fixed_symbol_lock(self, symbol: str) -> bool:
         configured_symbols = set(self._configured_crypto_symbols())
         symbol_u = str(symbol or "").upper().strip()
-        return bool(configured_symbols and not self._crypto_dynamic_universe_enabled() and symbol_u in configured_symbols)
+        return bool(
+            configured_symbols
+            and self._crypto_universe_mode() == "fixed_symbols"
+            and symbol_u in configured_symbols
+        )
 
     @staticmethod
     def _merge_realtime_quote_meta(
@@ -2081,6 +2266,7 @@ class TradingEngine:
                 "trade_mode": str(self.settings.trade_mode or ""),
                 "demo_enable_macro": bool(self.settings.demo_enable_macro),
                 "configured_symbols": list(self._configured_crypto_symbols()),
+                "crypto_universe_mode": str(self._crypto_universe_mode()),
             },
         }
 
@@ -2109,6 +2295,7 @@ class TradingEngine:
             "macro_rank_max": int(getattr(self.settings, "macro_rank_max", 0) or 0),
             "macro_trend_pool_size": int(getattr(self.settings, "macro_trend_pool_size", 0) or 0),
             "source_json": {
+                "crypto_universe_mode": str(self._crypto_universe_mode()),
                 "live_execution_armed": bool(getattr(self.settings, "live_execution_armed", False)),
                 "crypto_data_source_order": str(getattr(self.settings, "crypto_data_source_order", "") or ""),
                 "use_binance_data": bool(getattr(self.settings, "crypto_use_binance_data", False)),
@@ -2369,6 +2556,89 @@ class TradingEngine:
                 )
         return rows
 
+    def _build_supabase_instrument_rows(
+        self,
+        setup_rows: list[dict[str, Any]] | None = None,
+        audit_rows: list[dict[str, Any]] | None = None,
+        position_rows: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        symbol_set: set[str] = set()
+        for row in list(setup_rows or []):
+            symbol = str((row or {}).get("symbol") or "").upper().strip()
+            if symbol:
+                symbol_set.add(symbol)
+        for row in list(audit_rows or []):
+            symbol = str((row or {}).get("symbol") or "").upper().strip()
+            if symbol:
+                symbol_set.add(symbol)
+        for row in list(position_rows or []):
+            symbol = str((row or {}).get("symbol") or "").upper().strip()
+            if symbol:
+                symbol_set.add(symbol)
+
+        ordered = sorted(symbol_set)
+        rows: list[dict[str, Any]] = []
+        for idx, symbol in enumerate(ordered, start=1):
+            meta = dict(self._macro_meta.get(symbol) or {})
+            rank = int(meta.get("market_cap_rank") or 0)
+            sort_order = int(rank) if rank > 0 else int(1000 + idx)
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "exchange": "bybit",
+                    "is_active": True,
+                    "is_major": bool(rank > 0 and rank <= 20),
+                    "sort_order": int(sort_order),
+                }
+            )
+        return rows
+
+    def _maybe_prune_supabase_history(self, now_ts: int) -> dict[str, Any]:
+        if not bool(getattr(getattr(self, "supabase_sync", None), "enabled", False)):
+            return {"ok": True, "skipped": "disabled"}
+        retention_days = max(1, int(getattr(self.settings, "supabase_history_retention_days", 7) or 7))
+        interval_seconds = max(300, int(getattr(self.settings, "supabase_prune_interval_seconds", 21600) or 21600))
+        if int(now_ts) < int(self._last_supabase_prune_ts or 0) + int(interval_seconds):
+            return {"ok": True, "skipped": "interval"}
+
+        cutoff_ts = int(now_ts - (retention_days * 86400))
+        cutoff_iso = self._iso_datetime(cutoff_ts)
+        filters = {"market": "eq.crypto", "cycle_at": f"lt.{cutoff_iso}"}
+        results = {
+            "model_setups": self.supabase_sync.delete_rows("model_setups", filters=filters),
+            "model_signal_audit": self.supabase_sync.delete_rows("model_signal_audit", filters=filters),
+        }
+        errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
+        if errors:
+            self.runtime_feedback.append_event(
+                source="supabase_prune",
+                level="warn",
+                status="partial_failure",
+                detail="Supabase history prune failed",
+                meta={
+                    "retention_days": int(retention_days),
+                    "interval_seconds": int(interval_seconds),
+                    "cutoff_iso": str(cutoff_iso),
+                    "errors": errors,
+                },
+                now_ts=now_ts,
+            )
+            return {
+                "ok": False,
+                "retention_days": int(retention_days),
+                "interval_seconds": int(interval_seconds),
+                "cutoff_iso": str(cutoff_iso),
+                "errors": errors,
+            }
+
+        self._last_supabase_prune_ts = int(now_ts)
+        return {
+            "ok": True,
+            "retention_days": int(retention_days),
+            "interval_seconds": int(interval_seconds),
+            "cutoff_iso": str(cutoff_iso),
+        }
+
     def _build_recent_crypto_trade_rows(self, limit: int = 80) -> list[dict[str, Any]]:
         with self._lock:
             runs = dict(self.state.model_runs or {})
@@ -2427,6 +2697,14 @@ class TradingEngine:
     def _sync_supabase_snapshot(self, now_ts: int) -> None:
         if not bool(getattr(getattr(self, "supabase_sync", None), "enabled", False)):
             return
+        setup_rows = self._build_supabase_setup_rows()
+        audit_rows = self._build_supabase_signal_audit_rows(now_ts)
+        position_rows = self._build_supabase_open_position_rows(now_ts)
+        instrument_rows = self._build_supabase_instrument_rows(
+            setup_rows=setup_rows,
+            audit_rows=audit_rows,
+            position_rows=position_rows,
+        )
         results = {
             "engine_heartbeat": self.supabase_sync.upsert_rows(
                 "engine_heartbeat",
@@ -2448,20 +2726,30 @@ class TradingEngine:
                 self._build_supabase_daily_pnl_rows(now_ts),
                 on_conflict="day,market,model_id",
             ),
+            "instruments": self.supabase_sync.upsert_rows(
+                "instruments",
+                instrument_rows,
+                on_conflict="symbol",
+            ),
             "model_setups": self.supabase_sync.upsert_rows(
                 "model_setups",
-                self._build_supabase_setup_rows(),
+                setup_rows,
                 on_conflict="cycle_at,symbol,model_id",
             ),
             "model_signal_audit": self.supabase_sync.upsert_rows(
                 "model_signal_audit",
-                self._build_supabase_signal_audit_rows(now_ts),
+                audit_rows,
                 on_conflict="cycle_at,market,model_id,symbol",
             ),
-            "positions": self.supabase_sync.replace_open_positions(self._build_supabase_open_position_rows(now_ts)),
+            "positions": self.supabase_sync.replace_open_positions(position_rows),
+            "history_prune": self._maybe_prune_supabase_history(now_ts),
             "recent_crypto_trades": self.supabase_sync.upsert_blob(
                 "recent_crypto_trades",
                 {"rows": self._build_recent_crypto_trade_rows(limit=120), "updated_at": self._iso_datetime(now_ts)},
+            ),
+            "free_tier_capacity_report": self.supabase_sync.upsert_blob(
+                "free_tier_capacity_report",
+                dict(self._free_tier_capacity_report or self._build_free_tier_capacity_report(now_ts=now_ts)),
             ),
         }
         errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
@@ -3677,6 +3965,7 @@ class TradingEngine:
         self._maybe_emit_daily_git_report(now)
         self._maybe_autotune_models(now)
         self._maybe_drawdown_guard_restart(now)
+        self._persist_free_tier_capacity_report(now)
         self._sync_primary_views_from_model_a()
         self._sync_supabase_snapshot(now)
         self._scan_and_notify_runtime_errors()
@@ -5667,14 +5956,12 @@ class TradingEngine:
         current_order_max = float(self.settings.demo_order_pct_max or 0.30)
         current_bybit_pos = int(self.settings.bybit_max_positions or 4)
         current_meme_pos = int(self.settings.meme_max_positions or 4)
-        current_rank_max = int(getattr(self.settings, "macro_rank_max", 300) or 300)
         updates: dict[str, Any] = {
             "CRYPTO_MIN_ENTRY_SCORE": round(_clamp(current_min + 0.05, 0.30, 0.70), 4),
             "DEMO_ORDER_PCT_MIN": round(_clamp(min(current_order_min, 0.12), 0.05, 0.50), 4),
             "DEMO_ORDER_PCT_MAX": round(_clamp(min(current_order_max, 0.20), 0.08, 0.60), 4),
             "BYBIT_MAX_POSITIONS": int(max(1, min(current_bybit_pos, 2))),
             "MEME_MAX_POSITIONS": int(max(1, min(current_meme_pos, 3))),
-            "MACRO_RANK_MAX": int(max(300, min(current_rank_max, 300))),
         }
         if float(updates["DEMO_ORDER_PCT_MAX"]) < float(updates["DEMO_ORDER_PCT_MIN"]):
             updates["DEMO_ORDER_PCT_MAX"] = float(updates["DEMO_ORDER_PCT_MIN"])
@@ -9556,6 +9843,69 @@ class TradingEngine:
         score = float(trend_score + (1.6 * rank_quality) + (0.8 * vol_quality))
         return (score, int(trend_hits))
 
+    @staticmethod
+    def _rank_lock_symbol_excluded(base_symbol: str) -> bool:
+        sym = str(base_symbol or "").upper().strip()
+        return bool(not sym or sym in CRYPTO_RANK_LOCK_EXCLUDED_BASES)
+
+    def _rank_lock_select_symbols(
+        self,
+        rows_all: list[dict[str, Any]],
+        *,
+        rank_min: int,
+        rank_max: int,
+        target_count: int = CRYPTO_RANK_LOCK_TARGET_COUNT,
+    ) -> set[str]:
+        target = max(1, int(target_count))
+        ranked_rows = sorted(
+            [dict(row or {}) for row in list(rows_all or [])],
+            key=lambda row: int(row.get("market_cap_rank") or 999999),
+        )
+        if not ranked_rows:
+            return set()
+
+        try:
+            bybit_quotes, _ = self.macro.fetch_realtime_quotes(
+                sources_csv="bybit",
+                cache_seconds=max(8, min(30, int(self.settings.macro_realtime_cache_seconds))),
+                binance_api_key="",
+                binance_api_secret="",
+            )
+        except Exception:
+            bybit_quotes = {}
+        bybit_tradable = set(str(symbol or "").upper().strip() for symbol in list(bybit_quotes.keys()))
+
+        selected: list[str] = []
+
+        def _append(rows: list[dict[str, Any]]) -> None:
+            for row in rows:
+                base_symbol = str(row.get("symbol") or "").upper().strip()
+                if self._rank_lock_symbol_excluded(base_symbol):
+                    continue
+                symbol = f"{base_symbol}USDT"
+                if bybit_tradable and symbol not in bybit_tradable:
+                    continue
+                if symbol in selected:
+                    continue
+                selected.append(symbol)
+                if len(selected) >= target:
+                    break
+
+        primary = [
+            row
+            for row in ranked_rows
+            if self._rank_within_window(int(row.get("market_cap_rank") or 0), rank_min, rank_max)
+        ]
+        reserve = [
+            row
+            for row in ranked_rows
+            if int(row.get("market_cap_rank") or 0) > int(rank_max)
+        ]
+        _append(primary)
+        if len(selected) < target:
+            _append(reserve)
+        return set(selected[:target])
+
     def _refresh_macro_trend_pool(
         self,
         rows: list[dict[str, Any]],
@@ -9675,11 +10025,14 @@ class TradingEngine:
         meta: dict[str, dict[str, Any]] = {}
         rt_prices: dict[str, float] = {}
         rt_meta: dict[str, dict[str, Any]] = {}
+        universe_mode = self._crypto_universe_mode()
         scan_bands = self._crypto_scan_rank_bands()
         fetch_limit = max(
             int(self.settings.macro_top_n),
             max((int(rank_hi) for _, rank_hi in scan_bands), default=int(self.settings.macro_top_n)),
         )
+        if universe_mode == "rank_lock":
+            fetch_limit = max(fetch_limit, 300)
         try:
             rt_prices, rt_meta = self.macro.fetch_realtime_quotes(
                 sources_csv=self.settings.macro_realtime_sources,
@@ -9714,10 +10067,19 @@ class TradingEngine:
             if self._rank_within_window(int(row.get("market_cap_rank") or 0), rank_lo, rank_hi)
         ]
         hard_lock_symbols = set(self._configured_crypto_symbols())
-        dynamic_universe = self._crypto_dynamic_universe_enabled()
+        dynamic_universe = bool(universe_mode == "dynamic")
         priority_symbols = list(self._priority_crypto_symbols())
-        if hard_lock_symbols and not dynamic_universe:
+        if universe_mode == "fixed_symbols" and hard_lock_symbols:
             selected_symbols = set(hard_lock_symbols)
+            self._macro_trend_pool = sorted(selected_symbols)
+            self._macro_trend_pool_next_refresh_ts = int(now_ts + int(self.settings.macro_trend_reselect_seconds))
+        elif universe_mode == "rank_lock":
+            selected_symbols = self._rank_lock_select_symbols(
+                rows_all,
+                rank_min=int(rank_lo),
+                rank_max=int(rank_hi),
+                target_count=CRYPTO_RANK_LOCK_TARGET_COUNT,
+            )
             self._macro_trend_pool = sorted(selected_symbols)
             self._macro_trend_pool_next_refresh_ts = int(now_ts + int(self.settings.macro_trend_reselect_seconds))
         else:
@@ -9979,17 +10341,17 @@ class TradingEngine:
         self._macro_meta = meta
         if not self.bybit.enabled:
             with self._lock:
-                if missing_fixed_symbols and not dynamic_universe:
+                if missing_fixed_symbols and universe_mode == "fixed_symbols":
                     self.state.bybit_error = "fixed_symbol_quote_missing: " + ",".join(missing_fixed_symbols[:12])
                 else:
                     self.state.bybit_error = ""
         return prices
 
     def _macro_rank_window(self) -> tuple[int, int]:
-        rank_min_cfg = int(getattr(self.settings, "macro_rank_min", 50) or 50)
-        rank_max_cfg = int(getattr(self.settings, "macro_rank_max", 300) or 300)
-        rank_min = max(1, min(300, rank_min_cfg))
-        rank_max = max(1, min(300, rank_max_cfg))
+        rank_min_cfg = int(getattr(self.settings, "macro_rank_min", 1) or 1)
+        rank_max_cfg = int(getattr(self.settings, "macro_rank_max", 20) or 20)
+        rank_min = max(1, min(5000, rank_min_cfg))
+        rank_max = max(1, min(5000, rank_max_cfg))
         if rank_max < rank_min:
             rank_min, rank_max = rank_max, rank_min
         return (rank_min, rank_max)
@@ -10033,8 +10395,9 @@ class TradingEngine:
         symbol_u = str(symbol or "").upper().strip()
         if self._crypto_fixed_symbol_lock(symbol_u):
             return True
+        mode = self._crypto_universe_mode()
         configured_symbols = set(self._configured_crypto_symbols())
-        if configured_symbols and not self._crypto_dynamic_universe_enabled():
+        if configured_symbols and mode == "fixed_symbols":
             return False
         meta = dict(self._macro_meta.get(symbol) or {})
         rank = int(meta.get("market_cap_rank") or 0)
@@ -10183,6 +10546,7 @@ class TradingEngine:
 
     def _crypto_feature_pack(self, symbol: str, trend_bundle: dict[str, Any], model_id: str = "") -> dict[str, float]:
         _ = trend_bundle
+        model_key = str(model_id or "").upper().strip() or "B"
         hist_tick = [float(v) for v in list(self._bybit_price_history.get(symbol) or []) if float(v) > 0.0]
         meta = dict(self._macro_meta.get(symbol) or {})
         chg1h = _clamp(float(meta.get("change_1h") or 0.0) / 100.0, -0.40, 0.40)
@@ -10195,13 +10559,28 @@ class TradingEngine:
         try:
             tf_5m = self.macro.fetch_binance_5m_closes(
                 symbol,
-                limit=360,
+                limit=1000,
                 cache_seconds=max(60, min(600, int(self.settings.scan_interval_seconds))),
                 binance_api_key=self.settings.binance_api_key,
             )
         except Exception:
             tf_5m = []
         timeframe_source = "binance_5m"
+
+        tf_1m_rows: list[dict[str, Any]] = []
+        tf_1m: list[float] = []
+        try:
+            tf_1m_rows = self.macro.fetch_binance_1m_ohlc(
+                symbol,
+                limit=240,
+                cache_seconds=max(15, min(120, int(max(60, self.settings.scan_interval_seconds) // 2))),
+                binance_api_key=self.settings.binance_api_key,
+            )
+        except Exception:
+            tf_1m_rows = []
+        if tf_1m_rows:
+            tf_1m = [float(row.get("close") or 0.0) for row in tf_1m_rows if float(row.get("close") or 0.0) > 0.0]
+
         if len(tf_5m) < 20 and hist_tick:
             tf_5m = [float(v) for v in hist_tick[-240:]]
             timeframe_source = "bybit_cache"
@@ -10216,16 +10595,108 @@ class TradingEngine:
                     synthetic.append((base_24h * (1.0 - alpha)) + (p_now * alpha))
                 tf_5m = synthetic
 
-        tf_15m = self._compress_close_series(tf_5m, 3)
-        tf_1h = self._compress_close_series(tf_5m, 12)
-        tf_4h = self._compress_close_series(tf_5m, 48)
-        tf_1d = self._compress_close_series(tf_5m, 288)
+        tf_15m_fetch = getattr(self.macro, "fetch_binance_15m_closes", None)
+        tf_1h_fetch = getattr(self.macro, "fetch_binance_1h_closes", None)
+        tf_4h_fetch = getattr(self.macro, "fetch_binance_4h_closes", None)
+        tf_15m: list[float] = []
+        tf_1h: list[float] = []
+        tf_4h: list[float] = []
+        try:
+            if callable(tf_15m_fetch):
+                tf_15m = list(
+                    tf_15m_fetch(
+                        symbol,
+                        limit=500,
+                        cache_seconds=max(60, min(900, int(self.settings.scan_interval_seconds) * 2)),
+                        binance_api_key=self.settings.binance_api_key,
+                    )
+                )
+        except Exception:
+            tf_15m = []
+        try:
+            if callable(tf_1h_fetch):
+                tf_1h = list(
+                    tf_1h_fetch(
+                        symbol,
+                        limit=240,
+                        cache_seconds=max(120, min(1800, int(self.settings.scan_interval_seconds) * 3)),
+                        binance_api_key=self.settings.binance_api_key,
+                    )
+                )
+        except Exception:
+            tf_1h = []
+        try:
+            if callable(tf_4h_fetch):
+                tf_4h = list(
+                    tf_4h_fetch(
+                        symbol,
+                        limit=240,
+                        cache_seconds=max(180, min(3600, int(self.settings.scan_interval_seconds) * 4)),
+                        binance_api_key=self.settings.binance_api_key,
+                    )
+                )
+        except Exception:
+            tf_4h = []
 
-        ret_5m = _clamp(self._series_return(tf_5m, 1), -0.15, 0.15)
-        ret_15m = _clamp(self._series_return(tf_15m, 1), -0.22, 0.22)
-        ret_1h = _clamp(self._series_return(tf_1h, 1) if len(tf_1h) >= 2 else chg1h, -0.45, 0.45)
-        ret_4h = _clamp(self._series_return(tf_4h, 1) if len(tf_4h) >= 2 else (chg24h * 0.55), -0.80, 0.80)
-        ret_1d = _clamp(self._series_return(tf_1d, 1) if len(tf_1d) >= 2 else chg24h, -1.20, 1.20)
+        if len(tf_15m) < 20:
+            tf_15m = self._compress_close_series(tf_5m, 3)
+        tf_30m = self._compress_close_series(tf_15m, 2)
+        if len(tf_1h) < 20:
+            tf_1h = self._compress_close_series(tf_5m, 12)
+        if len(tf_4h) < 8:
+            tf_4h = self._compress_close_series(tf_1h, 4) if len(tf_1h) >= 16 else self._compress_close_series(tf_5m, 48)
+        tf_1d = self._compress_close_series(tf_1h, 24) if len(tf_1h) >= 24 else self._compress_close_series(tf_4h, 6)
+        tf_1w = self._compress_close_series(tf_1h, 168) if len(tf_1h) >= 168 else self._compress_close_series(tf_4h, 42)
+
+        def _ret(series: list[float], bars: int, fallback: float = 0.0) -> float:
+            if len(series) > int(bars):
+                return float(self._series_return(series, int(bars)))
+            return float(fallback)
+
+        if model_key == "A":
+            primary = list(tf_1m or tf_5m)
+            primary_source = "binance_1m" if tf_1m else timeframe_source
+            ret_5m = _ret(tf_1m, 5, _ret(tf_5m, 1, 0.0))
+            ret_15m = _ret(tf_1m, 15, _ret(tf_5m, 3, 0.0))
+            ret_1h = _ret(tf_1m, 60, _ret(tf_5m, 12, chg1h))
+            ret_4h = _ret(tf_1m, 240, _ret(tf_1h, 4, chg24h * 0.55))
+            ret_1d = _ret(tf_1d, 1, chg24h)
+            w12, w36, w72 = 30, 120, 240
+        elif model_key == "B":
+            primary = list(tf_5m or tf_15m)
+            primary_source = "binance_5m"
+            ret_5m = _ret(tf_5m, 1, 0.0)
+            ret_15m = _ret(tf_15m, 1, _ret(tf_5m, 3, 0.0))
+            ret_1h = _ret(tf_1h, 1, chg1h)
+            ret_4h = _ret(tf_4h, 1, chg24h * 0.55)
+            ret_1d = _ret(tf_1d, 1, chg24h)
+            w12, w36, w72 = 12, 36, 96
+        elif model_key == "C":
+            primary = list(tf_15m or tf_5m)
+            primary_source = "binance_15m" if tf_15m else timeframe_source
+            ret_5m = _ret(tf_5m, 1, 0.0)
+            ret_15m = _ret(tf_15m, 1, _ret(tf_5m, 3, 0.0))
+            ret_1h = _ret(tf_15m, 4, _ret(tf_1h, 1, chg1h))
+            ret_4h = _ret(tf_15m, 16, _ret(tf_4h, 1, chg24h * 0.55))
+            ret_1d = _ret(tf_15m, 96, _ret(tf_1d, 1, chg24h))
+            w12, w36, w72 = 16, 48, 96
+        else:
+            primary = list(tf_1h or tf_4h or tf_15m or tf_5m)
+            primary_source = "binance_1h" if tf_1h else ("binance_4h" if tf_4h else "binance_15m")
+            ret_5m = _ret(tf_5m, 1, 0.0)
+            ret_15m = _ret(tf_15m, 1, _ret(tf_5m, 3, 0.0))
+            ret_1h = _ret(tf_1h, 1, chg1h)
+            ret_4h = _ret(tf_4h, 1, _ret(tf_1h, 4, chg24h * 0.55))
+            ret_1d = _ret(tf_1h, 24, _ret(tf_4h, 6, chg24h))
+            w12, w36, w72 = (24, 72, 168) if len(tf_1h) >= 24 else (6, 18, 42)
+
+        timeframe_source = f"{primary_source}:{model_key}"
+        ret_5m = _clamp(ret_5m, -0.15, 0.15)
+        ret_15m = _clamp(ret_15m, -0.22, 0.22)
+        ret_1h = _clamp(ret_1h, -0.45, 0.45)
+        ret_4h = _clamp(ret_4h, -0.80, 0.80)
+        ret_1d = _clamp(ret_1d, -1.20, 1.20)
+        ret_1w = _clamp(_ret(tf_1w, 1, ret_1d), -2.00, 2.00)
 
         edge_5m = _clamp(ret_5m / 0.020, -1.0, 1.0)
         edge_15m = _clamp(ret_15m / 0.030, -1.0, 1.0)
@@ -10233,7 +10704,7 @@ class TradingEngine:
         edge_4h = _clamp(ret_4h / 0.120, -1.0, 1.0)
         edge_1d = _clamp(ret_1d / 0.200, -1.0, 1.0)
 
-        ind_base = tf_15m if len(tf_15m) >= 8 else tf_5m
+        ind_base = primary if len(primary) >= 8 else (tf_15m if len(tf_15m) >= 8 else tf_5m)
         ind = self._crypto_indicators(symbol, series=ind_base)
         ema_signal = float(ind.get("ema_signal") or 0.0)
         cci_signal = float(ind.get("cci_signal") or 0.0)
@@ -10255,11 +10726,12 @@ class TradingEngine:
             breakout_strength = _clamp((max(0.0, ret_15m) / 0.03) + (max(0.0, ret_1h) / 0.08), 0.0, 1.0)
             pullback_from_high = _clamp(max(0.0, -ret_15m) / 0.04, 0.0, 1.0)
 
-        current_price = float(tf_5m[-1] if tf_5m else (self._bybit_last_prices.get(symbol) or 0.0))
+        current_price = float(primary[-1] if primary else (tf_5m[-1] if tf_5m else (self._bybit_last_prices.get(symbol) or 0.0)))
         atr_abs = max(current_price * max(atr_pct, 0.0025), current_price * 0.0015)
-        stats_12 = self._window_stats(tf_5m, 12, current_price)
-        stats_36 = self._window_stats(tf_5m, 36, current_price)
-        stats_72 = self._window_stats(tf_5m, 72, current_price)
+        window_series = primary if len(primary) >= 8 else tf_5m
+        stats_12 = self._window_stats(window_series, w12, current_price)
+        stats_36 = self._window_stats(window_series, w36, current_price)
+        stats_72 = self._window_stats(window_series, w72, current_price)
         range_12_pct = float(stats_12["width"]) / max(current_price, 1e-9)
         range_36_pct = float(stats_36["width"]) / max(current_price, 1e-9)
         range_72_pct = float(stats_72["width"]) / max(current_price, 1e-9)
@@ -10270,7 +10742,8 @@ class TradingEngine:
         rebound_strength = _clamp((current_price - float(stats_12["low"])) / max(atr_abs * 2.0, current_price * 0.002), 0.0, 1.0)
         reclaim_strength = _clamp((current_price - float(stats_36["mid"])) / max(atr_abs * 2.5, current_price * 0.002), -1.0, 1.0)
         mean_reversion_gap = _clamp((float(stats_36["mid"]) - current_price) / max(atr_abs * 3.0, current_price * 0.002), -1.0, 1.0)
-        compression_ratio = self._series_std(tf_5m[-12:]) / max(self._series_std(tf_5m[-48:]), current_price * 0.0005)
+        vol_series = window_series if len(window_series) >= 48 else tf_5m
+        compression_ratio = self._series_std(vol_series[-12:]) / max(self._series_std(vol_series[-48:]), current_price * 0.0005)
         compression_score = _clamp((1.05 - compression_ratio) / 0.55, 0.0, 1.0)
         ema_alignment = _clamp((ema_gap_pct / 0.012) + 0.5, 0.0, 1.0)
         oversold_score = _clamp((45.0 - rsi) / 18.0, 0.0, 1.0)
@@ -10295,18 +10768,23 @@ class TradingEngine:
         ema_edge = _clamp((ema_signal - 0.5) * 2.0, -1.0, 1.0)
         cci_edge = _clamp((cci_signal - 0.5) * 2.0, -1.0, 1.0)
         return {
-            "history_points": float(len(tf_5m)),
+            "history_points": float(len(primary)),
             "timeframe_source": timeframe_source,
+            "timeframe_primary": str(primary_source),
+            "timeframe_points_1m": float(len(tf_1m)),
             "timeframe_points_5m": float(len(tf_5m)),
             "timeframe_points_15m": float(len(tf_15m)),
+            "timeframe_points_30m": float(len(tf_30m)),
             "timeframe_points_1h": float(len(tf_1h)),
             "timeframe_points_4h": float(len(tf_4h)),
             "timeframe_points_1d": float(len(tf_1d)),
+            "timeframe_points_1w": float(len(tf_1w)),
             "ret_5m": ret_5m,
             "ret_15m": ret_15m,
             "ret_1h": ret_1h,
             "ret_4h": ret_4h,
             "ret_1d": ret_1d,
+            "ret_1w": ret_1w,
             "edge_5m": edge_5m,
             "edge_15m": edge_15m,
             "edge_1h": edge_1h,
@@ -10489,7 +10967,7 @@ class TradingEngine:
                         min(low_36 + (0.10 * atr_abs), entry_price - (risk * (1.75 * tp_mul))),
                         min(low_72, entry_price - (risk * (2.45 * tp_mul))),
                     ],
-                    ttl_minutes=30,
+                    ttl_minutes=15,
                     side="short",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -10534,7 +11012,7 @@ class TradingEngine:
                         max(high_36 - (0.10 * atr_abs), entry_price + (risk * (1.75 * tp_mul))),
                         max(high_72, entry_price + (risk * (2.45 * tp_mul))),
                     ],
-                    ttl_minutes=30,
+                    ttl_minutes=15,
                     side="long",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -10583,7 +11061,7 @@ class TradingEngine:
                         min(low_36 + (0.05 * atr_abs), entry_price - (risk * (1.95 * tp_mul))),
                         min(low_72, entry_price - (risk * (2.75 * tp_mul))),
                     ],
-                    ttl_minutes=40,
+                    ttl_minutes=90,
                     side="short",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -10626,7 +11104,7 @@ class TradingEngine:
                         max(high_36 - (0.05 * atr_abs), entry_price + (risk * (1.95 * tp_mul))),
                         max(high_72, entry_price + (risk * (2.75 * tp_mul))),
                     ],
-                    ttl_minutes=40,
+                    ttl_minutes=90,
                     side="long",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -10666,7 +11144,7 @@ class TradingEngine:
                         entry_price - (box_height * (1.40 * tp_mul)),
                         entry_price - (box_height * (1.95 * tp_mul)),
                     ],
-                    ttl_minutes=30,
+                    ttl_minutes=360,
                     side="short",
                 )
                 plan["risk_reward_min"] = 1.10
@@ -10703,7 +11181,7 @@ class TradingEngine:
                         entry_price + (box_height * (1.40 * tp_mul)),
                         entry_price + (box_height * (1.95 * tp_mul)),
                     ],
-                    ttl_minutes=30,
+                    ttl_minutes=360,
                     side="long",
                 )
                 plan["risk_reward_min"] = 1.10
@@ -10751,7 +11229,7 @@ class TradingEngine:
                         min(mid_36, entry_price - (risk * (1.70 * tp_mul))),
                         min(low_36, entry_price - (risk * (2.35 * tp_mul))),
                     ],
-                    ttl_minutes=35,
+                    ttl_minutes=1440,
                     side="short",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -10795,7 +11273,7 @@ class TradingEngine:
                         max(mid_36, entry_price + (risk * (1.70 * tp_mul))),
                         max(high_36, entry_price + (risk * (2.35 * tp_mul))),
                     ],
-                    ttl_minutes=35,
+                    ttl_minutes=1440,
                     side="long",
                 )
                 plan["risk_reward_min"] = float(rr_floor)
@@ -14054,6 +14532,7 @@ class TradingEngine:
         )
         openai_review_state = self.openai_advisor.dashboard_payload(now_ts)
         openai_review_preview = self._openai_candidate_preview(model_views)
+        free_tier_report = dict(self._free_tier_capacity_report or self._build_free_tier_capacity_report(now_ts=now_ts))
 
         return {
             "server_time": now_ts,
@@ -14147,6 +14626,7 @@ class TradingEngine:
             "meme_discovery": meme_discovery_state,
             "openai_review": openai_review_state,
             "openai_review_preview": openai_review_preview,
+            "free_tier_capacity_report": free_tier_report,
             "meme_model_labels": {mid: self._market_model_name("meme", mid) for mid in MEME_MODEL_IDS},
             "crypto_model_labels": {mid: self._market_model_name("crypto", mid) for mid in CRYPTO_MODEL_IDS},
             "daily_pnl": daily_pnl,

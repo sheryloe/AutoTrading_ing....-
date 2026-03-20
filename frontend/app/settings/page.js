@@ -6,7 +6,8 @@ import { loadServiceControlData } from "../../lib/service-control";
 export const dynamic = "force-dynamic";
 
 function symbolModeValue(diagnostics) {
-  return diagnostics?.dynamicUniverseEnabled ? "dynamic" : "fixed";
+  if (diagnostics?.universeMode) return String(diagnostics.universeMode);
+  return diagnostics?.dynamicUniverseEnabled ? "dynamic" : "fixed_symbols";
 }
 
 function symbolMeta(diagnostics) {
@@ -16,16 +17,63 @@ function symbolMeta(diagnostics) {
   return symbols.length > 3 ? `${preview} +${symbols.length - 3}` : preview;
 }
 
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatPct(value) {
+  const numeric = toNumber(value, Number.NaN);
+  if (!Number.isFinite(numeric)) return "-";
+  return `${(numeric * 100).toFixed(1)}%`;
+}
+
+function freeTierStatusValue(report) {
+  if (!report || typeof report !== "object") return "n/a";
+  return report.pass ? "pass" : "fail";
+}
+
+function freeTierUsageValue(report) {
+  if (!report || typeof report !== "object") return "-";
+  return String(toNumber(report.cycles_per_day, 0));
+}
+
+function freeTierUsageMeta(report) {
+  if (!report || typeof report !== "object") return "no report yet";
+  return `scan ${toNumber(report.scan_interval_seconds, 0)}s`;
+}
+
+function freeTierHeadroomValue(report) {
+  const ratio = report?.providers?.market_data?.headroom_ratio;
+  return formatPct(ratio);
+}
+
+function freeTierHeadroomMeta(report) {
+  const worstMetric = String(report?.providers?.market_data?.worst_metric || "-");
+  return `market worst: ${worstMetric}`;
+}
+
+function freeTierBottleneckValue(report) {
+  const bottlenecks = Array.isArray(report?.bottlenecks) ? report.bottlenecks : [];
+  return bottlenecks.length ? bottlenecks.join(", ") : "none";
+}
+
+function freeTierBottleneckMeta(report) {
+  const generatedAt = String(report?.generated_at_iso || "");
+  return generatedAt ? `generated ${generatedAt}` : "report pending";
+}
+
 export default async function SettingsPage() {
   const control = await loadServiceControlData();
   const diagnostics = control.diagnostics || {};
+  const freeTierReport = control.freeTierReport || null;
 
   return (
     <>
       <PageHeader
         eyebrow="Settings"
         title="Service Console"
-        description="Manage provider vault credentials and the runtime profile in one place. This page now also explains why new symbols may still not produce real Bybit fills."
+        description="Manage provider vault credentials, rank-lock runtime profile, and free-tier capacity checks in one place."
         actions={[
           { href: "/", label: "Overview", tone: "ghost" },
           { href: "/positions", label: "Execution Trail", tone: "primary" },
@@ -67,6 +115,33 @@ export default async function SettingsPage() {
         />
       </section>
 
+      <section className="kpi-row">
+        <MetricCard
+          label="Free-tier status"
+          value={freeTierStatusValue(freeTierReport)}
+          meta={freeTierBottleneckMeta(freeTierReport)}
+          tone={freeTierReport?.pass ? "green" : "amber"}
+        />
+        <MetricCard
+          label="Usage (cycles/day)"
+          value={freeTierUsageValue(freeTierReport)}
+          meta={freeTierUsageMeta(freeTierReport)}
+          tone="cyan"
+        />
+        <MetricCard
+          label="Headroom"
+          value={freeTierHeadroomValue(freeTierReport)}
+          meta={freeTierHeadroomMeta(freeTierReport)}
+          tone="amber"
+        />
+        <MetricCard
+          label="Bottlenecks"
+          value={freeTierBottleneckValue(freeTierReport)}
+          meta={freeTierReport ? `universe ${freeTierReport.universe_mode || "-"}` : "no report yet"}
+          tone={Array.isArray(freeTierReport?.bottlenecks) && freeTierReport.bottlenecks.length ? "amber" : "green"}
+        />
+      </section>
+
       <section className="warning-card">
         <strong>{diagnostics?.liveOrderRoutingLabel || "Demo-only crypto execution path"}</strong>
         <p>{diagnostics?.liveOrderSummary}</p>
@@ -75,6 +150,24 @@ export default async function SettingsPage() {
           Runtime config source: <code>{diagnostics?.configSourceValue || "-"}</code>
         </p>
       </section>
+
+      {freeTierReport ? (
+        <section className="warning-card">
+          <strong>Free-tier capacity report</strong>
+          <p>
+            Overall: <code>{freeTierReport.overall_status || "-"}</code>
+          </p>
+          <p>
+            OpenAI: <code>{freeTierReport.providers?.openai?.status || "-"}</code> / Google:{" "}
+            <code>{freeTierReport.providers?.google_gemini?.status || "-"}</code> / Solscan:{" "}
+            <code>{freeTierReport.providers?.solscan?.status || "-"}</code> / Market data:{" "}
+            <code>{freeTierReport.providers?.market_data?.status || "-"}</code>
+          </p>
+          <p>
+            Bottlenecks: <code>{freeTierBottleneckValue(freeTierReport)}</code>
+          </p>
+        </section>
+      ) : null}
 
       {diagnostics?.sourceConfigRepaired ? (
         <section className="warning-card">

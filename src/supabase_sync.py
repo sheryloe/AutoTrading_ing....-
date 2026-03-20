@@ -73,6 +73,19 @@ class SupabaseSyncClient:
             return {"ok": True, "rows": data if isinstance(data, list) else []}
         return {"ok": False, "status": resp.status_code, "error": resp.text[:400]}
 
+    def delete_rows(self, table: str, *, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self.enabled:
+            return {"ok": False, "error": "disabled"}
+        resp = self.session.delete(
+            self._table_url(table),
+            params=dict(filters or {}),
+            headers=self._headers(),
+            timeout=self.timeout_seconds,
+        )
+        if resp.ok:
+            return {"ok": True}
+        return {"ok": False, "status": resp.status_code, "error": resp.text[:400]}
+
     def upsert_blob(self, blob_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         row = {
             "blob_key": str(blob_key or "").strip(),

@@ -167,6 +167,7 @@ Those now belong in the Vercel service console.
 Run this file in `Supabase > SQL Editor`:
 
 - [SUPABASE_CORE_SCHEMA_20260315.sql](./SUPABASE_CORE_SCHEMA_20260315.sql)
+- [SUPABASE_PATCH_TOP20_20260320.sql](./SUPABASE_PATCH_TOP20_20260320.sql) (one-time patch for Top20 cycle throughput)
 
 It creates:
 

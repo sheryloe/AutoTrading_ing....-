@@ -11,8 +11,22 @@ function collectErrors(results) {
   return results.map((item) => item?.error?.message).filter(Boolean);
 }
 
+function countRowsForLatestCycle(rows = [], key = "cycle_at") {
+  const latestCycleAt = rows[0]?.[key] || null;
+  if (!latestCycleAt) {
+    return { latestCycleAt: null, count: 0 };
+  }
+  let count = 0;
+  for (const row of rows) {
+    if (String(row?.[key] || "") !== String(latestCycleAt)) break;
+    count += 1;
+  }
+  return { latestCycleAt, count };
+}
+
 function buildModelSummaries(dailyRows = [], tunes = []) {
   const map = new Map();
+  const tuneMap = new Map((tunes || []).map((item) => [item.model_id, item]));
 
   for (const row of dailyRows) {
     const modelId = String(row.model_id || "-");
@@ -38,7 +52,7 @@ function buildModelSummaries(dailyRows = [], tunes = []) {
 
   return Array.from(map.values())
     .map((summary) => {
-      const tune = tunes.find((item) => item.model_id === summary.modelId) || null;
+      const tune = tuneMap.get(summary.modelId) || null;
       return {
         ...summary,
         tune,
@@ -47,19 +61,16 @@ function buildModelSummaries(dailyRows = [], tunes = []) {
     .sort((a, b) => String(a.modelId).localeCompare(String(b.modelId)));
 }
 
-function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions, openPositionCount }) {
-  const latestCycleAt = setupRows[0]?.cycle_at || null;
-  const latestSignalCount = latestCycleAt
-    ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
-    : 0;
+function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions, openPositionCount, latestSignalCount }) {
+  const latestSetup = countRowsForLatestCycle(setupRows, "cycle_at");
 
   return {
     latestPnlDay: dailyRows[0]?.day || "-",
     totalRealizedUsd: dailyRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0),
     totalClosedTrades: dailyRows.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0),
     openPositionCount: Number(openPositionCount ?? openPositions.length ?? 0),
-    latestCycleAt,
-    latestSignalCount,
+    latestCycleAt: latestSetup.latestCycleAt,
+    latestSignalCount: Number(latestSignalCount ?? latestSetup.count ?? 0),
     heartbeat,
   };
 }
@@ -84,7 +95,7 @@ export async function loadOverviewPageData() {
   const [heartbeatRes, dailyRes, setupsRes, positionsRes] = await Promise.all([
     supabase.from("engine_heartbeat").select("*").order("last_seen_at", { ascending: false }).limit(1),
     supabase.from("daily_model_pnl").select("*").order("day", { ascending: false }).limit(12),
-    supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(12),
+    supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(240),
     supabase
       .from("positions")
       .select("*", { count: "exact" })
@@ -93,12 +104,21 @@ export async function loadOverviewPageData() {
       .limit(24),
   ]);
 
-  const errors = collectErrors([heartbeatRes, dailyRes, setupsRes, positionsRes]);
+  const latestSetupCycleAt = setupsRes.data?.[0]?.cycle_at || null;
+  const latestSetupCountRes = latestSetupCycleAt
+    ? await supabase
+        .from("model_setups")
+        .select("*", { count: "exact", head: true })
+        .eq("cycle_at", latestSetupCycleAt)
+    : { count: 0, error: null };
+
+  const errors = collectErrors([heartbeatRes, dailyRes, setupsRes, positionsRes, latestSetupCountRes]);
   const heartbeat = heartbeatRes.data?.[0] || null;
   const dailyRows = dailyRes.data || [];
   const recentSetups = setupsRes.data || [];
   const openPositions = positionsRes.data || [];
   const openPositionCount = Number(positionsRes.count ?? openPositions.length ?? 0);
+  const latestSetupCount = Number(latestSetupCountRes.count ?? countRowsForLatestCycle(recentSetups, "cycle_at").count ?? 0);
 
   return {
     ready: errors.length === 0,
@@ -113,6 +133,7 @@ export async function loadOverviewPageData() {
       setupRows: recentSetups,
       openPositions,
       openPositionCount,
+      latestSignalCount: latestSetupCount,
     }),
   };
 }
@@ -175,13 +196,13 @@ export async function loadPositionsPageData() {
       .eq("status", "open")
       .order("opened_at", { ascending: false })
       .limit(48),
-    supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(18),
+    supabase.from("model_setups").select("*").order("cycle_at", { ascending: false }).limit(240),
     supabase
       .from("model_signal_audit")
       .select("*")
       .eq("market", "crypto")
       .order("cycle_at", { ascending: false })
-      .limit(160),
+      .limit(480),
     supabase
       .from("engine_state_blobs")
       .select("payload_json,updated_at")
@@ -190,15 +211,41 @@ export async function loadPositionsPageData() {
       .maybeSingle(),
   ]);
 
-  const errors = collectErrors([heartbeatRes, positionsRes, setupsRes, signalAuditRes, recentTradesRes]);
+  const latestSetupCycleAt = setupsRes.data?.[0]?.cycle_at || null;
+  const latestSetupCountRes = latestSetupCycleAt
+    ? await supabase
+        .from("model_setups")
+        .select("*", { count: "exact", head: true })
+        .eq("cycle_at", latestSetupCycleAt)
+    : { count: 0, error: null };
+  const latestAuditCycleAt = signalAuditRes.data?.[0]?.cycle_at || null;
+  const latestAuditCountRes = latestAuditCycleAt
+    ? await supabase
+        .from("model_signal_audit")
+        .select("*", { count: "exact", head: true })
+        .eq("market", "crypto")
+        .eq("cycle_at", latestAuditCycleAt)
+    : { count: 0, error: null };
+
+  const errors = collectErrors([
+    heartbeatRes,
+    positionsRes,
+    setupsRes,
+    signalAuditRes,
+    recentTradesRes,
+    latestSetupCountRes,
+    latestAuditCountRes,
+  ]);
   const heartbeat = heartbeatRes.data?.[0] || null;
   const openPositions = positionsRes.data || [];
   const openPositionCount = Number(positionsRes.count ?? openPositions.length ?? 0);
   const setupRows = setupsRes.data || [];
   const signalAuditRows = signalAuditRes.data || [];
   const recentTradeRows = Array.isArray(recentTradesRes.data?.payload_json?.rows) ? recentTradesRes.data.payload_json.rows : [];
-  const latestCycleAt = setupRows[0]?.cycle_at || null;
-  const latestSignalAuditCycleAt = signalAuditRows[0]?.cycle_at || null;
+  const latestSetup = countRowsForLatestCycle(setupRows, "cycle_at");
+  const latestAudit = countRowsForLatestCycle(signalAuditRows, "cycle_at");
+  const latestSetupCount = Number(latestSetupCountRes.count ?? latestSetup.count ?? 0);
+  const latestAuditCount = Number(latestAuditCountRes.count ?? latestAudit.count ?? 0);
 
   return {
     ready: errors.length === 0,
@@ -209,15 +256,11 @@ export async function loadPositionsPageData() {
     signalAuditRows,
     recentTradeRows,
     snapshot: {
-      latestCycleAt,
-      latestSignalCount: latestCycleAt
-        ? setupRows.filter((row) => String(row.cycle_at || "") === String(latestCycleAt)).length
-        : 0,
+      latestCycleAt: latestSetup.latestCycleAt,
+      latestSignalCount: latestSetupCount,
       openPositionCount,
-      latestSignalAuditCycleAt,
-      latestSignalAuditCount: latestSignalAuditCycleAt
-        ? signalAuditRows.filter((row) => String(row.cycle_at || "") === String(latestSignalAuditCycleAt)).length
-        : 0,
+      latestSignalAuditCycleAt: latestAudit.latestCycleAt,
+      latestSignalAuditCount: latestAuditCount,
       recentTradeCount: recentTradeRows.length,
     },
   };

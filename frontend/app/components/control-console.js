@@ -22,7 +22,7 @@ const PROVIDERS = [
     label: "Binance",
     role: "실시간 시세 소스",
     description:
-      "Top 5 메이저 코인의 가격과 1분봉 intrabar 판정에 우선으로 사용하는 데이터 소스입니다.",
+      "Rank-lock 기준 시총 1~20 유니버스의 가격과 1분봉 intrabar 판정에 우선으로 사용하는 데이터 소스입니다.",
     requiresSecret: true,
     keyLabel: "Binance API Key",
     secretLabel: "Binance API Secret",
@@ -120,7 +120,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     liveEnableCrypto: boolToString(Boolean(initialConfig?.LIVE_ENABLE_CRYPTO)),
     liveExecutionArmed: boolToString(Boolean(initialConfig?.LIVE_EXECUTION_ARMED)),
     demoSeedUsdt: String(initialConfig?.DEMO_SEED_USDT || 10000),
-    scanIntervalSeconds: String(initialConfig?.SCAN_INTERVAL_SECONDS || 480),
+    scanIntervalSeconds: String(initialConfig?.SCAN_INTERVAL_SECONDS || 60),
     signalCooldownMinutes: String(initialConfig?.SIGNAL_COOLDOWN_MINUTES || 10),
     autotuneHours: String(initialConfig?.MODEL_AUTOTUNE_INTERVAL_HOURS || 168),
     bybitMaxPositions: String(initialConfig?.BYBIT_MAX_POSITIONS || 3),
@@ -128,10 +128,12 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     bybitOrderPctMax: String(initialConfig?.BYBIT_ORDER_PCT_MAX || 0.3),
     intrabarConflictPolicy: String(initialConfig?.INTRABAR_CONFLICT_POLICY || "conservative"),
     bybitSymbols: String(initialConfig?.BYBIT_SYMBOLS || "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"),
-    cryptoDynamicUniverseEnabled: boolToString(Boolean(initialConfig?.CRYPTO_DYNAMIC_UNIVERSE_ENABLED)),
+    cryptoUniverseMode: String(initialConfig?.CRYPTO_UNIVERSE_MODE || "rank_lock"),
     cryptoPrioritySymbols: String(initialConfig?.CRYPTO_PRIORITY_SYMBOLS || ""),
-    macroTrendPoolSize: String(initialConfig?.MACRO_TREND_POOL_SIZE || 5),
+    macroTrendPoolSize: String(initialConfig?.MACRO_TREND_POOL_SIZE || 20),
     macroTrendReselectSeconds: String(initialConfig?.MACRO_TREND_RESELECT_SECONDS || 14400),
+    macroRankMin: String(initialConfig?.MACRO_RANK_MIN || 1),
+    macroRankMax: String(initialConfig?.MACRO_RANK_MAX || 20),
     cryptoTuneOverrides: JSON.stringify(initialConfig?.CRYPTO_TUNE_OVERRIDES || {}, null, 2),
     cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
     useBinanceData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BINANCE_DATA ?? true)),
@@ -248,7 +250,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             LIVE_ENABLE_CRYPTO: config.liveEnableCrypto === "true",
             LIVE_EXECUTION_ARMED: config.liveExecutionArmed === "true",
             DEMO_SEED_USDT: Number(config.demoSeedUsdt || 10000),
-            SCAN_INTERVAL_SECONDS: Number(config.scanIntervalSeconds || 480),
+            SCAN_INTERVAL_SECONDS: Number(config.scanIntervalSeconds || 60),
             SIGNAL_COOLDOWN_MINUTES: Number(config.signalCooldownMinutes || 10),
             MODEL_AUTOTUNE_INTERVAL_HOURS: Number(config.autotuneHours || 168),
             BYBIT_MAX_POSITIONS: Number(config.bybitMaxPositions || 3),
@@ -256,11 +258,14 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             BYBIT_ORDER_PCT_MAX: Number(config.bybitOrderPctMax || 0.3),
             INTRABAR_CONFLICT_POLICY: config.intrabarConflictPolicy,
             BYBIT_SYMBOLS: config.bybitSymbols,
-            CRYPTO_DYNAMIC_UNIVERSE_ENABLED: config.cryptoDynamicUniverseEnabled === "true",
+            CRYPTO_UNIVERSE_MODE: config.cryptoUniverseMode,
+            CRYPTO_DYNAMIC_UNIVERSE_ENABLED: config.cryptoUniverseMode === "dynamic",
             CRYPTO_PRIORITY_SYMBOLS: config.cryptoPrioritySymbols,
             CRYPTO_TUNE_OVERRIDES: parsedTuneOverrides,
-            MACRO_TREND_POOL_SIZE: Number(config.macroTrendPoolSize || 5),
+            MACRO_TREND_POOL_SIZE: Number(config.macroTrendPoolSize || 20),
             MACRO_TREND_RESELECT_SECONDS: Number(config.macroTrendReselectSeconds || 14400),
+            MACRO_RANK_MIN: Number(config.macroRankMin || 1),
+            MACRO_RANK_MAX: Number(config.macroRankMax || 20),
             CRYPTO_DATA_SOURCE_ORDER: config.cryptoDataSourceOrder,
             CRYPTO_USE_BINANCE_DATA: config.useBinanceData === "true",
             CRYPTO_USE_BYBIT_DATA: config.useBybitData === "true",
@@ -539,7 +544,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           <span>{runtimeUpdatedAt ? "Supabase 반영됨" : "기본 프로필"}</span>
         </div>
         <p className="control-copy">
-          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. Top 5 심볼, 최대 포지션 수, 진입 비중, intrabar 충돌 규칙, 데이터 소스 우선순위를 여기서 관리합니다.
+          배치 러너는 사이클 시작 전에 이 프로필을 읽습니다. 유니버스 모드, 랭크 범위, 최대 포지션 수, 진입 비중, intrabar 충돌 규칙, 데이터 소스 우선순위를 여기서 관리합니다.
         </p>
         <form className="control-form runtime-form" onSubmit={saveRuntime}>
           <label className="field-label" htmlFor="execution-target">
@@ -703,7 +708,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             id="scan-interval"
             className="control-input"
             type="number"
-            min="300"
+            min="60"
             step="60"
             value={config.scanIntervalSeconds}
             onChange={(event) => setConfig((prev) => ({ ...prev, scanIntervalSeconds: event.target.value }))}
@@ -786,27 +791,56 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             placeholder="BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT"
           />
 
-          <label className="field-label" htmlFor="crypto-dynamic-universe">
-            Dynamic universe
+          <label className="field-label" htmlFor="crypto-universe-mode">
+            Universe mode
           </label>
           <select
-            id="crypto-dynamic-universe"
+            id="crypto-universe-mode"
             className="control-input"
-            value={config.cryptoDynamicUniverseEnabled}
-            onChange={(event) => setConfig((prev) => ({ ...prev, cryptoDynamicUniverseEnabled: event.target.value }))}
+            value={config.cryptoUniverseMode}
+            onChange={(event) => setConfig((prev) => ({ ...prev, cryptoUniverseMode: event.target.value }))}
           >
-            <option value="false">false / fixed universe</option>
-            <option value="true">true / rotating universe</option>
+            <option value="rank_lock">rank_lock / market-cap top 1-20</option>
+            <option value="fixed_symbols">fixed_symbols / BYBIT_SYMBOLS only</option>
+            <option value="dynamic">dynamic / rotating universe</option>
           </select>
 
+          <label className="field-label" htmlFor="macro-rank-min">
+            Rank min
+          </label>
+          <input
+            id="macro-rank-min"
+            className="control-input"
+            type="number"
+            min="1"
+            max="5000"
+            step="1"
+            value={config.macroRankMin}
+            onChange={(event) => setConfig((prev) => ({ ...prev, macroRankMin: event.target.value }))}
+          />
+
+          <label className="field-label" htmlFor="macro-rank-max">
+            Rank max
+          </label>
+          <input
+            id="macro-rank-max"
+            className="control-input"
+            type="number"
+            min="1"
+            max="5000"
+            step="1"
+            value={config.macroRankMax}
+            onChange={(event) => setConfig((prev) => ({ ...prev, macroRankMax: event.target.value }))}
+          />
+
           <label className="field-label" htmlFor="macro-trend-pool-size">
-            Dynamic pool size
+            Universe pool size
           </label>
           <input
             id="macro-trend-pool-size"
             className="control-input"
             type="number"
-            min="5"
+            min="20"
             max="200"
             step="1"
             value={config.macroTrendPoolSize}
@@ -828,7 +862,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label full-span" htmlFor="crypto-priority-symbols">
-            Dynamic priority symbols
+            Priority symbols (dynamic mode)
           </label>
           <input
             id="crypto-priority-symbols"
@@ -839,10 +873,9 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             placeholder="BTCUSDT,ETHUSDT"
           />
           <p className="status-line full-span">
-            Dynamic universe가 켜지면 <strong>BYBIT_SYMBOLS</strong>는 하드 고정 universe가 아니라 참조/fallback 목록으로만 보고,
-            이 필드는 동적 Top N에 우선 포함할 심볼만 지정합니다.
+            <strong>rank_lock</strong> keeps tradable market-cap symbols in the configured rank window and refills when exclusions remove entries.
+            <strong> fixed_symbols</strong> enforces <strong>BYBIT_SYMBOLS</strong> only, while <strong>dynamic</strong> rotates the universe each cycle.
           </p>
-
           <label className="field-label full-span" htmlFor="crypto-tune-overrides">
             Crypto tune overrides(JSON)
           </label>
@@ -924,3 +957,4 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     </section>
   );
 }
+

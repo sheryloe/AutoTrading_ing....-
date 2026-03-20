@@ -45,10 +45,11 @@ jobs:
           LIVE_EXECUTION_ARMED: "false"
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
-          SCAN_INTERVAL_SECONDS: "480"
+          SCAN_INTERVAL_SECONDS: "60"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT
+          CRYPTO_UNIVERSE_MODE: rank_lock
           CRYPTO_DATA_SOURCE_ORDER: binance,bybit,coingecko
           CRYPTO_USE_BINANCE_DATA: "true"
           CRYPTO_USE_BYBIT_DATA: "true"
