@@ -35,23 +35,44 @@ jobs:
           SUPABASE_URL_VAR_NEXT_PUBLIC: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY_VAR: ${{ vars.SUPABASE_ANON_KEY }}
           SUPABASE_ANON_KEY_VAR_NEXT_PUBLIC: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_PUBLISHABLE_KEY_SECRET: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY_SECRET_NEXT_PUBLIC: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY_VAR: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY_VAR_NEXT_PUBLIC: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import os
 
-          supabase_url = (
-              os.environ.get("SUPABASE_URL_SECRET", "").strip()
-              or os.environ.get("SUPABASE_URL_SECRET_NEXT_PUBLIC", "").strip()
-              or os.environ.get("SUPABASE_URL_VAR", "").strip()
-              or os.environ.get("SUPABASE_URL_VAR_NEXT_PUBLIC", "").strip()
-          )
-          supabase_anon_key = (
-              os.environ.get("SUPABASE_ANON_KEY_SECRET", "").strip()
-              or os.environ.get("SUPABASE_ANON_KEY_SECRET_NEXT_PUBLIC", "").strip()
-              or os.environ.get("SUPABASE_ANON_KEY_VAR", "").strip()
-              or os.environ.get("SUPABASE_ANON_KEY_VAR_NEXT_PUBLIC", "").strip()
-          )
+          def clean(value: str) -> str:
+              value = str(value or "").strip()
+              if len(value) >= 2 and ((value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'")):
+                  value = value[1:-1].strip()
+              return value
+
+          def pick(name_value_pairs):
+              for name, value in name_value_pairs:
+                  v = clean(value)
+                  if v:
+                      return name, v
+              return "", ""
+
+          url_source, supabase_url = pick([
+              ("secrets.SUPABASE_URL", os.environ.get("SUPABASE_URL_SECRET", "")),
+              ("secrets.NEXT_PUBLIC_SUPABASE_URL", os.environ.get("SUPABASE_URL_SECRET_NEXT_PUBLIC", "")),
+              ("vars.SUPABASE_URL", os.environ.get("SUPABASE_URL_VAR", "")),
+              ("vars.NEXT_PUBLIC_SUPABASE_URL", os.environ.get("SUPABASE_URL_VAR_NEXT_PUBLIC", "")),
+          ])
+          key_source, supabase_anon_key = pick([
+              ("secrets.SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY_SECRET", "")),
+              ("secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY_SECRET_NEXT_PUBLIC", "")),
+              ("vars.SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY_VAR", "")),
+              ("vars.NEXT_PUBLIC_SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY_VAR_NEXT_PUBLIC", "")),
+              ("secrets.SUPABASE_PUBLISHABLE_KEY", os.environ.get("SUPABASE_PUBLISHABLE_KEY_SECRET", "")),
+              ("secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", os.environ.get("SUPABASE_PUBLISHABLE_KEY_SECRET_NEXT_PUBLIC", "")),
+              ("vars.SUPABASE_PUBLISHABLE_KEY", os.environ.get("SUPABASE_PUBLISHABLE_KEY_VAR", "")),
+              ("vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", os.environ.get("SUPABASE_PUBLISHABLE_KEY_VAR_NEXT_PUBLIC", "")),
+          ])
 
           replacements = {
               "{{SUPABASE_URL}}": supabase_url,
@@ -63,7 +84,22 @@ jobs:
               names = ", ".join(token.strip("{}") for token in missing)
               raise SystemExit(
                   "Missing Supabase public config in both GitHub Secrets and Variables: "
-                  f"{names}. Configure either secrets.* or vars.*."
+                  f"{names}. Required: URL + anon/publishable key."
+              )
+
+          if not supabase_url.startswith("https://"):
+              raise SystemExit(
+                  f"Invalid SUPABASE_URL from {url_source}: must start with https:// and point to https://<project-ref>.supabase.co"
+              )
+
+          # Accept both legacy JWT anon key and new sb_publishable_* key.
+          looks_like_jwt = supabase_anon_key.count(".") == 2
+          looks_like_publishable = supabase_anon_key.startswith("sb_publishable_")
+          if not (looks_like_jwt or looks_like_publishable):
+              preview = (supabase_anon_key[:8] + "..." + supabase_anon_key[-4:]) if len(supabase_anon_key) >= 16 else supabase_anon_key
+              raise SystemExit(
+                  "Invalid public API key format from "
+                  f"{key_source}: '{preview}'. Use Supabase Dashboard > Settings > API > Project API keys > anon (public) or publishable key."
               )
 
           changed = []
@@ -82,6 +118,8 @@ jobs:
           print("Injected config into:")
           for item in changed:
               print(f" - {item}")
+          print(f"SUPABASE_URL source: {url_source}")
+          print(f"SUPABASE_PUBLIC_KEY source: {key_source}")
           PY
 
       - name: Configure GitHub Pages
