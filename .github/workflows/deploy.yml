@@ -27,22 +27,33 @@ jobs:
 
       - name: Inject public Supabase config into Pages HTML
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL_SECRET: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL_VAR: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY_VAR: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import os
 
+          supabase_url = (os.environ.get("SUPABASE_URL_SECRET", "").strip() or os.environ.get("SUPABASE_URL_VAR", "").strip())
+          supabase_anon_key = (
+              os.environ.get("SUPABASE_ANON_KEY_SECRET", "").strip()
+              or os.environ.get("SUPABASE_ANON_KEY_VAR", "").strip()
+          )
+
           replacements = {
-              "{{SUPABASE_URL}}": os.environ.get("SUPABASE_URL", "").strip(),
-              "{{SUPABASE_ANON_KEY}}": os.environ.get("SUPABASE_ANON_KEY", "").strip(),
+              "{{SUPABASE_URL}}": supabase_url,
+              "{{SUPABASE_ANON_KEY}}": supabase_anon_key,
           }
 
           missing = [name for name, value in replacements.items() if not value]
           if missing:
               names = ", ".join(token.strip("{}") for token in missing)
-              raise SystemExit(f"Missing required GitHub secrets: {names}")
+              raise SystemExit(
+                  "Missing Supabase public config in both GitHub Secrets and Variables: "
+                  f"{names}. Configure either secrets.* or vars.*."
+              )
 
           changed = []
           for path in Path("docs").glob("*.html"):
