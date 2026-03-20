@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import time
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request
 
 from src.config import load_settings
 from src.engine import TradingEngine
@@ -112,6 +113,47 @@ engine = TradingEngine(load_settings())
 engine.start()
 
 
+def _expected_admin_token() -> str:
+    return str(os.getenv("SERVICE_ADMIN_TOKEN") or "").strip()
+
+
+def _extract_admin_token() -> str:
+    header_token = str(request.headers.get("X-Service-Admin-Token") or "").strip()
+    if header_token:
+        return header_token
+    auth_header = str(request.headers.get("Authorization") or "").strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    if request.method != "GET":
+        data = request.get_json(silent=True) or {}
+        if isinstance(data, dict):
+            body_token = str(data.get("adminToken") or "").strip()
+            if body_token:
+                return body_token
+    return str(request.args.get("adminToken") or "").strip()
+
+
+def _require_admin_token() -> tuple[bool, Any | None]:
+    expected = _expected_admin_token()
+    if not expected:
+        return False, (jsonify({"ok": False, "error": "service_admin_token_missing"}), 503)
+    provided = _extract_admin_token()
+    if not provided or provided != expected:
+        return False, (jsonify({"ok": False, "error": "unauthorized"}), 401)
+    return True, None
+
+
+def require_admin_token(fn):
+    @wraps(fn)
+    def _wrapped(*args, **kwargs):
+        ok, response = _require_admin_token()
+        if not ok:
+            return response
+        return fn(*args, **kwargs)
+
+    return _wrapped
+
+
 @atexit.register
 def _shutdown() -> None:
     engine.stop()
@@ -129,15 +171,43 @@ def _force_utf8(resp: Any) -> Any:
     return resp
 
 
-@app.get("/")
-def home() -> Any:
+def _render_workspace(workspace: str) -> Any:
     settings = load_settings()
+    safe_workspace = str(workspace or "models").strip().lower()
+    if safe_workspace not in {"models", "paper", "live", "settings"}:
+        safe_workspace = "models"
     return render_template(
         "index.html",
         ui_refresh_seconds=max(2, settings.ui_refresh_seconds),
         app_port=settings.app_port,
         asset_version=int(time.time()),
+        initial_workspace=safe_workspace,
     )
+
+
+@app.get("/")
+def home() -> Any:
+    return redirect("/models", code=302)
+
+
+@app.get("/models")
+def models_page() -> Any:
+    return _render_workspace("models")
+
+
+@app.get("/paper")
+def paper_page() -> Any:
+    return _render_workspace("paper")
+
+
+@app.get("/live")
+def live_page() -> Any:
+    return _render_workspace("live")
+
+
+@app.get("/settings")
+def settings_page() -> Any:
+    return _render_workspace("settings")
 
 
 @app.get("/health")
@@ -180,24 +250,28 @@ def api_meme_score_history() -> Any:
 
 
 @app.post("/api/control/start")
+@require_admin_token
 def api_start() -> Any:
     engine.start()
     return jsonify({"ok": True, "running": engine.running})
 
 
 @app.post("/api/control/stop")
+@require_admin_token
 def api_stop() -> Any:
     engine.stop()
     return jsonify({"ok": True, "running": engine.running})
 
 
 @app.post("/api/control/restart")
+@require_admin_token
 def api_restart() -> Any:
     engine.restart()
     return jsonify({"ok": True, "running": engine.running})
 
 
 @app.post("/api/control/mode")
+@require_admin_token
 def api_mode() -> Any:
     data = request.get_json(silent=True) or {}
     mode = str(data.get("mode") or "").lower()
@@ -206,6 +280,7 @@ def api_mode() -> Any:
 
 
 @app.post("/api/control/autotrade")
+@require_admin_token
 def api_autotrade() -> Any:
     data = request.get_json(silent=True) or {}
     raw = data.get("enabled")
@@ -215,6 +290,7 @@ def api_autotrade() -> Any:
 
 
 @app.post("/api/control/models")
+@require_admin_token
 def api_set_models() -> Any:
     data = request.get_json(silent=True) or {}
     meme_models = data.get("meme_models")
@@ -227,6 +303,7 @@ def api_set_models() -> Any:
 
 
 @app.post("/api/control/live-models")
+@require_admin_token
 def api_set_live_models() -> Any:
     data = request.get_json(silent=True) or {}
     meme_models = data.get("meme_models")
@@ -239,6 +316,7 @@ def api_set_live_models() -> Any:
 
 
 @app.post("/api/control/live-markets")
+@require_admin_token
 def api_set_live_markets() -> Any:
     data = request.get_json(silent=True) or {}
     meme_enabled = data.get("meme_enabled")
@@ -262,6 +340,7 @@ def api_set_live_markets() -> Any:
 
 
 @app.post("/api/control/live-performance/anchor-now")
+@require_admin_token
 def api_set_live_performance_anchor_now() -> Any:
     data = request.get_json(silent=True) or {}
     raw = data.get("reset_net_flow", True)
@@ -274,6 +353,7 @@ def api_set_live_performance_anchor_now() -> Any:
 
 
 @app.post("/api/control/live-performance/flow")
+@require_admin_token
 def api_adjust_live_performance_flow() -> Any:
     data = request.get_json(silent=True) or {}
     try:
@@ -289,18 +369,21 @@ def api_adjust_live_performance_flow() -> Any:
 
 
 @app.post("/api/control/force-sync")
+@require_admin_token
 def api_force_sync() -> Any:
     engine.force_sync()
     return jsonify({"ok": True})
 
 
 @app.post("/api/control/close-meme")
+@require_admin_token
 def api_close_meme() -> Any:
     result = engine.close_all_memecoin_positions("manual_close_api")
     return jsonify({"ok": True, "result": result})
 
 
 @app.post("/api/control/reset-demo")
+@require_admin_token
 def api_reset_demo() -> Any:
     data = request.get_json(silent=True) or {}
     seed = data.get("seed_usdt")
@@ -319,6 +402,7 @@ def api_reset_demo() -> Any:
 
 
 @app.post("/api/control/reset-demo-crypto")
+@require_admin_token
 def api_reset_demo_crypto() -> Any:
     data = request.get_json(silent=True) or {}
     seed = data.get("seed_usdt")
@@ -335,11 +419,13 @@ def api_reset_demo_crypto() -> Any:
 
 
 @app.get("/api/settings/secrets")
+@require_admin_token
 def api_get_secret_settings() -> Any:
     return jsonify({"ok": True, "secrets": engine.secret_settings_payload()})
 
 
 @app.post("/api/settings/secrets")
+@require_admin_token
 def api_update_secret_settings() -> Any:
     data = request.get_json(silent=True) or {}
     updates = data.get("updates") if isinstance(data, dict) else {}

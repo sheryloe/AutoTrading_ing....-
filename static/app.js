@@ -11,6 +11,47 @@ const VIEW = {
   data: null,
 };
 
+const WORKSPACE_PATHS = {
+  models: "/models",
+  paper: "/paper",
+  live: "/live",
+  settings: "/settings",
+};
+
+const PATH_TO_WORKSPACE = {
+  "/models": "models",
+  "/paper": "paper",
+  "/live": "live",
+  "/settings": "settings",
+};
+
+function normalizeWorkspace(value) {
+  const key = String(value || "").trim().toLowerCase();
+  if (key === "paper" || key === "demo") return "paper";
+  if (key === "live") return "live";
+  if (key === "settings") return "settings";
+  return "models";
+}
+
+function workspaceFromPath(pathname) {
+  const path = String(pathname || "").trim();
+  return PATH_TO_WORKSPACE[path] || "";
+}
+
+function pathForWorkspace(workspace) {
+  return WORKSPACE_PATHS[normalizeWorkspace(workspace)] || "/models";
+}
+
+function setWorkspace(workspace, { push = true } = {}) {
+  const next = normalizeWorkspace(workspace);
+  const nextPath = pathForWorkspace(next);
+  VIEW.workspace = next;
+  if (push && nextPath && window.location.pathname !== nextPath && window.history?.pushState) {
+    window.history.pushState({ workspace: next }, "", nextPath);
+  }
+  setWorkspaceState();
+}
+
 const MEME_MODEL_IDS = ["A", "B", "C"];
 const CRYPTO_MODEL_IDS = ["A", "B", "C", "D"];
 const ALL_MODEL_IDS = ["A", "B", "C", "D"];
@@ -42,8 +83,39 @@ const SECRET_KEYS = [
   "CMC_API_KEY",
 ];
 
+const ADMIN_TOKEN_STORAGE_KEY = "automethemoney_service_admin_token";
 let SECRET_CACHE = null;
 let MEME_SCORE_LAST_TOKEN = "";
+
+function getStoredAdminToken() {
+  try {
+    return String(window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "").trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+function setStoredAdminToken(token) {
+  try {
+    if (token) {
+      window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    }
+  } catch (e) {
+    // no-op
+  }
+}
+
+function promptForAdminToken(message = "SERVICE_ADMIN_TOKEN을 입력하세요.") {
+  const value = window.prompt(message, getStoredAdminToken());
+  if (value === null) return "";
+  const token = String(value || "").trim();
+  if (token) {
+    setStoredAdminToken(token);
+  }
+  return token;
+}
 
 function isMobileViewport() {
   return window.matchMedia("(max-width: 980px)").matches;
@@ -474,12 +546,28 @@ function renderTableBody(id, rowsHtml, colSpan = 8) {
   el.innerHTML = rowsHtml || `<tr><td colspan="${colSpan}">데이터 없음</td></tr>`;
 }
 
-async function postJson(url, body = {}) {
+async function requestJson(url, { method = "GET", body = null, admin = false, retry = true } = {}) {
+  const headers = {};
+  if (body !== null) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (admin) {
+    const storedToken = getStoredAdminToken();
+    if (storedToken) {
+      headers["X-Service-Admin-Token"] = storedToken;
+    }
+  }
   const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method,
+    headers,
+    body: body === null ? undefined : JSON.stringify(body),
   });
+  if (res.status === 401 && admin && retry) {
+    const token = promptForAdminToken("관리자 작업에는 SERVICE_ADMIN_TOKEN이 필요합니다.");
+    if (token) {
+      return requestJson(url, { method, body, admin, retry: false });
+    }
+  }
   if (!res.ok) {
     let msg = `${url} failed`;
     try {
@@ -491,6 +579,10 @@ async function postJson(url, body = {}) {
     throw new Error(msg);
   }
   return res.json();
+}
+
+async function postJson(url, body = {}, options = {}) {
+  return requestJson(url, { method: "POST", body, admin: true, ...options });
 }
 
 function renderMemeScoreHistory(result) {
@@ -578,9 +670,7 @@ async function loadSecretSettings(force = false) {
     return;
   }
   try {
-    const res = await fetch("/api/settings/secrets");
-    if (!res.ok) throw new Error("secret settings fetch failed");
-    const data = await res.json();
+    const data = await requestJson("/api/settings/secrets", { admin: true });
     SECRET_CACHE = (data && data.secrets) || {};
     renderSecretSettings(SECRET_CACHE);
   } catch (err) {
@@ -628,7 +718,7 @@ function bindControls() {
     await refreshDashboard();
   });
   document.getElementById("btnResetDemo")?.addEventListener("click", async () => {
-    const seedInput = window.prompt("초기화 시드(USDT)를 입력하세요.", "1000");
+    const seedInput = window.prompt("초기화 시드(USDT)를 입력하세요.", "10000");
     if (seedInput === null) return;
     const parsed = Number(seedInput);
     const seed = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
@@ -667,6 +757,17 @@ function initNavState() {
   } catch (e) {
     // no-op
   }
+}
+
+function initWorkspaceRouting() {
+  const fromPath = workspaceFromPath(window.location.pathname);
+  const fromConfig = normalizeWorkspace(window.APP_CONFIG?.initialWorkspace);
+  const initial = fromPath || fromConfig || VIEW.workspace;
+  setWorkspace(initial, { push: false });
+  window.addEventListener("popstate", () => {
+    const next = workspaceFromPath(window.location.pathname) || VIEW.workspace;
+    setWorkspace(next, { push: false });
+  });
 }
 
 function bindSecretControls() {
@@ -866,8 +967,7 @@ function bindModelCryptoTabs() {
 function bindWorkspaceTabs() {
   document.querySelectorAll("[data-workspace]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      VIEW.workspace = btn.dataset.workspace || "paper";
-      setWorkspaceState();
+      setWorkspace(btn.dataset.workspace || "paper", { push: true });
       closeMobileNav();
     });
   });
@@ -2878,6 +2978,7 @@ bindDemoMarketTabs();
 bindLiveMarketTabs();
 bindWorkspaceTabs();
 initNavState();
+initWorkspaceRouting();
 setTabState();
 setModelCryptoTabState();
 setCryptoTabState();

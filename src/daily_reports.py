@@ -12,6 +12,40 @@ def _report_sort_key(row: dict[str, Any]) -> tuple[str, str]:
     return (str(row.get("date") or ""), str(row.get("model_id") or ""))
 
 
+def _collect_summary_4col(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, float]] = {}
+    for row in list(rows):
+        day = str((row or {}).get("day") or (row or {}).get("date") or "")
+        if not day:
+            continue
+        model_id = str((row or {}).get("model_id") or "").upper()
+        if model_id not in {"A", "B", "C", "D"}:
+            continue
+        raw_total = (row or {}).get("bybit_total_pnl_usd")
+        if raw_total in {None, ""}:
+            raw_total = (row or {}).get("total_pnl_usd")
+        try:
+            bybit_total = float(raw_total or 0.0)
+        except (TypeError, ValueError):
+            bybit_total = 0.0
+        model_data = grouped.setdefault(day, {"A": 0.0, "B": 0.0, "C": 0.0, "D": 0.0})
+        model_data[model_id] = bybit_total
+
+    out: list[dict[str, Any]] = []
+    for day in sorted(grouped.keys()):
+        values = grouped[day]
+        out.append(
+            {
+                "date": day,
+                "A": round(float(values.get("A", 0.0)), 6),
+                "B": round(float(values.get("B", 0.0)), 6),
+                "C": round(float(values.get("C", 0.0)), 6),
+                "D": round(float(values.get("D", 0.0)), 6),
+            }
+        )
+    return out
+
+
 def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir: str) -> list[str]:
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +80,7 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
     summary_path = target_dir / "summary.csv"
     summary_json_path = target_dir / "summary.json"
 
-    json_path.write_text(json.dumps(summary, ensure_ascii=True, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     fieldnames = [
         "date",
@@ -93,9 +127,38 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
         writer.writeheader()
         writer.writerows(filtered)
 
-    summary_json_path.write_text(json.dumps(filtered, ensure_ascii=True, indent=2), encoding="utf-8")
+    summary_json_path.write_text(json.dumps(filtered, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    return [str(json_path), str(csv_path), str(summary_path), str(summary_json_path)]
+    summary_4col = _collect_summary_4col(filtered)
+    if not summary_4col and str(day_key or ""):
+        summary_4col = [
+            {"date": str(day_key or ""), "A": 0.0, "B": 0.0, "C": 0.0, "D": 0.0}
+        ]
+    summary_4col_json_path = target_dir / "summary_4col.json"
+    summary_4col_csv_path = target_dir / "summary_4col.csv"
+    with summary_4col_csv_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["date", "A", "B", "C", "D"])
+        writer.writeheader()
+        for row in summary_4col:
+            writer.writerow(
+                {
+                    "date": row.get("date", ""),
+                    "A": row.get("A", 0.0),
+                    "B": row.get("B", 0.0),
+                    "C": row.get("C", 0.0),
+                    "D": row.get("D", 0.0),
+                }
+            )
+    summary_4col_json_path.write_text(json.dumps(summary_4col, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return [
+        str(json_path),
+        str(csv_path),
+        str(summary_path),
+        str(summary_json_path),
+        str(summary_4col_csv_path),
+        str(summary_4col_json_path),
+    ]
 
 
 def git_commit_report_files(

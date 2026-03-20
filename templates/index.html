@@ -741,7 +741,10 @@
     <div class="nav-backdrop" id="navBackdrop"></div>
 
     <script>
-      window.APP_CONFIG = { refreshSeconds: {{ ui_refresh_seconds }} };
+      window.APP_CONFIG = {
+        refreshSeconds: {{ ui_refresh_seconds }},
+        initialWorkspace: "{{ initial_workspace or 'models' }}",
+      };
     </script>
     <script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>
   </body>
