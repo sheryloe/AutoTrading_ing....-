@@ -133,6 +133,19 @@
                 </div>
             </div>
         </section>
+
+        <section class="pb-16">
+            <div class="glass-panel rounded-3xl p-6">
+                <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-2 text-left">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Daily PNL Log</div>
+                        <h3 class="text-lg font-black text-white">일자별 누적 손익 로그</h3>
+                    </div>
+                    <p class="text-xs opacity-60">날짜 단위로 그날의 총 PNL을 1줄씩 자동 기록합니다.</p>
+                </div>
+                <div id="daily-pnl-log" class="mt-4 space-y-2"></div>
+            </div>
+        </section>
     </main>
 
     <script>
@@ -167,6 +180,11 @@
                 currency: "USD",
                 maximumFractionDigits: 2,
             }).format(Number(value || 0));
+        }
+
+        function formatSignedUsd(value) {
+            const num = Number(value || 0);
+            return `${num >= 0 ? "+" : "-"}${formatUsd(Math.abs(num))}`;
         }
 
         function formatPct(value) {
@@ -310,6 +328,55 @@
             _chart.render();
         }
 
+        function todayKstDay() {
+            return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+        }
+
+        function renderDailyPnlLog(dailyRows) {
+            const mount = document.getElementById("daily-pnl-log");
+            if (!mount) return;
+
+            const byDay = new Map();
+            dailyRows.forEach((row) => {
+                const day = String(row.day || "").slice(0, 10);
+                if (!day) return;
+                const entry = byDay.get(day) || { day, totalUsd: 0, models: new Set() };
+                entry.totalUsd += Number(row.total_pnl_usd || 0);
+                const modelId = String(row.model_id || "").toUpperCase();
+                if (modelId) entry.models.add(modelId);
+                byDay.set(day, entry);
+            });
+
+            const ordered = [...byDay.values()]
+                .sort((a, b) => b.day.localeCompare(a.day))
+                .slice(0, 45);
+
+            if (!ordered.length) {
+                mount.innerHTML = '<div class="rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-slate-400">기록된 일별 PNL 데이터가 아직 없습니다.</div>';
+                return;
+            }
+
+            const today = todayKstDay();
+            mount.innerHTML = ordered.map((entry) => {
+                const pct = (entry.totalUsd / EQUITY_BASE) * 100;
+                const pnlClass = pct >= 0 ? "pnl-plus" : "pnl-minus";
+                const isToday = entry.day === today;
+                const todayBadge = isToday
+                    ? '<span class="text-[10px] font-bold text-cyan-300 border border-cyan-500/50 rounded px-2 py-0.5">TODAY</span>'
+                    : "";
+                return `
+                    <div class="rounded-xl border ${isToday ? "border-cyan-500/40" : "border-white/10"} bg-slate-900/50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-bold text-white">${entry.day}</span>
+                            ${todayBadge}
+                        </div>
+                        <div class="text-sm opacity-80">Models ${entry.models.size}</div>
+                        <div class="text-sm font-bold ${pnlClass}">${formatSignedUsd(entry.totalUsd)} (${formatPct(pct)})</div>
+                    </div>
+                `;
+            }).join("");
+        }
+
         async function fetchTradingData() {
             if (!_supabase) {
                 return;
@@ -352,6 +419,7 @@
             setHeadline(heartbeat, positions);
             renderSummaryCards(dailyRows, positions);
             renderChart(dailyRows, positions);
+            renderDailyPnlLog(dailyRows);
         }
 
         function subscribeRealtime() {
