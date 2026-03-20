@@ -245,6 +245,10 @@ class Settings:
     crypto_use_binance_data: bool
     crypto_use_bybit_data: bool
     crypto_use_coingecko_data: bool
+    crypto_deriv_data_enabled: bool
+    crypto_deriv_sources: str
+    crypto_deriv_cache_seconds: int
+    crypto_deriv_fail_open: bool
     crypto_universe_mode: str
     bybit_symbols: str
     crypto_dynamic_universe_enabled: bool
@@ -463,6 +467,10 @@ class Settings:
             crypto_use_binance_data=_to_bool(data.get("CRYPTO_USE_BINANCE_DATA"), True),
             crypto_use_bybit_data=_to_bool(data.get("CRYPTO_USE_BYBIT_DATA"), True),
             crypto_use_coingecko_data=_to_bool(data.get("CRYPTO_USE_COINGECKO_DATA"), True),
+            crypto_deriv_data_enabled=_to_bool(data.get("CRYPTO_DERIV_DATA_ENABLED"), True),
+            crypto_deriv_sources=_to_str(data.get("CRYPTO_DERIV_SOURCES"), "bybit,binance").lower(),
+            crypto_deriv_cache_seconds=max(15, min(600, _to_int(data.get("CRYPTO_DERIV_CACHE_SECONDS"), 60))),
+            crypto_deriv_fail_open=_to_bool(data.get("CRYPTO_DERIV_FAIL_OPEN"), True),
             crypto_universe_mode=(
                 _to_str(data.get("CRYPTO_UNIVERSE_MODE"), CRYPTO_UNIVERSE_MODE_DEFAULT).lower()
                 if _to_str(data.get("CRYPTO_UNIVERSE_MODE"), CRYPTO_UNIVERSE_MODE_DEFAULT).lower()

@@ -2023,6 +2023,14 @@ class TradingEngine:
             "realtime_quotes_calls": 120000.0,
             "binance_5m_kline_calls": 180000.0,
             "binance_1m_kline_calls": 180000.0,
+            "bybit_open_interest_calls": 120000.0,
+            "bybit_funding_calls": 120000.0,
+            "bybit_account_ratio_calls": 120000.0,
+            "bybit_orderbook_calls": 120000.0,
+            "binance_open_interest_hist_calls": 120000.0,
+            "binance_funding_calls": 120000.0,
+            "binance_global_lsr_calls": 120000.0,
+            "binance_taker_ratio_calls": 120000.0,
         }
         worst_ratio = 0.0
         worst_key = ""
@@ -10551,6 +10559,44 @@ class TradingEngine:
         volume_24h = float(meta.get("volume_24h") or 0.0)
         market_cap = float(meta.get("market_cap") or 0.0)
         rank = float(meta.get("market_cap_rank") or 0.0)
+        deriv_enabled = bool(getattr(self.settings, "crypto_deriv_data_enabled", True))
+        deriv_sources = str(getattr(self.settings, "crypto_deriv_sources", "bybit,binance") or "bybit,binance")
+        deriv_cache_seconds = max(15, int(getattr(self.settings, "crypto_deriv_cache_seconds", 60) or 60))
+        deriv_fail_open = bool(getattr(self.settings, "crypto_deriv_fail_open", True))
+        deriv_features: dict[str, float] = {
+            "oi_delta_5m": 0.0,
+            "oi_delta_1h": 0.0,
+            "oi_trend_4h": 0.0,
+            "funding_z_24h": 0.0,
+            "long_short_skew_5m": 0.0,
+            "taker_imbalance_5m": 0.0,
+            "book_imbalance_topn": 0.0,
+            "book_imbalance_1m": 0.0,
+            "liq_shock_score": 0.0,
+            "deriv_data_coverage": 0.0,
+            "deriv_data_ok": 0.0,
+            "deriv_fail_open": 1.0 if deriv_fail_open else 0.0,
+            "deriv_hard_fail": 0.0,
+        }
+        if deriv_enabled:
+            try:
+                raw_deriv = self.macro.fetch_derivatives_features_for_symbol(
+                    symbol,
+                    sources_csv=deriv_sources,
+                    cache_seconds=deriv_cache_seconds,
+                    orderbook_levels=25,
+                    fail_open=deriv_fail_open,
+                )
+                if isinstance(raw_deriv, dict):
+                    for k in tuple(deriv_features.keys()):
+                        if k in raw_deriv:
+                            deriv_features[k] = float(raw_deriv.get(k) or 0.0)
+            except Exception:
+                deriv_features["deriv_data_ok"] = 0.0
+                deriv_features["deriv_hard_fail"] = 0.0 if deriv_fail_open else 1.0
+        else:
+            deriv_features["deriv_data_ok"] = 1.0
+            deriv_features["deriv_data_coverage"] = 1.0
 
         tf_5m: list[float] = []
         try:
@@ -10843,6 +10889,8 @@ class TradingEngine:
             "quality_score": quality_score,
             "noise_penalty": noise_penalty,
             "overheat_penalty": overheat_penalty,
+            "deriv_data_enabled": 1.0 if deriv_enabled else 0.0,
+            **{str(k): float(v) for k, v in deriv_features.items()},
         }
 
     @staticmethod
@@ -10914,6 +10962,30 @@ class TradingEngine:
         ema_gap_pct = float(feats.get("ema_gap_pct") or 0.0)
         overbought_score = _clamp((rsi - 56.0) / 18.0, 0.0, 1.0)
         breakdown_ready = _clamp(1.0 - breakout_ready, 0.0, 1.0)
+        oi_delta_5m = _clamp(float(feats.get("oi_delta_5m") or 0.0), -1.0, 1.0)
+        oi_delta_1h = _clamp(float(feats.get("oi_delta_1h") or 0.0), -1.0, 1.0)
+        oi_trend_4h = _clamp(float(feats.get("oi_trend_4h") or 0.0), -1.0, 1.0)
+        funding_z_24h = _clamp(float(feats.get("funding_z_24h") or 0.0), -3.0, 3.0)
+        long_short_skew_5m = _clamp(float(feats.get("long_short_skew_5m") or 0.0), -1.0, 1.0)
+        taker_imbalance_5m = _clamp(float(feats.get("taker_imbalance_5m") or 0.0), -1.0, 1.0)
+        book_imbalance_1m = _clamp(float(feats.get("book_imbalance_1m") or 0.0), -1.0, 1.0)
+        liq_shock_score = _clamp(float(feats.get("liq_shock_score") or 0.0), 0.0, 1.0)
+        deriv_data_ok = float(feats.get("deriv_data_ok") or 0.0)
+        deriv_fail_open = bool(float(feats.get("deriv_fail_open") or 0.0) >= 0.5)
+        taker_long_bias = _clamp((taker_imbalance_5m + 1.0) * 0.5, 0.0, 1.0)
+        taker_short_bias = _clamp((1.0 - taker_imbalance_5m) * 0.5, 0.0, 1.0)
+        skew_long_bias = _clamp((long_short_skew_5m + 1.0) * 0.5, 0.0, 1.0)
+        skew_short_bias = _clamp((1.0 - long_short_skew_5m) * 0.5, 0.0, 1.0)
+        book_long_bias = _clamp((book_imbalance_1m + 1.0) * 0.5, 0.0, 1.0)
+        book_short_bias = _clamp((1.0 - book_imbalance_1m) * 0.5, 0.0, 1.0)
+        oi_expand = _clamp(oi_delta_1h / 0.08, -1.0, 1.0)
+        oi_up = _clamp(oi_expand, 0.0, 1.0)
+        oi_down = _clamp(-oi_expand, 0.0, 1.0)
+        oi_trend_up = _clamp(oi_trend_4h / 0.12, 0.0, 1.0)
+        oi_trend_down = _clamp((-oi_trend_4h) / 0.12, 0.0, 1.0)
+        funding_long_bias = _clamp((-funding_z_24h) / 3.0, 0.0, 1.0)
+        funding_short_bias = _clamp(funding_z_24h / 3.0, 0.0, 1.0)
+        deriv_hard_fail = bool(not deriv_fail_open and deriv_data_ok < 0.5)
         gate_penalty = 0.028
         chase_penalty = 0.018
         score_lo = -0.220
@@ -10933,6 +11005,9 @@ class TradingEngine:
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.082)
                     and rsi >= float(plan_cfg.get("short_rsi_min") or 56.0)
                     and ema_gap_pct <= float(plan_cfg.get("short_ema_gap_max") or 0.028)
+                    and book_imbalance_1m <= 0.35
+                    and not (breakdown_ready >= 0.90 and book_imbalance_1m > 0.08)
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.056 * upper_range_bias)
@@ -10944,6 +11019,9 @@ class TradingEngine:
                     + (0.020 * quality_score)
                     + (0.020 * overheat_penalty)
                     + (0.016 * ema_short_bias)
+                    + (0.020 * taker_short_bias)
+                    + (0.016 * skew_short_bias)
+                    + (0.012 * book_short_bias)
                     - (0.022 * volatility_penalty)
                     - (0.012 * lower_range_bias)
                 )
@@ -10979,7 +11057,10 @@ class TradingEngine:
                     and rsi <= float(plan_cfg.get("rsi_max") or 62.0)
                     and ema_gap_pct >= float(plan_cfg.get("ema_gap_min") or -0.026)
                     and rebound_strength >= float(plan_cfg.get("rebound_min") or 0.10)
+                    and book_imbalance_1m >= -0.35
+                    and not (breakout_ready >= 0.90 and book_imbalance_1m < -0.08)
                     and not chase_block
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.058 * oversold_score)
@@ -10989,6 +11070,9 @@ class TradingEngine:
                     + (0.020 * ema_alignment)
                     + (0.022 * quality_score)
                     + (0.024 * max(0.0, mean_reversion_gap))
+                    + (0.020 * taker_long_bias)
+                    + (0.016 * skew_long_bias)
+                    + (0.012 * book_long_bias)
                     - (0.024 * volatility_penalty)
                     - (0.010 * upper_range_bias)
                 )
@@ -11027,6 +11111,7 @@ class TradingEngine:
                     and ema_alignment <= float(plan_cfg.get("short_ema_align_max") or 0.58)
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.075)
                     and (upper_range_bias >= 0.16 or overheat_penalty >= 0.18)
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.054 * reclaim_weakness)
@@ -11037,6 +11122,8 @@ class TradingEngine:
                     + (0.020 * quality_score)
                     + (0.018 * stability_score)
                     + (0.018 * overheat_penalty)
+                    + (0.022 * taker_short_bias)
+                    + (0.018 * skew_short_bias)
                     - (0.026 * volatility_penalty)
                     - (0.014 * support_closeness)
                 )
@@ -11072,6 +11159,7 @@ class TradingEngine:
                     and ema_alignment >= float(plan_cfg.get("ema_align_min") or 0.42)
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.075)
                     and not chase_block
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.054 * reclaim_strength)
@@ -11080,6 +11168,8 @@ class TradingEngine:
                     + (0.024 * rebound_strength)
                     + (0.022 * quality_score)
                     + (0.020 * stability_score)
+                    + (0.022 * taker_long_bias)
+                    + (0.018 * skew_long_bias)
                     - (0.026 * volatility_penalty)
                     - (0.018 * overheat_penalty)
                 )
@@ -11117,6 +11207,7 @@ class TradingEngine:
                     and breakdown_ready >= 0.62
                     and ema_alignment <= 0.52
                     and atr_pct <= 0.085
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.058 * compression_score)
@@ -11125,6 +11216,9 @@ class TradingEngine:
                     + (0.024 * quality_score)
                     + (0.018 * stability_score)
                     + (0.016 * reclaim_weakness)
+                    + (0.030 * oi_down)
+                    + (0.024 * taker_short_bias)
+                    - (0.010 * liq_shock_score)
                     - (0.028 * volatility_penalty)
                     - (0.012 * support_closeness)
                 )
@@ -11155,6 +11249,7 @@ class TradingEngine:
                     and ema_alignment >= 0.48
                     and atr_pct <= 0.085
                     and not chase_block
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.058 * compression_score)
@@ -11162,6 +11257,9 @@ class TradingEngine:
                     + (0.034 * ema_alignment)
                     + (0.024 * quality_score)
                     + (0.018 * stability_score)
+                    + (0.030 * oi_up)
+                    + (0.024 * taker_long_bias)
+                    - (0.010 * liq_shock_score)
                     - (0.028 * volatility_penalty)
                     - (0.024 * overheat_penalty)
                 )
@@ -11197,6 +11295,8 @@ class TradingEngine:
                     )
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.115)
                     and ema_gap_pct <= float(plan_cfg.get("short_ema_gap_max") or 0.028)
+                    and (funding_short_bias >= 0.05 or oi_trend_up >= 0.05)
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.050 * overheat_penalty)
@@ -11206,6 +11306,10 @@ class TradingEngine:
                     + (0.020 * quality_score)
                     + (0.018 * breakout_ready)
                     + (0.018 * ema_short_bias)
+                    + (0.028 * funding_short_bias)
+                    + (0.024 * oi_trend_up)
+                    + (0.012 * taker_short_bias)
+                    - (0.008 * liq_shock_score)
                     - (0.026 * volatility_penalty)
                     - (0.012 * lower_range_bias)
                 )
@@ -11241,7 +11345,9 @@ class TradingEngine:
                     )
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.115)
                     and ema_gap_pct >= float(plan_cfg.get("ema_gap_min") or -0.035)
+                    and (funding_long_bias >= 0.05 or oi_trend_down >= 0.05)
                     and not chase_block
+                    and not deriv_hard_fail
                 )
                 score = (
                     (0.050 * washout_score)
@@ -11250,6 +11356,10 @@ class TradingEngine:
                     + (0.034 * rebound_strength)
                     + (0.018 * max(0.0, reclaim_strength))
                     + (0.020 * quality_score)
+                    + (0.028 * funding_long_bias)
+                    + (0.024 * oi_trend_down)
+                    + (0.012 * taker_long_bias)
+                    - (0.008 * liq_shock_score)
                     - (0.026 * volatility_penalty)
                     - (0.012 * upper_range_bias)
                 )
@@ -11339,6 +11449,12 @@ class TradingEngine:
             f"compression={float(feats.get('compression_score') or 0.0):.2f} "
             f"support={float(feats.get('support_closeness') or 0.0):.2f} "
             f"OH={float(feats.get('overheat_penalty') or 0.0):.2f} "
+            f"OI5m={float(feats.get('oi_delta_5m') or 0.0)*100:+.2f}% "
+            f"OI1h={float(feats.get('oi_delta_1h') or 0.0)*100:+.2f}% "
+            f"FZ={float(feats.get('funding_z_24h') or 0.0):+.2f} "
+            f"LS={float(feats.get('long_short_skew_5m') or 0.0):+.2f} "
+            f"TK={float(feats.get('taker_imbalance_5m') or 0.0):+.2f} "
+            f"OB={float(feats.get('book_imbalance_1m') or 0.0):+.2f} "
             f"CHB={'Y' if float(feats.get('chase_block') or 0.0) > 0 else 'N'} "
             f"rank={int(feats.get('market_cap_rank') or 0)} "
             f"gate={'Y' if profile.get('gate_ok') else 'N'}"

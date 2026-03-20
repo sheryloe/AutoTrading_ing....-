@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import math
 import calendar
 import threading
 from dataclasses import asdict
@@ -2147,6 +2148,11 @@ class MacroMarketClient:
         self._kline_cache_ts: dict[str, float] = {}
         self._kline_ohlc_cache: dict[str, list[dict[str, Any]]] = {}
         self._kline_ohlc_cache_ts: dict[str, float] = {}
+        self._deriv_cache: dict[str, dict[str, float]] = {}
+        self._deriv_cache_ts: dict[str, float] = {}
+        self._orderbook_cache: dict[str, float] = {}
+        self._orderbook_cache_ts: dict[str, float] = {}
+        self._api_backoff_until_ts: dict[str, float] = {}
         self._usage_started_ts: int = int(time.time())
         self._usage_counters: dict[str, int] = {
             "top_markets_calls": 0,
@@ -2160,6 +2166,14 @@ class MacroMarketClient:
             "binance_1m_kline_calls": 0,
             "coingecko_market_page_calls": 0,
             "cmc_market_calls": 0,
+            "bybit_open_interest_calls": 0,
+            "bybit_funding_calls": 0,
+            "bybit_account_ratio_calls": 0,
+            "bybit_orderbook_calls": 0,
+            "binance_open_interest_hist_calls": 0,
+            "binance_funding_calls": 0,
+            "binance_global_lsr_calls": 0,
+            "binance_taker_ratio_calls": 0,
         }
 
     def _usage_inc(self, key: str, count: int = 1) -> None:
@@ -2175,6 +2189,50 @@ class MacroMarketClient:
             "elapsed_seconds": int(elapsed),
             "counters": {str(k): int(v) for k, v in dict(self._usage_counters).items()},
         }
+
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return float(default)
+
+    @staticmethod
+    def _ratio_to_skew(ratio: float) -> float:
+        r = max(0.0, float(ratio))
+        if r <= 0.0:
+            return 0.0
+        return _clamp((r - 1.0) / max(1e-9, (r + 1.0)), -1.0, 1.0)
+
+    @staticmethod
+    def _zscore_latest(series: list[float]) -> float:
+        if len(series) < 3:
+            return 0.0
+        values = [float(v) for v in series if math.isfinite(float(v))]
+        if len(values) < 3:
+            return 0.0
+        mean = sum(values) / float(len(values))
+        var = sum((v - mean) ** 2 for v in values) / float(max(1, len(values) - 1))
+        std = math.sqrt(max(1e-12, var))
+        return _clamp((values[-1] - mean) / max(1e-9, std), -5.0, 5.0)
+
+    def _is_backoff_active(self, key: str) -> bool:
+        until_ts = float(self._api_backoff_until_ts.get(str(key), 0.0) or 0.0)
+        return bool(until_ts > time.time())
+
+    def _mark_backoff(self, key: str, error: Exception) -> None:
+        text = str(error or "").lower()
+        status_code = int(getattr(getattr(error, "response", None), "status_code", 0) or 0)
+        should_backoff = status_code == 429 or "too many requests" in text or "rate limit" in text or "10006" in text
+        if not should_backoff:
+            return
+        now = time.time()
+        prev_until = float(self._api_backoff_until_ts.get(str(key), 0.0) or 0.0)
+        if prev_until > now:
+            next_seconds = min(900.0, max(30.0, (prev_until - now) * 2.0))
+        else:
+            next_seconds = 60.0
+        self._api_backoff_until_ts[str(key)] = now + next_seconds
 
     def fetch_top_markets(
         self,
@@ -2735,6 +2793,468 @@ class MacroMarketClient:
             self._kline_ohlc_cache_ts[key] = now
             return candles
         return [dict(row) for row in cached]
+
+    def _fetch_bybit_open_interest_series(self, symbol: str, limit: int = 60) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("bybit_open_interest_calls", 1)
+        res = self.session.get(
+            "https://api.bybit.com/v5/market/open-interest",
+            params={
+                "category": "linear",
+                "symbol": sym,
+                "intervalTime": "5min",
+                "limit": max(20, min(200, int(limit))),
+            },
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        body = res.json()
+        rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            ts = int(self._safe_float((row or {}).get("timestamp"), 0.0))
+            oi = self._safe_float((row or {}).get("openInterest"), 0.0)
+            if ts <= 0 or oi <= 0.0:
+                continue
+            out.append((ts, oi))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def _fetch_bybit_funding_series(self, symbol: str, limit: int = 64) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("bybit_funding_calls", 1)
+        res = self.session.get(
+            "https://api.bybit.com/v5/market/funding/history",
+            params={"category": "linear", "symbol": sym, "limit": max(10, min(200, int(limit)))},
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        body = res.json()
+        rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            ts = int(self._safe_float((row or {}).get("fundingRateTimestamp"), 0.0))
+            rate = self._safe_float((row or {}).get("fundingRate"), 0.0)
+            if ts <= 0:
+                continue
+            out.append((ts, rate))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def _fetch_bybit_account_ratio_series(self, symbol: str, limit: int = 60) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("bybit_account_ratio_calls", 1)
+        res = self.session.get(
+            "https://api.bybit.com/v5/market/account-ratio",
+            params={
+                "category": "linear",
+                "symbol": sym,
+                "period": "5min",
+                "limit": max(20, min(200, int(limit))),
+            },
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        body = res.json()
+        rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            item = dict(row or {})
+            ts = int(self._safe_float(item.get("timestamp"), 0.0))
+            ratio = self._safe_float(item.get("longShortRatio"), 0.0)
+            if ratio <= 0.0:
+                buy_ratio = self._safe_float(item.get("buyRatio"), 0.0)
+                sell_ratio = self._safe_float(item.get("sellRatio"), 0.0)
+                if buy_ratio > 0.0 and sell_ratio > 0.0:
+                    ratio = buy_ratio / max(1e-9, sell_ratio)
+            if ts <= 0 or ratio <= 0.0:
+                continue
+            out.append((ts, ratio))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def fetch_bybit_derivatives_summary(self, symbol: str, cache_seconds: int = 60) -> dict[str, float]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return {}
+        ttl = max(15, min(600, int(cache_seconds)))
+        key = f"bybit:{sym}:{ttl}"
+        now = time.time()
+        cached = dict(self._deriv_cache.get(key) or {})
+        cache_ts = float(self._deriv_cache_ts.get(key) or 0.0)
+        if cached and (now - cache_ts) < ttl:
+            return cached
+        if self._is_backoff_active("bybit_derivatives"):
+            return cached
+
+        oi_rows: list[tuple[int, float]] = []
+        funding_rows: list[tuple[int, float]] = []
+        ratio_rows: list[tuple[int, float]] = []
+        try:
+            oi_rows = self._fetch_bybit_open_interest_series(sym, limit=120)
+        except Exception as exc:
+            self._mark_backoff("bybit_derivatives", exc)
+        try:
+            funding_rows = self._fetch_bybit_funding_series(sym, limit=96)
+        except Exception as exc:
+            self._mark_backoff("bybit_derivatives", exc)
+        try:
+            ratio_rows = self._fetch_bybit_account_ratio_series(sym, limit=120)
+        except Exception as exc:
+            self._mark_backoff("bybit_derivatives", exc)
+
+        out: dict[str, float] = {}
+        oi_values = [float(v) for _, v in oi_rows if float(v) > 0.0]
+        if len(oi_values) >= 2:
+            last = oi_values[-1]
+            prev_5m = oi_values[-2]
+            prev_1h = oi_values[-13] if len(oi_values) >= 13 else oi_values[0]
+            prev_4h = oi_values[-49] if len(oi_values) >= 49 else oi_values[0]
+            out["oi_delta_5m"] = _clamp((last - prev_5m) / max(1e-9, prev_5m), -1.0, 1.0)
+            out["oi_delta_1h"] = _clamp((last - prev_1h) / max(1e-9, prev_1h), -1.0, 1.0)
+            out["oi_trend_4h"] = _clamp((last - prev_4h) / max(1e-9, prev_4h), -1.0, 1.0)
+
+        funding_values = [float(v) for _, v in funding_rows]
+        if funding_values:
+            # Funding is typically 8h cadence; use latest window for z-score stabilization.
+            z_values = funding_values[-12:]
+            out["funding_z_24h"] = _clamp(self._zscore_latest(z_values), -3.0, 3.0)
+
+        ratio_values = [float(v) for _, v in ratio_rows if float(v) > 0.0]
+        if ratio_values:
+            latest_ratio = ratio_values[-1]
+            smooth_ratio = sum(ratio_values[-3:]) / float(min(3, len(ratio_values)))
+            out["long_short_skew_5m"] = self._ratio_to_skew((latest_ratio + smooth_ratio) * 0.5)
+
+        if out:
+            self._deriv_cache[key] = dict(out)
+            self._deriv_cache_ts[key] = now
+        return out
+
+    def _fetch_binance_open_interest_hist_series(self, symbol: str, limit: int = 60) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("binance_open_interest_hist_calls", 1)
+        res = self.session.get(
+            "https://fapi.binance.com/futures/data/openInterestHist",
+            params={
+                "symbol": sym,
+                "period": "5m",
+                "limit": max(20, min(500, int(limit))),
+            },
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            item = dict(row or {})
+            ts = int(self._safe_float(item.get("timestamp"), 0.0))
+            oi = self._safe_float(item.get("sumOpenInterestValue"), 0.0)
+            if oi <= 0.0:
+                oi = self._safe_float(item.get("sumOpenInterest"), 0.0)
+            if ts <= 0 or oi <= 0.0:
+                continue
+            out.append((ts, oi))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def _fetch_binance_funding_series(self, symbol: str, limit: int = 64) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("binance_funding_calls", 1)
+        res = self.session.get(
+            "https://fapi.binance.com/fapi/v1/fundingRate",
+            params={"symbol": sym, "limit": max(10, min(200, int(limit)))},
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            item = dict(row or {})
+            ts = int(self._safe_float(item.get("fundingTime"), 0.0))
+            rate = self._safe_float(item.get("fundingRate"), 0.0)
+            if ts <= 0:
+                continue
+            out.append((ts, rate))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def _fetch_binance_global_lsr_series(self, symbol: str, limit: int = 60) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("binance_global_lsr_calls", 1)
+        res = self.session.get(
+            "https://fapi.binance.com/futures/data/globalLongShortAccountRatio",
+            params={
+                "symbol": sym,
+                "period": "5m",
+                "limit": max(20, min(500, int(limit))),
+            },
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            item = dict(row or {})
+            ts = int(self._safe_float(item.get("timestamp"), 0.0))
+            ratio = self._safe_float(item.get("longShortRatio"), 0.0)
+            if ts <= 0 or ratio <= 0.0:
+                continue
+            out.append((ts, ratio))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def _fetch_binance_taker_ratio_series(self, symbol: str, limit: int = 60) -> list[tuple[int, float]]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return []
+        self._usage_inc("binance_taker_ratio_calls", 1)
+        res = self.session.get(
+            "https://fapi.binance.com/futures/data/takerlongshortRatio",
+            params={
+                "symbol": sym,
+                "period": "5m",
+                "limit": max(20, min(500, int(limit))),
+            },
+            timeout=self.timeout_seconds,
+        )
+        res.raise_for_status()
+        rows = res.json()
+        out: list[tuple[int, float]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows:
+            item = dict(row or {})
+            ts = int(self._safe_float(item.get("timestamp"), 0.0))
+            ratio = self._safe_float(item.get("buySellRatio"), 0.0)
+            if ts <= 0 or ratio <= 0.0:
+                continue
+            out.append((ts, ratio))
+        out.sort(key=lambda item: int(item[0]))
+        return out
+
+    def fetch_binance_derivatives_summary(self, symbol: str, cache_seconds: int = 60) -> dict[str, float]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return {}
+        ttl = max(15, min(600, int(cache_seconds)))
+        key = f"binance:{sym}:{ttl}"
+        now = time.time()
+        cached = dict(self._deriv_cache.get(key) or {})
+        cache_ts = float(self._deriv_cache_ts.get(key) or 0.0)
+        if cached and (now - cache_ts) < ttl:
+            return cached
+        if self._is_backoff_active("binance_derivatives"):
+            return cached
+
+        oi_rows: list[tuple[int, float]] = []
+        funding_rows: list[tuple[int, float]] = []
+        ratio_rows: list[tuple[int, float]] = []
+        taker_rows: list[tuple[int, float]] = []
+        try:
+            oi_rows = self._fetch_binance_open_interest_hist_series(sym, limit=120)
+        except Exception as exc:
+            self._mark_backoff("binance_derivatives", exc)
+        try:
+            funding_rows = self._fetch_binance_funding_series(sym, limit=96)
+        except Exception as exc:
+            self._mark_backoff("binance_derivatives", exc)
+        try:
+            ratio_rows = self._fetch_binance_global_lsr_series(sym, limit=120)
+        except Exception as exc:
+            self._mark_backoff("binance_derivatives", exc)
+        try:
+            taker_rows = self._fetch_binance_taker_ratio_series(sym, limit=120)
+        except Exception as exc:
+            self._mark_backoff("binance_derivatives", exc)
+
+        out: dict[str, float] = {}
+        oi_values = [float(v) for _, v in oi_rows if float(v) > 0.0]
+        if len(oi_values) >= 2:
+            last = oi_values[-1]
+            prev_5m = oi_values[-2]
+            prev_1h = oi_values[-13] if len(oi_values) >= 13 else oi_values[0]
+            prev_4h = oi_values[-49] if len(oi_values) >= 49 else oi_values[0]
+            out["oi_delta_5m"] = _clamp((last - prev_5m) / max(1e-9, prev_5m), -1.0, 1.0)
+            out["oi_delta_1h"] = _clamp((last - prev_1h) / max(1e-9, prev_1h), -1.0, 1.0)
+            out["oi_trend_4h"] = _clamp((last - prev_4h) / max(1e-9, prev_4h), -1.0, 1.0)
+
+        funding_values = [float(v) for _, v in funding_rows]
+        if funding_values:
+            out["funding_z_24h"] = _clamp(self._zscore_latest(funding_values[-12:]), -3.0, 3.0)
+
+        ratio_values = [float(v) for _, v in ratio_rows if float(v) > 0.0]
+        if ratio_values:
+            out["long_short_skew_5m"] = self._ratio_to_skew(sum(ratio_values[-3:]) / float(min(3, len(ratio_values))))
+
+        taker_values = [float(v) for _, v in taker_rows if float(v) > 0.0]
+        if taker_values:
+            out["taker_imbalance_5m"] = self._ratio_to_skew(sum(taker_values[-3:]) / float(min(3, len(taker_values))))
+
+        if out:
+            self._deriv_cache[key] = dict(out)
+            self._deriv_cache_ts[key] = now
+        return out
+
+    def fetch_bybit_orderbook_imbalance(
+        self,
+        symbol: str,
+        *,
+        top_n: int = 25,
+        cache_seconds: int = 60,
+    ) -> float:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return 0.0
+        levels = max(1, min(200, int(top_n)))
+        ttl = max(10, min(300, int(cache_seconds)))
+        key = f"{sym}:{levels}:{ttl}"
+        now = time.time()
+        cached = self._safe_float(self._orderbook_cache.get(key), 0.0)
+        cache_ts = float(self._orderbook_cache_ts.get(key) or 0.0)
+        if (now - cache_ts) < ttl:
+            return _clamp(cached, -1.0, 1.0)
+        if self._is_backoff_active("bybit_orderbook"):
+            return _clamp(cached, -1.0, 1.0)
+
+        try:
+            self._usage_inc("bybit_orderbook_calls", 1)
+            res = self.session.get(
+                "https://api.bybit.com/v5/market/orderbook",
+                params={"category": "linear", "symbol": sym, "limit": levels},
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            body = res.json()
+            result = (body or {}).get("result") if isinstance(body, dict) else {}
+            bids = list((result or {}).get("b") or [])
+            asks = list((result or {}).get("a") or [])
+            bid_notional = 0.0
+            ask_notional = 0.0
+            for row in bids[:levels]:
+                if not isinstance(row, list) or len(row) < 2:
+                    continue
+                bid_notional += max(0.0, self._safe_float(row[0], 0.0)) * max(0.0, self._safe_float(row[1], 0.0))
+            for row in asks[:levels]:
+                if not isinstance(row, list) or len(row) < 2:
+                    continue
+                ask_notional += max(0.0, self._safe_float(row[0], 0.0)) * max(0.0, self._safe_float(row[1], 0.0))
+            total = bid_notional + ask_notional
+            value = _clamp((bid_notional - ask_notional) / max(1e-9, total), -1.0, 1.0) if total > 0.0 else 0.0
+            self._orderbook_cache[key] = float(value)
+            self._orderbook_cache_ts[key] = now
+            return float(value)
+        except Exception as exc:
+            self._mark_backoff("bybit_orderbook", exc)
+            return _clamp(cached, -1.0, 1.0)
+
+    def fetch_derivatives_features_for_symbol(
+        self,
+        symbol: str,
+        *,
+        sources_csv: str = "bybit,binance",
+        cache_seconds: int = 60,
+        orderbook_levels: int = 25,
+        fail_open: bool = True,
+    ) -> dict[str, float]:
+        sym = str(symbol or "").upper().strip()
+        if not sym:
+            return {}
+        requested_sources: list[str] = []
+        for token in str(sources_csv or "bybit,binance").split(","):
+            provider = str(token or "").strip().lower()
+            if provider not in {"bybit", "binance"}:
+                continue
+            if provider not in requested_sources:
+                requested_sources.append(provider)
+        if not requested_sources:
+            requested_sources = ["bybit", "binance"]
+
+        ttl = max(15, min(600, int(cache_seconds)))
+        key = f"deriv:{sym}:{','.join(requested_sources)}:{ttl}:{int(orderbook_levels)}:{1 if fail_open else 0}"
+        now = time.time()
+        cached = dict(self._deriv_cache.get(key) or {})
+        cache_ts = float(self._deriv_cache_ts.get(key) or 0.0)
+        if cached and (now - cache_ts) < ttl:
+            return cached
+
+        rows: list[dict[str, float]] = []
+        if "bybit" in requested_sources:
+            row = self.fetch_bybit_derivatives_summary(sym, cache_seconds=ttl)
+            if row:
+                rows.append(dict(row))
+        if "binance" in requested_sources:
+            row = self.fetch_binance_derivatives_summary(sym, cache_seconds=ttl)
+            if row:
+                rows.append(dict(row))
+
+        keys = (
+            "oi_delta_5m",
+            "oi_delta_1h",
+            "oi_trend_4h",
+            "funding_z_24h",
+            "long_short_skew_5m",
+            "taker_imbalance_5m",
+        )
+        out: dict[str, float] = {}
+        for metric in keys:
+            values = [self._safe_float(row.get(metric), 0.0) for row in rows if metric in row]
+            if not values:
+                out[metric] = 0.0
+                continue
+            out[metric] = float(sum(values) / float(len(values)))
+
+        # When Bybit taker ratio is unavailable, use long/short skew as a conservative fallback.
+        if abs(float(out.get("taker_imbalance_5m") or 0.0)) < 1e-9 and abs(float(out.get("long_short_skew_5m") or 0.0)) > 1e-9:
+            out["taker_imbalance_5m"] = float(out.get("long_short_skew_5m") or 0.0) * 0.60
+
+        orderbook_imbalance = 0.0
+        if "bybit" in requested_sources:
+            orderbook_imbalance = self.fetch_bybit_orderbook_imbalance(
+                sym,
+                top_n=max(1, int(orderbook_levels)),
+                cache_seconds=min(ttl, 60),
+            )
+        out["book_imbalance_topn"] = float(orderbook_imbalance)
+        out["book_imbalance_1m"] = float(orderbook_imbalance)
+        out["liq_shock_score"] = 0.0
+
+        coverage = float(len(rows)) / float(max(1, len(requested_sources)))
+        out["deriv_data_coverage"] = _clamp(coverage, 0.0, 1.0)
+        out["deriv_data_ok"] = 1.0 if rows else 0.0
+        out["deriv_fail_open"] = 1.0 if bool(fail_open) else 0.0
+        if not rows and not bool(fail_open):
+            out["deriv_hard_fail"] = 1.0
+        else:
+            out["deriv_hard_fail"] = 0.0
+
+        self._deriv_cache[key] = dict(out)
+        self._deriv_cache_ts[key] = now
+        return out
 
     def _fetch_cmc(self, limit: int, api_key: str) -> list[dict[str, Any]]:
         url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
