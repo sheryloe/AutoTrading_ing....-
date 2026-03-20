@@ -1,6 +1,6 @@
-# 운영 콘솔 화면 안내
+﻿# 운영 콘솔 화면 안내
 
-> [Prev: System Architecture](https://github.com/sheryloe/AutoTrading_ing....-/wiki/System-Architecture) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Execution Flow](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Execution-Flow)
+> [Prev: System Architecture](https://github.com/sheryloe/Automethemoney/wiki/System-Architecture) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Execution Flow](https://github.com/sheryloe/Automethemoney/wiki/Execution-Flow)
 
 ---
 
@@ -17,13 +17,9 @@
 
 ## 콘솔 스크린샷
 
-![AI_Auto 콘솔 화면](https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-dashboard.png)
-
-> 한 화면에 모든 정보를 넣지 않고, 상태 확인과 운영 입력을 분리한 것이 현재 콘솔 구조의 핵심입니다.
+![AI_Auto 콘솔 화면](https://sheryloe.github.io/Automethemoney/assets/screenshots/auto-trading-dashboard.png)
 
 ## 1. 개요
-
-개요 화면은 지금 시스템이 살아 있는지와 전체 흐름이 어떤지만 빠르게 보는 화면입니다.
 
 포함되는 정보:
 - heartbeat
@@ -32,19 +28,12 @@
 - 오픈 포지션 수
 - 모델 스냅샷
 
-포함하지 않는 정보:
-- 긴 설정 폼
-- 세부 로그 표
-- provider 키 입력
-
 운영자가 개요에서 확인할 것:
-- [ ] heartbeat가 최근 8분 내에 갱신되었는가
+- [ ] heartbeat가 최근 1분 내에 갱신되었는가
 - [ ] 최근 손익이 급격히 깨지지 않았는가
 - [ ] 오픈 포지션 수가 리스크 기준을 넘지 않는가
 
 ## 2. 모델 성과
-
-모델 성과 화면은 비교 전용 화면입니다.
 
 포함되는 정보:
 - 모델별 PnL
@@ -53,18 +42,12 @@
 - autotune 상태
 - 모델 탭별 성과 테이블
 
-핵심 원칙:
-- 모델 컬럼을 한 표에 계속 섞지 않고 탭으로 분리
-- 운영자는 비교만 하고 입력은 하지 않음
-
 운영자가 모델 성과에서 확인할 것:
 - [ ] 어떤 모델이 최근 손익을 만들었는가
 - [ ] 승률과 종료 거래 수가 극단적으로 흔들리지 않는가
 - [ ] autotune 상태가 비어 있지 않은가
 
 ## 3. 포지션
-
-포지션 화면은 실행 상태를 보는 화면입니다.
 
 포함되는 정보:
 - 오픈 포지션
@@ -73,16 +56,12 @@
 - intrabar 체결/종료 로그
 - 모델별 포지션 탭
 
-이 화면의 역할은 “지금 어떤 계획이 있었고 실제로 어떻게 체결되었나”를 읽는 것입니다.
-
 운영자가 포지션 화면에서 확인할 것:
 - [ ] 오픈 포지션 수가 최대 기준을 넘지 않는가
 - [ ] latest setup과 실제 체결 로그가 맞는가
 - [ ] intrabar 종료가 예상과 다른 방식으로 처리되지 않았는가
 
 ## 4. 설정
-
-설정 화면은 운영 입력 전용입니다.
 
 포함되는 기능:
 - Service control
@@ -91,10 +70,6 @@
 - live arm
 - runtime profile
 - 하드 리셋
-
-핵심 원칙:
-- 입력은 이 화면에서만 수행
-- 개요나 포지션 화면에서 설정을 건드리지 않음
 
 설정 화면에서 주로 하는 작업:
 - [ ] runtime profile 저장

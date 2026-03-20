@@ -1,6 +1,6 @@
-# 데이터 저장 구조
+﻿# 데이터 저장 구조
 
-> [Prev: Models and Risk](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Models-and-Risk) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Deployment and Secrets](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Deployment-and-Secrets)
+> [Prev: Models and Risk](https://github.com/sheryloe/Automethemoney/wiki/Models-and-Risk) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Deployment and Secrets](https://github.com/sheryloe/Automethemoney/wiki/Deployment-and-Secrets)
 
 ---
 
@@ -12,7 +12,7 @@ AI_Auto는 Supabase를 상태 원장으로 사용합니다. 각 테이블은 운
 | --- | --- | --- |
 | `public.instruments` | 추적 심볼 목록 | 공통 |
 | `public.engine_heartbeat` | 배치 생존 상태와 마지막 오류 | 개요 |
-| `public.engine_state_blobs` | 엔진 상태 blob 저장 | 운영/리셋 참고 |
+| `public.engine_state_blobs` | 엔진 상태 blob 저장 | 운영/리셋 |
 | `public.service_secrets` | provider vault 암호화 저장 | 설정 |
 | `public.model_runtime_tunes` | 모델별 현재 튜닝 상태 | 모델 성과 |
 | `public.model_setups` | 최근 setup 기록 | 포지션 |
@@ -33,7 +33,10 @@ flowchart LR
   UI --> DP
 ```
 
-> 위키에서 테이블을 볼 때는 “배치가 무엇을 기록하고, 어떤 화면이 그것을 읽는가”를 같이 보면 훨씬 이해가 빠릅니다.
+## GitHub Pages 리포트
+
+- `docs/data/daily_pnl/summary_4col.json`을 기본으로 읽음
+- `docs/daily-pnl.html`에서 일자 + A/B/C/D 누적 손익 표시
 
 ## 테이블별 핵심 컬럼
 
@@ -43,14 +46,8 @@ flowchart LR
 | `service_secrets` | `provider`, `secret_ciphertext`, `meta_json` | provider 자격증명 저장 |
 | `model_runtime_tunes` | `threshold`, `tp_mul`, `sl_mul`, `updated_at` | autotune 이후 현재 값 |
 | `model_setups` | `symbol`, `model_id`, `entry_price`, `stop_loss_price`, `target_price_1` | 모델이 제안한 계획 |
-| `positions` | `status`, `actual_entry_price`, `realized_pnl_usd`, `updated_at` | 실제 데모 체결 상태 |
+| `positions` | `status`, `actual_entry_price`, `realized_pnl_usd`, `updated_at` | 데모 체결 상태 |
 | `daily_model_pnl` | `day`, `model_id`, `equity_usd`, `realized_pnl_usd` | 일별 모델 성과 |
-
-## 저장 원칙
-
-- runtime profile은 별도 상태 blob으로 관리합니다
-- provider 자격증명은 `service_secrets`에 암호화해 저장합니다
-- heartbeat, setup, 포지션, PnL, runtime tune은 화면에서 바로 읽을 수 있게 테이블로 분리합니다
 
 ## 화면과 데이터 연결
 
@@ -59,7 +56,7 @@ flowchart LR
 | `/` | `engine_heartbeat`, 최근 PnL 요약 |
 | `/models` | `daily_model_pnl`, `model_runtime_tunes` |
 | `/positions` | `positions`, `model_setups` |
-| `/settings` | runtime profile, provider vault 메타 정보 |
+| `/settings` | runtime profile, provider vault 메타 |
 
 ## 확인 체크리스트
 

@@ -1,6 +1,6 @@
-# 트러블슈팅
+﻿# 트러블슈팅
 
-> [Prev: Operations Guide](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Operations-Guide) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki)
+> [Prev: Operations Guide](https://github.com/sheryloe/Automethemoney/wiki/Operations-Guide) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki)
 
 ---
 
@@ -27,8 +27,6 @@ flowchart TD
   B -->|live 관련 걱정| F[runtime profile과 arm 상태 확인]
 ```
 
-> 대부분의 문제는 Vercel env, 관리자 토큰, GitHub Actions 실행 기록 중 하나에서 먼저 원인이 드러납니다.
-
 ## `/settings` 저장 버튼이 비활성화될 때
 
 점검 순서:
@@ -39,8 +37,6 @@ flowchart TD
 - [ ] 현재 보고 있는 배포가 preview인지 production인지 확인한다
 
 ## provider 저장 시 `unauthorized`
-
-이 경우는 거래소 IP 제한보다 관리자 토큰 문제일 가능성이 훨씬 큽니다.
 
 - [ ] `/settings` 상단에서 관리자 토큰을 다시 입력한다
 - [ ] Vercel의 `SERVICE_ADMIN_TOKEN` 값과 실제 입력값이 같은지 본다
@@ -53,7 +49,7 @@ flowchart TD
 1. GitHub Actions `cloud-cycle` 실행 기록 확인
 2. `engine_heartbeat` 조회 시 KST/UTC 혼동 여부 확인
 3. GitHub Actions 로그에서 Python 예외 확인
-4. `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SERVICE_MASTER_KEY` 값 확인
+4. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SERVICE_MASTER_KEY` 값 확인
 
 ## GitHub Actions가 겹쳐 실행되는 것처럼 보일 때
 
@@ -71,4 +67,4 @@ flowchart TD
 
 ## 시드 변경 후 바로 현재 포지션이 초기화되나?
 
-아닙니다. runtime 저장은 현재 포지션을 유지하고, 시드 변경은 다음 명시적 하드 리셋 시점에 적용됩니다.
+아닙니다. runtime 저장은 현재 포지션을 유지하고, 시드 변경은 명시적 하드 리셋 시점에 적용됩니다.

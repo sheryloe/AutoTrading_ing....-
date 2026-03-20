@@ -1,6 +1,6 @@
-# 운영 가이드
+﻿# 운영 가이드
 
-> [Prev: Deployment and Secrets](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Deployment-and-Secrets) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Troubleshooting](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Troubleshooting)
+> [Prev: Deployment and Secrets](https://github.com/sheryloe/Automethemoney/wiki/Deployment-and-Secrets) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Troubleshooting](https://github.com/sheryloe/Automethemoney/wiki/Troubleshooting)
 
 ---
 
@@ -11,14 +11,8 @@
 - [ ] execution target이 `paper`인지 확인했다
 - [ ] provider 키 저장이 끝났다
 - [ ] 하드 리셋이 필요한지 먼저 판단했다
-- [ ] `cloud-cycle`이 최근 8분 내에 한 번 이상 돌았다
-- [ ] 모델별 데모 시드와 진입 비중이 현재 운영 의도와 맞는다
-
-## 운영 화면 참고
-
-![AI_Auto 운영 화면](https://sheryloe.github.io/AutoTrading_ing....-/assets/screenshots/auto-trading-cover.png)
-
-> 운영 가이드는 화면 조작 방법보다 “지금 무엇을 건드려도 되는지”와 “무엇은 유지되는지”를 먼저 구분하는 데 초점을 둡니다.
+- [ ] `cloud-cycle`이 최근 1분 내에 한 번 이상 돌았다
+- [ ] 모델별 데모 시드와 진입 비중이 현재 운영 의도와 맞다
 
 ## provider 키 관리
 
@@ -42,36 +36,55 @@
 - 진입 비중: `10% ~ 30%`
 - 레버리지 프로필: `5x ~ 25x`
 
-중요:
-- 이 프로젝트는 현재 spot이 아니라 futures demo 기준
-- 과거 spot 감각의 기록은 비교 기준으로 그대로 쓰지 않음
-
 ## runtime 저장과 리셋의 차이
 
 | 작업 | 유지되는 것 | 초기화되는 것 |
 | --- | --- | --- |
 | runtime profile 저장 | 포지션, 누적 PnL, provider 자격증명 | 없음 |
-| 하드 리셋 | provider 자격증명, runtime profile | 포지션, setup, 일별 PnL, runtime tune, 최근 체결 로그, 엔진 상태 |
+| 하드 리셋 | provider 자격증명, runtime profile | 포지션, setup, 일별 PnL, runtime tune, 엔진 상태 |
 
-### runtime profile 저장
+## 하드 리셋 (SQL Editor)
 
-- 현재 포지션 유지
-- 누적 PnL 유지
-- 다음 배치부터 새 규칙 반영
+```sql
+begin;
 
-### 하드 리셋
+insert into public.engine_state_blobs (blob_key, payload_json)
+values ('engine_state', '{}'::jsonb)
+on conflict (blob_key) do nothing;
 
-초기화되는 것:
-- 포지션
-- setup
-- 일별 PnL
-- runtime tune
-- 최근 체결 로그
-- 엔진 상태
+delete from public.positions;
+delete from public.model_setups;
+delete from public.daily_model_pnl;
+delete from public.model_runtime_tunes;
 
-유지되는 것:
-- provider 자격증명
-- runtime profile
+update public.engine_state_blobs
+set payload_json =
+  jsonb_set(
+    jsonb_set(
+      jsonb_set(
+        jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              jsonb_set(
+                jsonb_set(coalesce(payload_json, '{}'::jsonb), '{cash_usd}', '10000'::jsonb, true),
+                '{demo_seed_usdt}', '10000'::jsonb, true
+              ),
+              '{positions}', '{}'::jsonb, true
+            ),
+            '{trades}', '[]'::jsonb, true
+          ),
+          '{daily_pnl}', '[]'::jsonb, true
+        ),
+        '{last_cycle_ts}', '0'::jsonb, true
+      ),
+      '{last_wallet_sync_ts}', '0'::jsonb, true
+    ),
+    '{last_bybit_sync_ts}', '0'::jsonb, true
+  )
+where blob_key = 'engine_state';
+
+commit;
+```
 
 ## live 전환 가드
 

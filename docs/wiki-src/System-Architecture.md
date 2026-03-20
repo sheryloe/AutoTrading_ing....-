@@ -1,10 +1,10 @@
-# 시스템 아키텍처
+﻿# 시스템 아키텍처
 
-> [Prev: Quick Start](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Quick-Start) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Console Screens](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Console-Screens)
+> [Prev: Quick Start](https://github.com/sheryloe/Automethemoney/wiki/Quick-Start) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Console Screens](https://github.com/sheryloe/Automethemoney/wiki/Console-Screens)
 
 ---
 
-AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘솔과 상태 저장과 배치 실행을 분리한 서비스형 구조입니다.
+AI_Auto는 운영 콘솔, 상태 저장, 배치 실행을 분리한 서비스형 구조입니다.
 
 ## 레이어별 역할
 
@@ -13,7 +13,7 @@ AI_Auto는 단일 서버가 모든 일을 맡는 구조가 아니라, 운영 콘
 | Vercel | 운영 콘솔 UI, Service control API | `/settings` 저장과 화면 렌더링 |
 | Supabase | 상태 원장, provider vault, runtime profile | heartbeat, setup, 포지션, 일별 PnL 저장 |
 | Python 배치 | 분석, intrabar 체결 판정, PnL 계산, autotune | 실제 전략 로직과 데모 체결 처리 |
-| GitHub Actions | `cloud-cycle` 스케줄 실행 | 8분 주기, 중복 실행 방지, 일별 commit/push |
+| GitHub Actions | `cloud-cycle` 스케줄 실행 | 1분 주기, 중복 실행 방지, 일별 commit/push |
 
 ## 아키텍처 다이어그램
 
@@ -26,8 +26,6 @@ flowchart LR
   UI --> API[Service control API]
   API --> SB
 ```
-
-> 화면, 상태 저장, 배치 실행을 분리해 두면 문제를 찾을 때 어디부터 봐야 하는지가 훨씬 분명해집니다.
 
 ### Vercel
 
@@ -56,7 +54,7 @@ flowchart LR
 
 ### GitHub Actions
 
-- `cloud-cycle` 8분 주기 실행
+- `cloud-cycle` 주기 실행
 - daily report commit / push
 - 배치 실행 자동화
 
@@ -65,18 +63,7 @@ flowchart LR
 - [ ] 화면이 안 뜨면 `Vercel`
 - [ ] 데이터가 안 보이면 `Supabase`
 - [ ] 분석/체결 결과가 이상하면 `Python 배치`
-- [ ] 8분 실행이 안 돌면 `GitHub Actions`
-
-## 왜 이렇게 나눴는가
-
-이 구조의 장점은 장애 원인을 레이어별로 좁히기 쉽다는 점입니다.
-
-- 화면 문제는 Vercel
-- 상태 저장 문제는 Supabase
-- 분석/체결 시뮬레이션 문제는 Python 배치
-- 주기 실행 문제는 GitHub Actions
-
-단일 Flask 앱에 모든 것을 넣으면 편해 보이지만, 실제 운영에서는 원인 추적과 리셋 정책이 훨씬 어려워집니다.
+- [ ] 주기 실행이 안 돌면 `GitHub Actions`
 
 ## 현재 아키텍처의 성격
 

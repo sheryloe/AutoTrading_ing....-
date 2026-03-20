@@ -1,6 +1,6 @@
-# 런타임 설정 레퍼런스
+﻿# 런타임 설정 레퍼런스
 
-> [Prev: Execution Flow](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Execution-Flow) | [Wiki Home](https://github.com/sheryloe/AutoTrading_ing....-/wiki) | [Next: Models and Risk](https://github.com/sheryloe/AutoTrading_ing....-/wiki/Models-and-Risk)
+> [Prev: Execution Flow](https://github.com/sheryloe/Automethemoney/wiki/Execution-Flow) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Models and Risk](https://github.com/sheryloe/Automethemoney/wiki/Models-and-Risk)
 
 ---
 
@@ -13,11 +13,11 @@
 | `EXECUTION_TARGET` | `paper` | 실행 타깃. 기본은 paper |
 | `TRADE_MODE` | `paper` | 현재 운영 모드 |
 | `DEMO_SEED_USDT` | `10000` | 모델별 futures demo 기준 시드 |
-| `SCAN_INTERVAL_SECONDS` | `480` | 8분 배치 주기 |
+| `SCAN_INTERVAL_SECONDS` | `60` | 1분 배치 주기 |
 | `SIGNAL_COOLDOWN_MINUTES` | `10` | 연속 진입을 막는 쿨다운 |
 | `MODEL_AUTOTUNE_INTERVAL_HOURS` | `168` | 주간 autotune 주기 |
-| `INTRABAR_CONFLICT_POLICY` | `conservative` | 같은 캔들에서 TP/SL이 동시에 닿을 때의 처리 기준 |
-| `BYBIT_SYMBOLS` | `BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT` | 현재 추적 심볼 |
+| `INTRABAR_CONFLICT_POLICY` | `conservative` | 같은 캔들에서 TP/SL 충돌 처리 기준 |
+| `BYBIT_SYMBOLS` | 운영에서 지정 | 추적 심볼 목록 |
 | `CRYPTO_DATA_SOURCE_ORDER` | `binance,bybit,coingecko` | 시장 데이터 우선순위 |
 
 ## 설정 관계 다이어그램
@@ -31,8 +31,6 @@ flowchart LR
   B --> F[다음 cloud-cycle에 반영]
 ```
 
-> `/settings`에서 저장하는 값은 바로 다음 배치부터 해석 기준으로 적용됩니다. 다만 현재 포지션과 누적 PnL은 그대로 유지됩니다.
-
 ## 실행 관련 항목
 
 | 항목 | 선택값 | 설명 |
@@ -43,10 +41,6 @@ flowchart LR
 | `LIVE_ENABLE_CRYPTO` | `true`, `false` | crypto live 활성화 |
 | `LIVE_EXECUTION_ARMED` | `true`, `false` | 실제 live 전환 전 마지막 arm 단계 |
 
-중요:
-- Bybit 키를 저장했다고 바로 live가 켜지지 않습니다.
-- `bybit-live`, `ENABLE_LIVE_EXECUTION`, `LIVE_ENABLE_CRYPTO`, `LIVE_EXECUTION_ARMED`가 모두 맞아야 live 전환 조건이 됩니다.
-
 ## 리스크 관련 항목
 
 | 항목 | 현재 기준 | 설명 |
@@ -55,8 +49,6 @@ flowchart LR
 | `DEMO_ORDER_PCT_MIN` | `0.10` | 최소 진입 비중 |
 | `DEMO_ORDER_PCT_MAX` | `0.30` | 최대 진입 비중 |
 | `MAX_OPEN_POSITIONS` | `3` | 최대 동시 포지션 수 |
-
-현재 기본 운영 기준은 `10000 USDT`, `10% ~ 30%`, `최대 3개 포지션`입니다.
 
 ## 데이터 소스 관련 항목
 
@@ -69,8 +61,6 @@ flowchart LR
 
 ## intrabar 충돌 규칙
 
-같은 1분봉 안에서 TP와 SL이 동시에 닿는 경우 아래 규칙 중 하나를 사용합니다.
-
 | 규칙 | 의미 | 기본값 여부 |
 | --- | --- | --- |
 | `conservative` | SL 우선 | 기본값 |
@@ -80,6 +70,6 @@ flowchart LR
 ## 저장 전 체크리스트
 
 - [ ] execution target이 의도한 값인지 확인했다
-- [ ] 진입 비중과 최대 포지션 수가 현재 futures demo 기준과 맞다
+- [ ] 진입 비중과 최대 포지션 수가 futures demo 기준과 맞다
 - [ ] intrabar 충돌 규칙이 운영 의도와 맞다
 - [ ] provider 저장과 runtime 저장을 서로 다른 작업으로 이해하고 있다
