@@ -398,12 +398,16 @@ textarea {
   font-size: clamp(2rem, 3.8vw, 3.3rem);
   line-height: 0.96;
   letter-spacing: -0.05em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .page-description {
   max-width: 52rem;
   margin: 6px 0 0;
   line-height: 1.9;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .page-actions {
@@ -621,6 +625,7 @@ textarea {
     rgba(8, 17, 27, 0.82);
   box-shadow: var(--shadow);
   overflow: hidden;
+  min-width: 0;
 }
 
 .hero-panel::after {
@@ -669,12 +674,16 @@ textarea {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: clamp(1.6rem, 2.4vw, 2.2rem);
   letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-panel p {
   margin: 0 0 16px;
   color: var(--muted);
   line-height: 1.8;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-metric-grid {
@@ -700,6 +709,8 @@ textarea {
 .hero-metric strong {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 1.1rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-metric small {
@@ -757,6 +768,8 @@ textarea {
 .hero-tape strong {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 1rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-tape small {
@@ -776,10 +789,13 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(10, 19, 30, 0.9);
+  min-width: 0;
 }
 
 .hero-mini-card strong {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-mini-card p {
@@ -835,6 +851,7 @@ textarea {
   border-radius: 22px;
   background: rgba(9, 20, 31, 0.95);
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .model-pulse-title {
@@ -856,11 +873,15 @@ textarea {
   margin-top: 4px;
   font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 1.1rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .model-pulse-title p {
   margin: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .model-pulse-metrics {
@@ -886,6 +907,8 @@ textarea {
 .model-pulse-metrics strong {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 0.96rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .model-pulse-meta {
@@ -903,6 +926,8 @@ textarea {
 .model-pulse-meta small {
   color: var(--muted);
   line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .model-pulse-link {

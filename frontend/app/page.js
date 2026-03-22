@@ -73,7 +73,7 @@ export default async function HomePage() {
       <PageHeader
         eyebrow="Overview"
         title="AI_Auto Control Deck"
-        description="변동성 대응 모드로 전환한 크립토 데모를 한 화면에서 확인합니다. 핵심 지표만 남기고, 모델별 보드는 카드로 분리했습니다."
+        description="변동성 대응형 크립토 데모를 한 화면에서 확인합니다. 핵심 지표와 모델 상태만 간결하게 표시합니다."
         actions={[
           { href: "/models", label: "모델 성과", tone: "primary" },
           { href: "/positions", label: "포지션", tone: "ghost" },
@@ -99,10 +99,7 @@ export default async function HomePage() {
             </StatusBadge>
           </div>
           <h2>변동성 집중형 데모 운용 중</h2>
-          <p>
-            시드 리셋 이후 공격적 튜닝을 적용했습니다. 모델별 진입 임계값을 낮추고 TP/SL 배수를 상향해
-            변동성 구간에서 체결 확률을 높인 상태입니다.
-          </p>
+          <p>시드 리셋 후 공격적 튜닝을 적용했습니다. 변동성 구간에서 체결 확률을 높이는 방향입니다.</p>
           <div className="hero-metric-grid">
             <div className="hero-metric">
               <span>최근 사이클</span>
