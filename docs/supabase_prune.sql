@@ -9,7 +9,7 @@ from pg_catalog.pg_statio_user_tables
 order by pg_total_relation_size(relid) desc
 limit 20;
 
--- 2) Create prune function
+-- 2) Create prune function (guarded for optional tables)
 create or replace function public.prune_automethemoney_history()
 returns void
 language plpgsql
@@ -23,12 +23,16 @@ begin
   where market = 'crypto'
     and cycle_at < (now() - interval '7 days');
 
-  delete from public.runtime_events
-  where created_at < (now() - interval '7 days');
+  if to_regclass('public.runtime_events') is not null then
+    delete from public.runtime_events
+    where created_at < (now() - interval '7 days');
+  end if;
 
-  delete from public.model_tune_history
-  where market = 'crypto'
-    and created_at < (now() - interval '30 days');
+  if to_regclass('public.model_tune_history') is not null then
+    delete from public.model_tune_history
+    where market = 'crypto'
+      and created_at < (now() - interval '30 days');
+  end if;
 
   delete from public.positions
   where market = 'crypto'
