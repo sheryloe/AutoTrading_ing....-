@@ -157,10 +157,10 @@ MEME_C_SL_CONFIRM_SECONDS = 90
 MEME_C_SL_RECOVERY_RESET_FACTOR = 0.70
 MEME_C_REENTRY_WAIT_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
-    "A": {"threshold": 0.064, "tp_mul": 1.00, "sl_mul": 0.92},
-    "B": {"threshold": 0.076, "tp_mul": 1.08, "sl_mul": 0.90},
-    "C": {"threshold": 0.080, "tp_mul": 1.18, "sl_mul": 0.86},
-    "D": {"threshold": 0.061, "tp_mul": 1.02, "sl_mul": 0.94},
+    "A": {"threshold": 0.060, "tp_mul": 1.12, "sl_mul": 0.98},
+    "B": {"threshold": 0.066, "tp_mul": 1.20, "sl_mul": 0.96},
+    "C": {"threshold": 0.070, "tp_mul": 1.30, "sl_mul": 0.92},
+    "D": {"threshold": 0.058, "tp_mul": 1.14, "sl_mul": 1.02},
 }
 CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
     "A": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.52, "smallcap_trend_only": False},
@@ -170,43 +170,51 @@ CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
     "A": {
-        "threshold_bias": -0.007,
-        "entry_atr_mul": 1.85,
-        "shallow_pullback_atr": 0.05,
-        "zone_half_atr": 0.74,
+        "threshold_bias": -0.012,
+        "entry_atr_mul": 1.55,
+        "shallow_pullback_atr": 0.06,
+        "zone_half_atr": 0.82,
         "bias_gate_min": 0.00,
         "rebound_min": 0.00,
-        "range_min_pct": 0.001,
-        "atr_pct_max": 0.145,
-        "rsi_max": 78.0,
-        "ema_gap_min": -0.080,
-        "risk_reward_min": 0.96,
+        "range_min_pct": 0.0008,
+        "atr_pct_max": 0.180,
+        "rsi_max": 82.0,
+        "ema_gap_min": -0.100,
+        "risk_reward_min": 0.92,
     },
     "B": {
-        "threshold_bias": -0.005,
-        "floor_atr_mul": 1.18,
-        "mid_atr_boost": 0.32,
-        "shallow_pullback_atr": 0.20,
-        "zone_half_atr": 0.54,
-        "reclaim_min": -0.22,
-        "rebound_min": 0.05,
-        "ema_align_min": 0.24,
-        "atr_pct_max": 0.110,
-        "risk_reward_min": 1.03,
+        "threshold_bias": -0.010,
+        "floor_atr_mul": 1.05,
+        "mid_atr_boost": 0.40,
+        "shallow_pullback_atr": 0.24,
+        "zone_half_atr": 0.58,
+        "reclaim_min": -0.28,
+        "rebound_min": 0.04,
+        "ema_align_min": 0.20,
+        "atr_pct_max": 0.135,
+        "risk_reward_min": 0.96,
+    },
+    "C": {
+        "threshold_bias": -0.006,
+        "entry_atr_mul": 1.10,
+        "zone_half_atr": 0.66,
+        "atr_pct_max": 0.200,
+        "ema_gap_min": -0.080,
+        "risk_reward_min": 1.00,
     },
     "D": {
-        "threshold_bias": -0.007,
-        "entry_atr_mul": 1.95,
-        "shallow_pullback_atr": 0.06,
-        "zone_low_atr": 0.74,
-        "zone_high_atr": 0.72,
+        "threshold_bias": -0.012,
+        "entry_atr_mul": 1.70,
+        "shallow_pullback_atr": 0.07,
+        "zone_low_atr": 0.70,
+        "zone_high_atr": 0.74,
         "washout_min": 0.00,
         "rebound_min": 0.00,
-        "reset_min": 0.04,
+        "reset_min": 0.02,
         "lower_bias_min": 0.00,
-        "atr_pct_max": 0.180,
-        "ema_gap_min": -0.090,
-        "risk_reward_min": 0.95,
+        "atr_pct_max": 0.210,
+        "ema_gap_min": -0.120,
+        "risk_reward_min": 0.92,
     },
 }
 CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
@@ -3075,13 +3083,13 @@ class TradingEngine:
     @staticmethod
     def _model_tune_clamps(model_id: str) -> dict[str, tuple[float, float]]:
         if model_id == "A":
-            return {"threshold": (0.066, 0.104), "tp_mul": (0.86, 1.20), "sl_mul": (0.82, 1.08)}
+            return {"threshold": (0.058, 0.106), "tp_mul": (0.92, 1.32), "sl_mul": (0.86, 1.16)}
         if model_id == "B":
-            return {"threshold": (0.068, 0.108), "tp_mul": (0.94, 1.28), "sl_mul": (0.80, 1.04)}
+            return {"threshold": (0.060, 0.110), "tp_mul": (1.00, 1.36), "sl_mul": (0.84, 1.12)}
         if model_id == "C":
-            return {"threshold": (0.072, 0.112), "tp_mul": (1.04, 1.42), "sl_mul": (0.76, 1.00)}
+            return {"threshold": (0.064, 0.118), "tp_mul": (1.12, 1.55), "sl_mul": (0.80, 1.10)}
         if model_id == "D":
-            return {"threshold": (0.064, 0.102), "tp_mul": (0.84, 1.16), "sl_mul": (0.84, 1.10)}
+            return {"threshold": (0.056, 0.108), "tp_mul": (0.92, 1.30), "sl_mul": (0.90, 1.20)}
         return {"threshold": (0.058, 0.108), "tp_mul": (1.08, 1.52), "sl_mul": (0.80, 1.04)}
 
     def _autotune_interval_seconds(self) -> int:

@@ -1,7 +1,6 @@
 import { Activity, Crosshair, ShieldAlert, TrendingUp, Wallet } from "lucide-react";
 import MetricCard from "./components/metric-card";
 import PageHeader from "./components/page-header";
-import SectionCard from "./components/section-card";
 import StatusBadge from "./components/status-badge";
 import { loadOverviewPageData } from "../lib/dashboard-data";
 import { getModelMeta, MODEL_ORDER } from "../lib/model-meta";
@@ -12,16 +11,6 @@ function entryLabel(row) {
   if (actual > 0) return formatPrice(actual);
   const planned = Number(row.planned_entry_price || 0);
   return planned > 0 ? `${formatPrice(planned)} plan` : "-";
-}
-
-function tpLabel(row) {
-  const value = Number(row.take_profit_price || row.target_price_2 || row.target_price_1 || 0);
-  return value > 0 ? formatPrice(value) : "-";
-}
-
-function slLabel(row) {
-  const value = Number(row.stop_loss_price || 0);
-  return value > 0 ? formatPrice(value) : "-";
 }
 
 function leverageLabel(value) {
@@ -63,22 +52,32 @@ function buildOverviewSnapshotByModel(dailyRows = [], openPositions = []) {
   });
 }
 
+function modelTone(modelId) {
+  const key = String(modelId || "").toUpperCase();
+  if (key === "A") return "model-tone-a";
+  if (key === "B") return "model-tone-b";
+  if (key === "C") return "model-tone-c";
+  return "model-tone-d";
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const data = await loadOverviewPageData();
   const snapshot = data.snapshot;
   const boards = buildOverviewSnapshotByModel(data.dailyRows, data.openPositions);
+  const recentPositions = data.openPositions.slice(0, 3);
 
   return (
     <>
       <PageHeader
-        eyebrow="운영 개요"
-        title="동그리 크립토 트레이딩 에이전트"
-        description="개요 화면도 이제 모델별 실행 보드로 분리해, 어떤 모델이 실제 포지션을 잡았는지와 현재가가 어디인지 바로 읽을 수 있게 구성했습니다."
+        eyebrow="Overview"
+        title="AI_Auto Control Deck"
+        description="변동성 대응 모드로 전환한 크립토 데모를 한 화면에서 확인합니다. 핵심 지표만 남기고, 모델별 보드는 카드로 분리했습니다."
         actions={[
-          { href: "/models", label: "모델 성과 보기", tone: "primary" },
-          { href: "/positions", label: "포지션 보기", tone: "ghost" },
+          { href: "/models", label: "모델 성과", tone: "primary" },
+          { href: "/positions", label: "포지션", tone: "ghost" },
+          { href: "/settings", label: "설정", tone: "ghost" },
         ]}
       />
 
@@ -91,79 +90,135 @@ export default async function HomePage() {
         </section>
       ) : null}
 
+      <section className="overview-hero">
+        <div className="hero-panel">
+          <div className="hero-head">
+            <span className="hero-chip">VOLATILITY MODE</span>
+            <StatusBadge tone={snapshot?.heartbeat ? "success" : "muted"}>
+              {snapshot?.heartbeat ? "엔진 연결됨" : "엔진 미연결"}
+            </StatusBadge>
+          </div>
+          <h2>변동성 집중형 데모 운용 중</h2>
+          <p>
+            시드 리셋 이후 공격적 튜닝을 적용했습니다. 모델별 진입 임계값을 낮추고 TP/SL 배수를 상향해
+            변동성 구간에서 체결 확률을 높인 상태입니다.
+          </p>
+          <div className="hero-metric-grid">
+            <div className="hero-metric">
+              <span>최근 사이클</span>
+              <strong>{snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "-"}</strong>
+              <small>신호 {snapshot?.latestSignalCount || 0}건</small>
+            </div>
+            <div className="hero-metric">
+              <span>누적 실현 PnL</span>
+              <strong>{formatMoney(snapshot?.totalRealizedUsd || 0)}</strong>
+              <small>최근 {data.dailyRows.length}일 기준</small>
+            </div>
+            <div className="hero-metric">
+              <span>진행 중 포지션</span>
+              <strong>{snapshot?.openPositionCount || 0}건</strong>
+              <small>닫힌 거래 {snapshot?.totalClosedTrades || 0}건</small>
+            </div>
+          </div>
+          <div className="hero-actions">
+            <a className="hero-action" href="/models">
+              모델 보드 열기
+            </a>
+            <a className="hero-action ghost" href="/positions">
+              포지션 트레일
+            </a>
+          </div>
+        </div>
+
+        <div className="hero-panel hero-panel-alt">
+          <div className="hero-tape">
+            <div>
+              <span>Heartbeat</span>
+              <strong>{snapshot?.heartbeat ? formatTs(snapshot.heartbeat.last_seen_at) : "-"}</strong>
+              <small>{snapshot?.heartbeat?.engine_name || "engine"}</small>
+            </div>
+            <div>
+              <span>실행 목표</span>
+              <strong>paper</strong>
+              <small>live arm: off</small>
+            </div>
+            <div>
+              <span>최근 신호</span>
+              <strong>{snapshot?.latestSignalCount || 0}건</strong>
+              <small>사이클 기준</small>
+            </div>
+          </div>
+          <div className="hero-mini-list">
+            {recentPositions.length ? (
+              recentPositions.map((row) => (
+                <article key={row.id} className="hero-mini-card">
+                  <div>
+                    <strong>{row.symbol}</strong>
+                    <p>{String(row.side || "").toUpperCase()} · {entryLabel(row)}</p>
+                  </div>
+                  <div className="hero-mini-metrics">
+                    <span>현재 {currentPriceLabel(row)}</span>
+                    <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
+                      {formatMoney(row.unrealized_pnl_usd)}
+                    </strong>
+                    <small>레버리지 {leverageLabel(row.leverage)}</small>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="hero-empty">
+                <ShieldAlert size={16} />
+                <span>진행 중 포지션이 없습니다.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="kpi-row">
         <MetricCard
-          label="엔진 하트비트"
+          label="마지막 하트비트"
           value={snapshot?.heartbeat ? formatTs(snapshot.heartbeat.last_seen_at) : "데이터 없음"}
-          meta={snapshot?.heartbeat?.engine_name || "엔진 오프라인"}
+          meta={snapshot?.heartbeat?.engine_name || "엔진"}
           tone="cyan"
           icon={Activity}
         />
         <MetricCard
-          label="최근 실현 PnL"
+          label="누적 실현 PnL"
           value={formatMoney(snapshot?.totalRealizedUsd || 0)}
-          meta={`최신 ${data.dailyRows.length}개 일자 기준`}
+          meta={`기준일 ${snapshot?.latestPnlDay || "-"}`}
           tone="green"
           icon={TrendingUp}
         />
         <MetricCard
-          label="집계된 거래 수"
+          label="완료 거래"
           value={String(snapshot?.totalClosedTrades || 0)}
-          meta={`기준 일자 ${snapshot?.latestPnlDay || "-"}`}
+          meta={`신호 ${snapshot?.latestSignalCount || 0}건`}
           tone="amber"
           icon={Crosshair}
         />
         <MetricCard
           label="오픈 포지션"
           value={String(snapshot?.openPositionCount || 0)}
-          meta={`최근 신호 ${snapshot?.latestSignalCount || 0}건`}
+          meta="현재 보유 중"
           icon={Wallet}
         />
       </section>
 
-      <SectionCard
-        eyebrow="최근 사이클"
-        title="현재 엔진 상태"
-        meta={snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "대기 중"}
-      >
-        <div className="overview-hero-grid">
-          <div className="overview-hero-copy">
-            <div className="status-row">
-              <StatusBadge tone={snapshot?.heartbeat ? "success" : "muted"}>
-                {snapshot?.heartbeat ? "엔진 연결됨" : "엔진 미확인"}
-              </StatusBadge>
-              <StatusBadge tone={snapshot?.latestSignalCount ? "info" : "muted"}>
-                최근 신호 {snapshot?.latestSignalCount || 0}건
-              </StatusBadge>
-              <StatusBadge tone={snapshot?.openPositionCount ? "warning" : "success"}>
-                오픈 포지션 {snapshot?.openPositionCount || 0}
-              </StatusBadge>
-            </div>
-            <p className="overview-support-copy">
-              통합 카드 한 장으로 뭉개지지 않도록, 아래에서 각 모델의 오늘 성과와 오픈 포지션을
-              따로 분리해 보여줍니다.
-            </p>
+      <section className="model-pulse">
+        <div className="model-pulse-head">
+          <div>
+            <span className="section-eyebrow">Model Pulse</span>
+            <h3 className="section-title">A/B/C/D 요약</h3>
           </div>
-
-          <div className="overview-coverage-grid">
-            {boards.map(({ modelId, meta, positions }) => (
-              <article key={modelId} className="coverage-card">
-                <span>{`MODEL ${modelId}`}</span>
-                <strong>{positions.length}</strong>
-                <p>{meta.name}</p>
-              </article>
-            ))}
-          </div>
+          <p className="section-meta">모델별 최근 성과와 오픈 포지션 수만 간단히 표시합니다.</p>
         </div>
-      </SectionCard>
-
-      <SectionCard eyebrow="모델별 실행 보드" title="MODEL A-D를 분리해서 보는 개요" meta="실행 중인 포지션, 현재가, 오늘 성과">
-        <div className="overview-board-grid">
+        <div className="model-pulse-grid">
           {boards.map(({ modelId, meta, latest, positions }) => (
-            <article key={modelId} className="overview-board-card">
-              <div className="overview-board-head">
+            <article key={modelId} className={`model-pulse-card ${modelTone(modelId)}`}>
+              <div className="model-pulse-title">
                 <div>
-                  <span className="tab-eyebrow">{`MODEL ${modelId}`}</span>
+                  <span>{`MODEL ${modelId}`}</span>
                   <strong>{meta.name}</strong>
                   <p>{meta.subtitle}</p>
                 </div>
@@ -171,10 +226,9 @@ export default async function HomePage() {
                   {positions.length ? `${positions.length}개 오픈` : "대기"}
                 </StatusBadge>
               </div>
-
-              <div className="overview-board-metrics">
+              <div className="model-pulse-metrics">
                 <div>
-                  <label>오늘 실현 PnL</label>
+                  <label>최근 실현 PnL</label>
                   <strong>{formatMoney(latest?.realized_pnl_usd || 0)}</strong>
                 </div>
                 <div>
@@ -186,38 +240,18 @@ export default async function HomePage() {
                   <strong>{latest?.closed_trades || 0}</strong>
                 </div>
               </div>
-
-              {positions.length ? (
-                <div className="overview-board-position-list">
-                  {positions.map((row) => (
-                    <article key={row.id} className="overview-position-line">
-                      <div className="overview-position-main">
-                        <strong>{row.symbol}</strong>
-                        <span>{String(row.side || "").toUpperCase()} / 오픈 {formatTs(row.opened_at)}</span>
-                      </div>
-                      <div className="overview-position-grid">
-                        <span>진입 {entryLabel(row)}</span>
-                        <span>현재 {currentPriceLabel(row)}</span>
-                        <span>TP {tpLabel(row)}</span>
-                        <span>SL {slLabel(row)}</span>
-                        <span>레버리지 {leverageLabel(row.leverage)}</span>
-                        <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
-                          {formatMoney(row.unrealized_pnl_usd)}
-                        </strong>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="overview-board-empty">
-                  <ShieldAlert size={16} />
-                  <span>현재 오픈 포지션이 없습니다.</span>
-                </div>
-              )}
+              <div className="model-pulse-meta">
+                <span>포커스 심볼</span>
+                <strong>{positions[0]?.symbol || "-"}</strong>
+                <small>{meta.description}</small>
+              </div>
+              <a className="model-pulse-link" href="/models">
+                상세 보기
+              </a>
             </article>
           ))}
         </div>
-      </SectionCard>
+      </section>
     </>
   );
 }
