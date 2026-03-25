@@ -450,6 +450,70 @@
   {
     "date": "2026-03-23",
     "model_id": "A",
+    "bybit_equity_usd": "9646.524348",
+    "bybit_total_pnl_usd": "-353.475652",
+    "bybit_realized_pnl_usd": "-495.78239",
+    "bybit_unrealized_pnl_usd": "142.306738",
+    "bybit_win_rate": "10.0",
+    "bybit_closed_trades": "30",
+    "total_equity_usd": "19646.524348",
+    "total_pnl_usd": "-353.475652",
+    "realized_pnl_usd": "-495.78239",
+    "unrealized_pnl_usd": "142.306738",
+    "win_rate": "10.0",
+    "closed_trades": "30"
+  },
+  {
+    "date": "2026-03-23",
+    "model_id": "B",
+    "bybit_equity_usd": "10195.625389",
+    "bybit_total_pnl_usd": "195.625389",
+    "bybit_realized_pnl_usd": "-128.170669",
+    "bybit_unrealized_pnl_usd": "323.796058",
+    "bybit_win_rate": "25.0",
+    "bybit_closed_trades": "8",
+    "total_equity_usd": "20195.625389",
+    "total_pnl_usd": "195.625389",
+    "realized_pnl_usd": "-128.170669",
+    "unrealized_pnl_usd": "323.796058",
+    "win_rate": "25.0",
+    "closed_trades": "8"
+  },
+  {
+    "date": "2026-03-23",
+    "model_id": "C",
+    "bybit_equity_usd": "10068.957113",
+    "bybit_total_pnl_usd": "68.957113",
+    "bybit_realized_pnl_usd": "-994.808843",
+    "bybit_unrealized_pnl_usd": "1063.765956",
+    "bybit_win_rate": "0.0",
+    "bybit_closed_trades": "1",
+    "total_equity_usd": "20068.957113",
+    "total_pnl_usd": "68.957113",
+    "realized_pnl_usd": "-994.808843",
+    "unrealized_pnl_usd": "1063.765956",
+    "win_rate": "0.0",
+    "closed_trades": "1"
+  },
+  {
+    "date": "2026-03-23",
+    "model_id": "D",
+    "bybit_equity_usd": "9673.24565",
+    "bybit_total_pnl_usd": "-326.75435",
+    "bybit_realized_pnl_usd": "-311.321062",
+    "bybit_unrealized_pnl_usd": "-15.433288",
+    "bybit_win_rate": "23.0769",
+    "bybit_closed_trades": "13",
+    "total_equity_usd": "9673.24565",
+    "total_pnl_usd": "-10326.75435",
+    "realized_pnl_usd": "-311.321062",
+    "unrealized_pnl_usd": "-15.433288",
+    "win_rate": "23.0769",
+    "closed_trades": "13"
+  },
+  {
+    "date": "2026-03-24",
+    "model_id": "A",
     "bybit_equity_usd": 9646.524348,
     "bybit_total_pnl_usd": -353.475652,
     "bybit_realized_pnl_usd": -495.78239,
@@ -464,7 +528,7 @@
     "closed_trades": 30
   },
   {
-    "date": "2026-03-23",
+    "date": "2026-03-24",
     "model_id": "B",
     "bybit_equity_usd": 10195.625389,
     "bybit_total_pnl_usd": 195.625389,
@@ -480,7 +544,7 @@
     "closed_trades": 8
   },
   {
-    "date": "2026-03-23",
+    "date": "2026-03-24",
     "model_id": "C",
     "bybit_equity_usd": 10068.957113,
     "bybit_total_pnl_usd": 68.957113,
@@ -496,7 +560,7 @@
     "closed_trades": 1
   },
   {
-    "date": "2026-03-23",
+    "date": "2026-03-24",
     "model_id": "D",
     "bybit_equity_usd": 9673.24565,
     "bybit_total_pnl_usd": -326.75435,
