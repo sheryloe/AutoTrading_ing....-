@@ -42,9 +42,9 @@ function pnlToneClass(value) {
 function tradeKindLabel(row) {
   const eventKind = String(row.event_kind || "").toLowerCase();
   if (eventKind) {
-    return eventKind === "close" ? "Close" : "Open";
+    return eventKind === "close" ? "청산" : "진입";
   }
-  return String(row.side || "").toLowerCase() === "buy" ? "Open" : "Close";
+  return String(row.side || "").toLowerCase() === "buy" ? "진입" : "청산";
 }
 
 function realizedPnlLabel(row) {
@@ -69,7 +69,7 @@ function entryLabel(row) {
   const actual = Number(row.actual_entry_price || 0);
   if (actual > 0) return formatPrice(actual);
   const planned = Number(row.planned_entry_price || 0);
-  return planned > 0 ? `${formatPrice(planned)} (plan)` : "-";
+  return planned > 0 ? `${formatPrice(planned)} (계획)` : "-";
 }
 
 function tpLabel(row) {
@@ -165,7 +165,7 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
 
   return (
     <section className="tab-shell">
-      <div className="tab-strip" role="tablist" aria-label="Model selector">
+      <div className="tab-strip" role="tablist" aria-label="모델 선택">
         {MODEL_ORDER.map((modelId) => {
           const item = getModelMeta(modelId);
           const active = activeModel === modelId;
@@ -177,41 +177,41 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               className={`tab-button ${active ? "active" : ""}`}
               onClick={() => setActiveModel(modelId)}
             >
-              <span className="tab-eyebrow">MODEL {modelId}</span>
+              <span className="tab-eyebrow">모델 {modelId}</span>
               <strong>{item.name}</strong>
               <small>{item.subtitle}</small>
               <div className="tab-button-stats" aria-hidden="true">
-                <span className="tab-stat">open {snapshot?.openCount || 0}</span>
-                <span className="tab-stat">audit {snapshot?.auditCount || 0}</span>
-                <span className="tab-stat">fills {snapshot?.tradeCount || 0}</span>
+                <span className="tab-stat">오픈 {snapshot?.openCount || 0}</span>
+                <span className="tab-stat">감사 {snapshot?.auditCount || 0}</span>
+                <span className="tab-stat">체결 {snapshot?.tradeCount || 0}</span>
               </div>
             </button>
           );
         })}
       </div>
 
-      <SectionCard eyebrow={`MODEL ${activeModel}`} title={meta.name} meta={meta.subtitle} className="model-focus-card">
+      <SectionCard eyebrow={`모델 ${activeModel}`} title={meta.name} meta={meta.subtitle} className="model-focus-card">
         <div className="model-focus-grid">
           <div className="model-focus-copy">
             <p>{meta.description}</p>
             <div className="status-row compact">
-              <StatusBadge tone="info">open {activePositions.length}</StatusBadge>
-              <StatusBadge tone="warning">latest audit {latestAuditRows.length}</StatusBadge>
-              <StatusBadge tone="success">recent fills {activeTrades.length}</StatusBadge>
+              <StatusBadge tone="info">오픈 {activePositions.length}</StatusBadge>
+              <StatusBadge tone="warning">최근 감사 {latestAuditRows.length}</StatusBadge>
+              <StatusBadge tone="success">최근 체결 {activeTrades.length}</StatusBadge>
             </div>
           </div>
 
           <div className="focus-metric-grid">
             <article className="focus-metric-card">
-              <span>Open positions</span>
+              <span>오픈 포지션</span>
               <strong>{activePositions.length}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>Latest audit cycle</span>
+              <span>최근 감사 사이클</span>
               <strong>{latestAuditCycleAt ? formatTs(latestAuditCycleAt) : "-"}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>Recent fills</span>
+              <span>최근 체결</span>
               <strong>{activeTrades.length}</strong>
             </article>
           </div>
@@ -219,13 +219,13 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
       </SectionCard>
 
       <SectionCard
-        eyebrow="Signal audit"
-        title={`${meta.name} latest audit status`}
-        meta={latestAuditCycleAt ? formatTs(latestAuditCycleAt) : "no audit rows"}
+        eyebrow="신호 감사"
+        title={`${meta.name} 최근 감사 상태`}
+        meta={latestAuditCycleAt ? formatTs(latestAuditCycleAt) : "감사 데이터 없음"}
       >
         <p className="panel-note">
-          `filtered_symbol` means the symbol was outside the currently allowed universe. When dynamic universe is on,
-          `BYBIT_SYMBOLS` is only a reference list.
+          `filtered_symbol`은 현재 허용 유니버스 밖의 심볼이라는 의미입니다. 동적 유니버스가 켜져 있으면
+          `BYBIT_SYMBOLS`는 참고 목록으로만 동작합니다.
         </p>
         <div className="status-row compact">
           {auditSummary.length ? (
@@ -235,13 +235,13 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               </StatusBadge>
             ))
           ) : (
-            <StatusBadge tone="muted">no audit rows</StatusBadge>
+            <StatusBadge tone="muted">감사 데이터 없음</StatusBadge>
           )}
         </div>
       </SectionCard>
 
       <section className="content-grid content-grid-two">
-        <SectionCard eyebrow="Open positions" title={`${meta.name} current positions`} meta={`${activePositions.length} rows`}>
+        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}행`}>
           {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
@@ -251,28 +251,28 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                     <p>
                       {String(row.side || "").toUpperCase()} / {row.status}
                     </p>
-                    <p className="position-secondary">opened {openedMeta(row)}</p>
+                    <p className="position-secondary">진입시각 {openedMeta(row)}</p>
                   </div>
                   <div className="mini-metrics position-metrics">
-                    <span className="position-secondary">entry {entryLabel(row)}</span>
-                    <span className="position-secondary">mark {currentPriceLabel(row)}</span>
+                    <span className="position-secondary">진입가 {entryLabel(row)}</span>
+                    <span className="position-secondary">현재가 {currentPriceLabel(row)}</span>
                     <span className="position-secondary">TP {tpLabel(row)}</span>
                     <span className="position-secondary">SL {slLabel(row)}</span>
-                    <span className="position-secondary">lev {leverageLabel(row.leverage)}</span>
+                    <span className="position-secondary">레버리지 {leverageLabel(row.leverage)}</span>
                     <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
                       {formatMoney(row.unrealized_pnl_usd)}
                     </strong>
-                    <span className="position-secondary">unrealized pnl</span>
+                    <span className="position-secondary">미실현 pnl</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="No open positions" description="This model does not currently have an open crypto position." />
+            <EmptyState title="오픈 포지션 없음" description="현재 이 모델의 오픈 크립토 포지션이 없습니다." />
           )}
         </SectionCard>
 
-        <SectionCard eyebrow="Recent fills" title={`${meta.name} recent crypto fills`} meta={`${activeTrades.length} rows`}>
+        <SectionCard eyebrow="최근 체결" title={`${meta.name} 최근 크립토 체결`} meta={`${activeTrades.length}행`}>
           {activeTrades.length ? (
             <div className="mini-list">
               {activeTrades.slice(0, 6).map((row, idx) => (
@@ -286,31 +286,31 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                     </div>
                   </div>
                   <div className="mini-metrics">
-                    <span>lev {leverageLabel(row.leverage)}</span>
+                    <span>레버리지 {leverageLabel(row.leverage)}</span>
                     <span>{realizedPnlLabel(row)}</span>
-                    <span className="position-secondary">realized pnl</span>
+                    <span className="position-secondary">실현 pnl</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="No recent fills" description="This model has not recorded a recent crypto demo fill yet." />
+            <EmptyState title="최근 체결 없음" description="이 모델은 아직 최근 크립토 데모 체결 기록이 없습니다." />
           )}
         </SectionCard>
       </section>
 
-      <TablePanel eyebrow="Signal audit detail" title={`${meta.name} audit rows`} meta={`${latestAuditRows.length} latest rows`}>
+      <TablePanel eyebrow="신호 감사 상세" title={`${meta.name} 감사 로그`} meta={`최근 ${latestAuditRows.length}행`}>
         <table>
           <thead>
             <tr>
-              <th>Cycle</th>
-              <th>Symbol</th>
-              <th>Status</th>
-              <th>Reason</th>
-              <th>Score / Thr</th>
-              <th>Allowed</th>
-              <th>Gate</th>
-              <th>Ready</th>
+              <th>사이클</th>
+              <th>심볼</th>
+              <th>상태</th>
+              <th>사유</th>
+              <th>점수 / 임계값</th>
+              <th>허용</th>
+              <th>게이트</th>
+              <th>진입준비</th>
             </tr>
           </thead>
           <tbody>
@@ -331,26 +331,26 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               ))
             ) : (
               <tr>
-                <td colSpan="8">No audit rows available.</td>
+                <td colSpan="8">감사 로그가 없습니다.</td>
               </tr>
             )}
           </tbody>
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="Position detail" title={`${meta.name} entry / TP / SL / PnL`} meta={`${activePositions.length} rows`}>
+      <TablePanel eyebrow="포지션 상세" title={`${meta.name} 진입 / TP / SL / PnL`} meta={`${activePositions.length}행`}>
         <table>
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Opened</th>
-              <th>Entry</th>
-              <th>Current</th>
+              <th>심볼</th>
+              <th>진입시각</th>
+              <th>진입가</th>
+              <th>현재가</th>
               <th>TP</th>
               <th>SL</th>
-              <th>Lev</th>
-              <th>Unrealized</th>
-              <th>Realized</th>
+              <th>레버리지</th>
+              <th>미실현</th>
+              <th>실현</th>
             </tr>
           </thead>
           <tbody>
@@ -374,25 +374,25 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               ))
             ) : (
               <tr>
-                <td colSpan="9">No position rows available.</td>
+                <td colSpan="9">포지션 데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="Entry plan" title={`${meta.name} setup rows`} meta={`${activeSetups.length} rows`}>
+      <TablePanel eyebrow="진입 계획" title={`${meta.name} 셋업 로그`} meta={`${activeSetups.length}행`}>
         <table>
           <thead>
             <tr>
-              <th>Cycle</th>
-              <th>Side</th>
-              <th>Symbol</th>
-              <th>Entry</th>
-              <th>Stop</th>
-              <th>Target 1</th>
+              <th>사이클</th>
+              <th>방향</th>
+              <th>심볼</th>
+              <th>진입가</th>
+              <th>손절가</th>
+              <th>목표가1</th>
               <th>RR</th>
-              <th>Ready</th>
+              <th>진입준비</th>
             </tr>
           </thead>
           <tbody>
@@ -411,30 +411,29 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               ))
             ) : (
               <tr>
-                <td colSpan="8">No setup rows available.</td>
+                <td colSpan="8">셋업 데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="Trade detail" title={`${meta.name} recent fills`} meta={`${activeTrades.length} rows`}>
+      <TablePanel eyebrow="체결 상세" title={`${meta.name} 최근 체결`} meta={`${activeTrades.length}행`}>
         <p className="panel-note">
-          Crypto fills in this build are recorded on the demo path. The `source` column should currently read
-          `crypto_demo`.
+          현재 빌드의 크립토 체결은 데모 경로(`crypto_demo`)로 기록됩니다.
         </p>
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Source</th>
-              <th>Symbol</th>
-              <th>Kind</th>
-              <th>Mode</th>
-              <th>Lev</th>
-              <th>Price</th>
-              <th>Realized PnL</th>
-              <th>Realized %</th>
+              <th>시간</th>
+              <th>소스</th>
+              <th>심볼</th>
+              <th>구분</th>
+              <th>모드</th>
+              <th>레버리지</th>
+              <th>가격</th>
+              <th>실현 PnL</th>
+              <th>실현 %</th>
             </tr>
           </thead>
           <tbody>
@@ -454,7 +453,7 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               ))
             ) : (
               <tr>
-                <td colSpan="9">No trade rows available.</td>
+                <td colSpan="9">체결 데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>

@@ -3,27 +3,27 @@ export const MODEL_ORDER = ["A", "B", "C", "D"];
 export const MODEL_META = {
   A: {
     id: "A",
-    name: "Range Reversion",
-    subtitle: "Overheat pullback",
-    description: "Contrarian entries targeting mean reversion after short-term overextension.",
+    name: "과열 되돌림",
+    subtitle: "과매수 반락 포착",
+    description: "단기 과열 이후 평균회귀를 노리는 역추세 진입 모델입니다.",
   },
   B: {
     id: "B",
-    name: "Reclaim",
-    subtitle: "Support reclaim",
-    description: "Momentum-following entries after support recovery and retest confirmation.",
+    name: "지지 재탈환",
+    subtitle: "지지 회복 추종",
+    description: "지지 회복과 재확인을 거친 뒤 모멘텀을 추종해 진입하는 모델입니다.",
   },
   C: {
     id: "C",
-    name: "Breakout",
-    subtitle: "Volatility expansion",
-    description: "Trend-following model for volatility expansion and directional continuation.",
+    name: "브레이크아웃",
+    subtitle: "변동성 확장 추세",
+    description: "변동성 확장과 방향성 지속 구간을 추종하는 추세형 모델입니다.",
   },
   D: {
     id: "D",
-    name: "Reset Bounce",
-    subtitle: "Crash rebound",
-    description: "Technical rebound model after panic-style drops and oversold extremes.",
+    name: "리셋 반등",
+    subtitle: "급락 반발 매매",
+    description: "패닉성 급락과 과매도 극단 구간 이후 기술적 반등을 노리는 모델입니다.",
   },
 };
 
@@ -32,9 +32,9 @@ export function getModelMeta(modelId) {
   return (
     MODEL_META[key] || {
       id: key || "-",
-      name: `Model ${key || "-"}`,
-      subtitle: "Unknown model",
-      description: "Model metadata is not registered for this id.",
+      name: `모델 ${key || "-"}`,
+      subtitle: "미등록 모델",
+      description: "해당 ID에 대한 모델 메타데이터가 등록되지 않았습니다.",
     }
   );
 }

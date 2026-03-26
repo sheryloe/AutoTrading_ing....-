@@ -195,7 +195,7 @@ function normalizeSourceConfig(raw = {}) {
 
   if (orderBlank) {
     autoRepaired = true;
-    warnings.push("Crypto data source order was blank, so the default demo source order was restored.");
+    warnings.push("크립토 데이터 소스 순서가 비어 있어 기본 데모 소스 순서를 복구했습니다.");
     sourceOrder = normalizeSourceOrder(DEFAULT_SOURCE_ORDER);
   }
 
@@ -203,12 +203,12 @@ function normalizeSourceConfig(raw = {}) {
   const realtimeDisabled = !flags.binance && !flags.bybit;
   if (allDisabled) {
     autoRepaired = true;
-    warnings.push("All crypto data sources were disabled, so Binance + Bybit were restored for paper trading.");
+    warnings.push("모든 크립토 데이터 소스가 비활성화되어 Binance + Bybit를 페이퍼 거래용으로 복구했습니다.");
     flags = { binance: true, bybit: true, coingecko: false };
     sourceOrder = normalizeSourceOrder(DEFAULT_SOURCE_ORDER);
   } else if (realtimeDisabled) {
     autoRepaired = true;
-    warnings.push("Realtime crypto sources were disabled, so Binance and Bybit quotes were restored for paper trading.");
+    warnings.push("실시간 크립토 소스가 비활성화되어 Binance/Bybit 시세를 페이퍼 거래용으로 복구했습니다.");
     flags = { ...flags, binance: true, bybit: true };
   }
 
@@ -236,12 +236,12 @@ function normalizeProviderStatus(provider, row) {
   return {
     provider,
     label: definition?.label || provider,
-    role: definition?.role || "unknown",
+    role: definition?.role || "미정",
     description: definition?.description || "",
     configured: Boolean(row),
     updated_at: row?.updated_at || null,
     meta_json: meta,
-    api_key_hint: String(meta.api_key_hint || "not_set"),
+    api_key_hint: String(meta.api_key_hint || "미설정"),
   };
 }
 
@@ -278,14 +278,14 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
   const sourceFlags = sourceConfig.flags;
   const rankSourceLabel =
     String(sourceConfig.macroUniverseSource || runtimeConfig.MACRO_UNIVERSE_SOURCE || "exchange") === "exchange"
-      ? "top exchange-turnover tradable symbols are selected from the rank window each cycle."
-      : "top market-cap tradable symbols are selected from the rank window each cycle.";
-  const sourceFlagSummary = `binance ${sourceFlags.binance ? "on" : "off"} / bybit ${
-    sourceFlags.bybit ? "on" : "off"
-  } / coingecko ${sourceFlags.coingecko ? "on" : "off"}`;
+      ? "매 사이클마다 랭크 구간 내 거래대금 상위 거래 가능 심볼을 선택합니다."
+      : "매 사이클마다 랭크 구간 내 시총 상위 거래 가능 심볼을 선택합니다.";
+  const sourceFlagSummary = `binance ${sourceFlags.binance ? "켜짐" : "꺼짐"} / bybit ${
+    sourceFlags.bybit ? "켜짐" : "꺼짐"
+  } / coingecko ${sourceFlags.coingecko ? "켜짐" : "꺼짐"}`;
 
   return {
-    configSourceLabel: "Supabase runtime profile",
+    configSourceLabel: "Supabase 런타임 프로필",
     configSourceValue: `engine_state_blobs.${SERVICE_RUNTIME_BLOB_KEY}`,
     configuredSymbols,
     configuredSymbolCount: configuredSymbols.length,
@@ -293,22 +293,22 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
     dynamicUniverseEnabled,
     symbolModeLabel:
       universeMode === "rank_lock"
-        ? `Rank lock mode: ${rankSourceLabel}`
+        ? `Rank lock 모드: ${rankSourceLabel}`
         : dynamicUniverseEnabled
-      ? "Dynamic rotation mode: BYBIT_SYMBOLS is only a reference or fallback list."
-      : "Fixed universe mode: BYBIT_SYMBOLS is the enforced crypto watchlist.",
-    liveOrderRoutingLabel: "Demo-only crypto execution path",
+      ? "Dynamic 회전 모드: BYBIT_SYMBOLS는 참고 또는 폴백 목록으로만 사용됩니다."
+      : "Fixed 유니버스 모드: BYBIT_SYMBOLS를 크립토 감시 목록으로 강제합니다.",
+    liveOrderRoutingLabel: "데모 전용 크립토 실행 경로",
     liveOrderSummary: liveStatus.futureLiveEligible
-      ? "Even with bybit-live, live flags, and arm enabled, this build still keeps crypto entries on the demo execution path."
-      : "The current build does not send real Bybit crypto orders yet; it only prepares future live routing.",
+      ? "bybit-live, 라이브 플래그, arm이 모두 켜져도 현재 빌드는 크립토 진입을 데모 실행 경로로 유지합니다."
+      : "현재 빌드는 실제 Bybit 크립토 주문을 전송하지 않으며 향후 라이브 라우팅만 준비합니다.",
     symbolSummary:
       universeMode === "rank_lock"
         ? String(sourceConfig.macroUniverseSource || runtimeConfig.MACRO_UNIVERSE_SOURCE || "exchange") === "exchange"
-          ? "Rank lock mode ignores BYBIT_SYMBOLS and keeps Bybit-tradable symbols ranked by exchange turnover inside the configured window."
-          : "Rank lock mode ignores BYBIT_SYMBOLS and keeps tradable market-cap symbols inside the rank window."
+          ? "rank_lock 모드에서는 BYBIT_SYMBOLS를 무시하고 설정 구간 내 Bybit 거래 가능 심볼을 거래대금 순위로 유지합니다."
+          : "rank_lock 모드에서는 BYBIT_SYMBOLS를 무시하고 랭크 구간 내 시총 기반 거래 가능 심볼을 유지합니다."
         : dynamicUniverseEnabled
-      ? "A symbol can still end up as symbol_not_allowed when it falls outside the rotating universe."
-      : "A symbol must be present in BYBIT_SYMBOLS to be eligible when dynamic rotation is off.",
+      ? "회전 유니버스 밖으로 벗어난 심볼은 symbol_not_allowed가 될 수 있습니다."
+      : "dynamic 회전이 꺼져 있으면 BYBIT_SYMBOLS에 포함된 심볼만 거래 대상이 됩니다.",
     sourceConfigHealthy: !sourceConfig.autoRepaired,
     sourceConfigRepaired: sourceConfig.autoRepaired,
     sourceWarnings: sourceConfig.warnings,
@@ -438,7 +438,7 @@ export async function loadServiceControlData() {
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
       diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses, DEFAULT_RUNTIME_CONFIG),
-      errors: ["Supabase admin connection is not ready."],
+      errors: ["Supabase 관리자 연결이 준비되지 않았습니다."],
     };
   }
 

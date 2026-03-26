@@ -12,7 +12,7 @@ function symbolModeValue(diagnostics) {
 
 function symbolMeta(diagnostics) {
   const symbols = diagnostics?.configuredSymbols || [];
-  if (!symbols.length) return "no configured symbols";
+  if (!symbols.length) return "설정된 심볼 없음";
   const preview = symbols.slice(0, 3).join(", ");
   return symbols.length > 3 ? `${preview} +${symbols.length - 3}` : preview;
 }
@@ -30,7 +30,7 @@ function formatPct(value) {
 
 function freeTierStatusValue(report) {
   if (!report || typeof report !== "object") return "n/a";
-  return report.pass ? "pass" : "fail";
+  return report.pass ? "정상" : "초과";
 }
 
 function freeTierUsageValue(report) {
@@ -39,8 +39,8 @@ function freeTierUsageValue(report) {
 }
 
 function freeTierUsageMeta(report) {
-  if (!report || typeof report !== "object") return "no report yet";
-  return `scan ${toNumber(report.scan_interval_seconds, 0)}s`;
+  if (!report || typeof report !== "object") return "리포트 없음";
+  return `스캔 ${toNumber(report.scan_interval_seconds, 0)}초`;
 }
 
 function freeTierHeadroomValue(report) {
@@ -50,17 +50,17 @@ function freeTierHeadroomValue(report) {
 
 function freeTierHeadroomMeta(report) {
   const worstMetric = String(report?.providers?.market_data?.worst_metric || "-");
-  return `market worst: ${worstMetric}`;
+  return `시장 병목: ${worstMetric}`;
 }
 
 function freeTierBottleneckValue(report) {
   const bottlenecks = Array.isArray(report?.bottlenecks) ? report.bottlenecks : [];
-  return bottlenecks.length ? bottlenecks.join(", ") : "none";
+  return bottlenecks.length ? bottlenecks.join(", ") : "없음";
 }
 
 function freeTierBottleneckMeta(report) {
   const generatedAt = String(report?.generated_at_iso || "");
-  return generatedAt ? `generated ${generatedAt}` : "report pending";
+  return generatedAt ? `생성시각 ${generatedAt}` : "리포트 대기";
 }
 
 export default async function SettingsPage() {
@@ -71,18 +71,18 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Settings"
-        title="Service Console"
-        description="Manage provider vault credentials, rank-lock runtime profile, and free-tier capacity checks in one place."
+        eyebrow="설정"
+        title="서비스 콘솔"
+        description="프로바이더 자격정보, 랭크락 런타임 프로필, 무료티어 용량 상태를 한곳에서 관리합니다."
         actions={[
-          { href: "/", label: "Overview", tone: "ghost" },
-          { href: "/positions", label: "Execution Trail", tone: "primary" },
+          { href: "/", label: "개요", tone: "ghost" },
+          { href: "/positions", label: "실행 추적", tone: "primary" },
         ]}
       />
 
       {control.errors?.length ? (
         <section className="warning-card">
-          <strong>Could not fully load settings data.</strong>
+          <strong>설정 데이터를 완전히 불러오지 못했습니다.</strong>
           {control.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
@@ -91,25 +91,25 @@ export default async function SettingsPage() {
 
       <section className="kpi-row">
         <MetricCard
-          label="Write status"
-          value={control.writeReady ? "ready" : "read only"}
-          meta="Vercel + Supabase admin env"
+          label="쓰기 상태"
+          value={control.writeReady ? "준비됨" : "읽기 전용"}
+          meta="Vercel + Supabase 관리자 환경"
           tone={control.writeReady ? "green" : "amber"}
         />
         <MetricCard
-          label="Execution target"
+          label="실행 타깃"
           value={String(control.runtimeConfig?.EXECUTION_TARGET || "paper")}
-          meta={`armed ${control.runtimeConfig?.LIVE_EXECUTION_ARMED ? "yes" : "no"}`}
+          meta={`arm ${control.runtimeConfig?.LIVE_EXECUTION_ARMED ? "예" : "아니오"}`}
           tone="cyan"
         />
         <MetricCard
-          label="Symbol mode"
+          label="심볼 모드"
           value={symbolModeValue(diagnostics)}
           meta={diagnostics?.symbolModeLabel || "-"}
           tone="amber"
         />
         <MetricCard
-          label="Configured symbols"
+          label="설정 심볼 수"
           value={String(diagnostics?.configuredSymbolCount || 0)}
           meta={symbolMeta(diagnostics)}
         />
@@ -117,45 +117,45 @@ export default async function SettingsPage() {
 
       <section className="kpi-row">
         <MetricCard
-          label="Free-tier status"
+          label="무료티어 상태"
           value={freeTierStatusValue(freeTierReport)}
           meta={freeTierBottleneckMeta(freeTierReport)}
           tone={freeTierReport?.pass ? "green" : "amber"}
         />
         <MetricCard
-          label="Usage (cycles/day)"
+          label="사용량 (사이클/일)"
           value={freeTierUsageValue(freeTierReport)}
           meta={freeTierUsageMeta(freeTierReport)}
           tone="cyan"
         />
         <MetricCard
-          label="Headroom"
+          label="헤드룸"
           value={freeTierHeadroomValue(freeTierReport)}
           meta={freeTierHeadroomMeta(freeTierReport)}
           tone="amber"
         />
         <MetricCard
-          label="Bottlenecks"
+          label="병목"
           value={freeTierBottleneckValue(freeTierReport)}
-          meta={freeTierReport ? `universe ${freeTierReport.universe_mode || "-"}` : "no report yet"}
+          meta={freeTierReport ? `유니버스 ${freeTierReport.universe_mode || "-"}` : "리포트 없음"}
           tone={Array.isArray(freeTierReport?.bottlenecks) && freeTierReport.bottlenecks.length ? "amber" : "green"}
         />
       </section>
 
       <section className="warning-card">
-        <strong>{diagnostics?.liveOrderRoutingLabel || "Demo-only crypto execution path"}</strong>
+        <strong>{diagnostics?.liveOrderRoutingLabel || "데모 전용 크립토 실행 경로"}</strong>
         <p>{diagnostics?.liveOrderSummary}</p>
         <p>{diagnostics?.symbolSummary}</p>
         <p>
-          Runtime config source: <code>{diagnostics?.configSourceValue || "-"}</code>
+          런타임 설정 소스: <code>{diagnostics?.configSourceValue || "-"}</code>
         </p>
       </section>
 
       {freeTierReport ? (
         <section className="warning-card">
-          <strong>Free-tier capacity report</strong>
+          <strong>무료티어 용량 리포트</strong>
           <p>
-            Overall: <code>{freeTierReport.overall_status || "-"}</code>
+            전체 상태: <code>{freeTierReport.overall_status || "-"}</code>
           </p>
           <p>
             OpenAI: <code>{freeTierReport.providers?.openai?.status || "-"}</code> / Google:{" "}
@@ -164,33 +164,33 @@ export default async function SettingsPage() {
             <code>{freeTierReport.providers?.market_data?.status || "-"}</code>
           </p>
           <p>
-            Bottlenecks: <code>{freeTierBottleneckValue(freeTierReport)}</code>
+            병목: <code>{freeTierBottleneckValue(freeTierReport)}</code>
           </p>
         </section>
       ) : null}
 
       {diagnostics?.sourceConfigRepaired ? (
         <section className="warning-card">
-          <strong>Demo data sources were auto-repaired</strong>
+          <strong>데모 데이터 소스가 자동 복구되었습니다</strong>
           {(diagnostics?.sourceWarnings || []).map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
           <p>
-            Effective source order: <code>{diagnostics?.sourceOrderValue || "-"}</code>
+            최종 소스 우선순위: <code>{diagnostics?.sourceOrderValue || "-"}</code>
           </p>
           <p>
-            Effective source flags: <code>{diagnostics?.sourceFlagSummary || "-"}</code>
+            최종 소스 플래그: <code>{diagnostics?.sourceFlagSummary || "-"}</code>
           </p>
           <p>
-            Effective realtime quotes: <code>{diagnostics?.realtimeSourceValue || "-"}</code>
+            최종 실시간 시세 소스: <code>{diagnostics?.realtimeSourceValue || "-"}</code>
           </p>
         </section>
       ) : null}
 
       <section className="warning-card">
-        <strong>Reset reminder</strong>
-        <p>Saving the runtime profile does not wipe the current demo seed, positions, or PnL.</p>
-        <p>Use the hard reset section only when you intentionally want to restart the crypto demo state.</p>
+        <strong>리셋 안내</strong>
+        <p>런타임 프로필 저장만으로는 현재 데모 시드, 포지션, PnL이 초기화되지 않습니다.</p>
+        <p>크립토 데모 상태를 의도적으로 재시작할 때만 하드 리셋을 사용하세요.</p>
       </section>
 
       <ControlConsole

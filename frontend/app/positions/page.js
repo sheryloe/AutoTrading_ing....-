@@ -14,18 +14,18 @@ export default async function PositionsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Positions"
-        title="Execution State And Audit Trail"
-        description="Review open positions, recent crypto fills, and the latest signal-audit rows that explain why a symbol was accepted or filtered."
+        eyebrow="포지션"
+        title="실행 상태 및 감사 추적"
+        description="오픈 포지션, 최근 체결, 최신 신호 감사 로그를 함께 확인해 진입/필터 사유를 빠르게 점검합니다."
         actions={[
-          { href: "/settings", label: "Open Settings", tone: "primary" },
-          { href: "/models", label: "Model Performance", tone: "ghost" },
+          { href: "/settings", label: "설정 열기", tone: "primary" },
+          { href: "/models", label: "모델 성과", tone: "ghost" },
         ]}
       />
 
       {!data.ready ? (
         <section className="warning-card">
-          <strong>Could not load position data.</strong>
+          <strong>포지션 데이터를 불러오지 못했습니다.</strong>
           {data.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
@@ -34,30 +34,30 @@ export default async function PositionsPage() {
 
       <section className="kpi-row">
         <MetricCard
-          label="Engine heartbeat"
+          label="엔진 하트비트"
           value={data.heartbeat ? formatTs(data.heartbeat.last_seen_at) : "-"}
-          meta={data.heartbeat?.engine_name || "engine offline"}
+          meta={data.heartbeat?.engine_name || "엔진 오프라인"}
           tone="cyan"
           icon={Activity}
         />
         <MetricCard
-          label="Open positions"
+          label="오픈 포지션"
           value={String(snapshot?.openPositionCount || 0)}
-          meta="all crypto models"
+          meta="전체 크립토 모델"
           tone="amber"
           icon={Wallet}
         />
         <MetricCard
-          label="Latest signal audit"
+          label="최근 신호 감사"
           value={snapshot?.latestSignalAuditCycleAt ? formatTs(snapshot.latestSignalAuditCycleAt) : "-"}
-          meta={`rows ${snapshot?.latestSignalAuditCount || 0}`}
+          meta={`행 수 ${snapshot?.latestSignalAuditCount || 0}`}
           tone="green"
           icon={SearchCheck}
         />
         <MetricCard
-          label="Recent crypto fills"
+          label="최근 크립토 체결"
           value={String(snapshot?.recentTradeCount || 0)}
-          meta="demo path trade log"
+          meta="데모 경로 체결 로그"
           icon={Crosshair}
         />
       </section>

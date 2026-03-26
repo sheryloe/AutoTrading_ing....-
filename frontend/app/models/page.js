@@ -17,18 +17,18 @@ export default async function ModelsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Model Performance"
-        title="A/B/C/D Performance Analytics"
-        description="Compare each model with separated tabs for realized PnL, win rate, and equity trajectory."
+        eyebrow="모델 성과"
+        title="A/B/C/D 성과 분석"
+        description="모델별 실현 PnL, 승률, 자산 추이를 탭으로 분리해 비교합니다."
         actions={[
-          { href: "/positions", label: "Execution Trail", tone: "primary" },
-          { href: "/settings", label: "Runtime Settings", tone: "ghost" },
+          { href: "/positions", label: "실행 추적", tone: "primary" },
+          { href: "/settings", label: "런타임 설정", tone: "ghost" },
         ]}
       />
 
       {!data.ready ? (
         <section className="warning-card">
-          <strong>Could not load model performance data.</strong>
+          <strong>모델 성과 데이터를 불러오지 못했습니다.</strong>
           {data.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
@@ -36,15 +36,15 @@ export default async function ModelsPage() {
       ) : null}
 
       <section className="kpi-row">
-        <MetricCard label="Cumulative Realized PnL" value={formatMoney(totalRealized)} meta="all latest rows" tone="green" />
-        <MetricCard label="Closed Trades" value={formatNumber(totalClosed)} meta="sum of all models" tone="amber" />
+        <MetricCard label="누적 실현 PnL" value={formatMoney(totalRealized)} meta="최근 기준 전체 합계" tone="green" />
+        <MetricCard label="종료 거래 수" value={formatNumber(totalClosed)} meta="전 모델 합산" tone="amber" />
         <MetricCard
-          label="Top Model"
-          value={bestModelMeta ? bestModelMeta.name : "no data"}
-          meta={bestModel ? formatMoney(bestModel.realizedPnlUsd) : "pending"}
+          label="최상위 모델"
+          value={bestModelMeta ? bestModelMeta.name : "데이터 없음"}
+          meta={bestModel ? formatMoney(bestModel.realizedPnlUsd) : "집계 대기"}
           tone="cyan"
         />
-        <MetricCard label="Models With Data" value={formatNumber(data.modelSummaries.length)} meta="A/B/C/D coverage" />
+        <MetricCard label="집계 모델 수" value={formatNumber(data.modelSummaries.length)} meta="A/B/C/D 커버리지" />
       </section>
 
       <ModelsPerformanceTabs modelSummaries={data.modelSummaries} dailyRows={data.dailyRows} tunes={data.tunes} />

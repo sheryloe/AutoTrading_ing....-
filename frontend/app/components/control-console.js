@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -10,30 +10,30 @@ const PROVIDERS = [
   {
     id: "bybit",
     label: "Bybit",
-    role: "Execution account",
+    role: "실행 계정",
     description:
-      "Used for execution readiness and account connectivity checks. This build still routes crypto fills through demo path.",
+      "실행 준비 상태와 계정 연결성을 점검하는 용도입니다. 현재 빌드는 크립토 체결을 데모 경로로 처리합니다.",
     requiresSecret: true,
-    keyLabel: "Bybit API Key",
-    secretLabel: "Bybit API Secret",
+    keyLabel: "Bybit API 키",
+    secretLabel: "Bybit API 시크릿",
   },
   {
     id: "binance",
     label: "Binance",
-    role: "Realtime quote feed",
+    role: "실시간 시세 피드",
     description:
-      "Primary source for rank-lock and intrabar simulation. Keep enabled for stable paper execution.",
+      "랭크락 및 인트라바 시뮬레이션의 기본 소스입니다. 안정적인 페이퍼 실행을 위해 활성화 상태를 유지하세요.",
     requiresSecret: true,
-    keyLabel: "Binance API Key",
-    secretLabel: "Binance API Secret",
+    keyLabel: "Binance API 키",
+    secretLabel: "Binance API 시크릿",
   },
   {
     id: "coingecko",
     label: "CoinGecko",
-    role: "Universe metadata source",
-    description: "Optional metadata provider for rank and macro context. Exchange-only mode can run with this disabled.",
+    role: "유니버스 메타데이터 소스",
+    description: "랭크/매크로 컨텍스트 보강용 선택 메타데이터 공급자입니다. 거래소 전용 모드에서는 비활성화해도 동작합니다.",
     requiresSecret: false,
-    keyLabel: "CoinGecko API Key",
+    keyLabel: "CoinGecko API 키",
     secretLabel: "",
   },
 ];
@@ -53,19 +53,19 @@ function providerInitialState() {
 function friendlyError(error) {
   const message = error instanceof Error ? error.message : String(error || "unknown_error");
   if (message === "unauthorized") {
-    return "Admin token is missing or invalid. Re-enter SERVICE_ADMIN_TOKEN and try again.";
+    return "관리자 토큰이 없거나 올바르지 않습니다. SERVICE_ADMIN_TOKEN을 다시 입력하세요.";
   }
   if (message === "provider_required") {
-    return "Provider is required.";
+    return "프로바이더를 선택하세요.";
   }
   if (message === "service_master_key_missing") {
-    return "SERVICE_MASTER_KEY is missing on server environment.";
+    return "서버 환경 변수에 SERVICE_MASTER_KEY가 없습니다.";
   }
   if (message === "reset_confirmation_required") {
-    return `Type ${RESET_CONFIRM_TEXT} exactly in the confirmation field.`;
+    return `확인 입력란에 ${RESET_CONFIRM_TEXT} 를 정확히 입력하세요.`;
   }
   if (message === "crypto_tune_overrides_invalid_json") {
-    return "Crypto tune overrides must be a valid JSON object.";
+    return "Crypto tune overrides는 유효한 JSON 객체여야 합니다.";
   }
   return message;
 }
@@ -73,12 +73,12 @@ function friendlyError(error) {
 function conflictPolicyHelp(value) {
   const normalized = String(value || "conservative").toLowerCase();
   if (normalized === "aggressive") {
-    return "If TP and SL are both touched in one candle, TP is applied first.";
+    return "한 캔들에서 TP/SL이 동시에 터지면 TP를 먼저 적용합니다.";
   }
   if (normalized === "neutral") {
-    return "If TP and SL are both touched in one candle, the level closer to candle open is applied.";
+    return "한 캔들에서 TP/SL이 동시에 터지면 시가에 더 가까운 레벨을 먼저 적용합니다.";
   }
-  return "If TP and SL are both touched in one candle, SL is applied first.";
+  return "한 캔들에서 TP/SL이 동시에 터지면 SL을 먼저 적용합니다.";
 }
 
 function sourceGuardForConfig(config) {
@@ -91,19 +91,19 @@ function sourceGuardForConfig(config) {
   if (allDisabled) {
     return {
       autoRepair: true,
-      message: "All crypto data sources are off. Saving will restore Binance + Bybit so paper trading can keep running.",
+      message: "모든 크립토 데이터 소스가 꺼져 있습니다. 저장 시 Binance + Bybit를 복구해 페이퍼 거래를 계속 실행합니다.",
     };
   }
   if (realtimeDisabled) {
     return {
       autoRepair: true,
-      message: "Realtime quote sources are off. Saving will restore Binance + Bybit so paper trading can keep running.",
+      message: "실시간 시세 소스가 꺼져 있습니다. 저장 시 Binance + Bybit를 복구해 페이퍼 거래를 계속 실행합니다.",
     };
   }
   if (orderBlank) {
     return {
       autoRepair: true,
-      message: "The source order is blank. Saving will restore the default demo order.",
+      message: "소스 순서가 비어 있습니다. 저장 시 기본 데모 순서를 복구합니다.",
     };
   }
   return { autoRepair: false, message: "" };
@@ -180,18 +180,18 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     const armed = config.liveExecutionArmed === "true" && bybitConfigured;
 
     if (target === "paper") {
-      return "Current mode is paper. No real order is sent.";
+      return "현재 모드는 paper이며 실제 주문은 전송되지 않습니다.";
     }
     if (!bybitConfigured) {
-      return "bybit-live is selected, but Bybit credentials are not configured yet.";
+      return "bybit-live가 선택되어 있지만 Bybit 자격정보가 아직 설정되지 않았습니다.";
     }
     if (!liveFlagsReady) {
-      return "bybit-live is selected, but live flags are still disabled.";
+      return "bybit-live가 선택되어 있지만 라이브 플래그가 비활성화 상태입니다.";
     }
     if (!armed) {
-      return "Live prerequisites are mostly ready, but arm flag is still off.";
+      return "라이브 사전 조건은 대부분 충족됐지만 arm 플래그가 꺼져 있습니다.";
     }
-    return "Live prerequisites are all set, but this build still routes crypto fills to demo path.";
+    return "라이브 사전 조건은 모두 충족됐지만 현재 빌드는 크립토 체결을 데모 경로로 처리합니다.";
   }, [config, providerStatuses]);
 
   const statusBadges = useMemo(() => {
@@ -274,9 +274,9 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "runtime_save_failed");
       }
-      setRuntimeMessage("Runtime profile saved. The next cycle will apply updated values.");
+      setRuntimeMessage("런타임 프로필을 저장했습니다. 다음 사이클부터 변경값이 적용됩니다.");
       if (sourceGuard.autoRepair) {
-        setRuntimeMessage("Runtime profile saved. Default demo source settings were auto-restored.");
+        setRuntimeMessage("런타임 프로필을 저장했습니다. 기본 데모 소스 설정이 자동 복구되었습니다.");
       }
       router.refresh();
     } catch (error) {
@@ -313,7 +313,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       }));
       setProviderMessages((prev) => ({
         ...prev,
-        [provider]: `${providerLabel} credentials saved in Supabase vault.`,
+        [provider]: `${providerLabel} 자격정보를 Supabase vault에 저장했습니다.`,
       }));
       router.refresh();
     } catch (error) {
@@ -344,7 +344,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       }
       setProviderMessages((prev) => ({
         ...prev,
-        [provider]: `${providerLabel} credentials removed from vault.`,
+        [provider]: `${providerLabel} 자격정보를 vault에서 삭제했습니다.`,
       }));
       router.refresh();
     } catch (error) {
@@ -381,7 +381,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
       setConfig((prev) => ({ ...prev, demoSeedUsdt: nextSeed }));
       setResetSeedUsdt(nextSeed);
       setResetConfirmText("");
-      setResetMessage(`Hard reset completed. Next cycle starts with seed ${nextSeed} USDT.`);
+      setResetMessage(`하드 리셋이 완료되었습니다. 다음 사이클은 시드 ${nextSeed} USDT로 시작합니다.`);
       router.refresh();
     } catch (error) {
       setResetError(friendlyError(error));
@@ -394,17 +394,17 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     <section className="section-card service-panel" id="service-control">
       <div className="section-head">
         <div>
-          <p className="section-eyebrow">Service Console</p>
-          <h2 className="section-title">Vault Credentials And Runtime Controls</h2>
+          <p className="section-eyebrow">서비스 콘솔</p>
+          <h2 className="section-title">Vault 자격정보 및 런타임 제어</h2>
         </div>
-        <span className="section-meta">{writeReady ? "write ready" : "read only"}</span>
+        <span className="section-meta">{writeReady ? "쓰기 가능" : "읽기 전용"}</span>
       </div>
 
       <div className="service-grid service-grid-top">
         <section className="control-card">
-          <h3>Admin Token</h3>
+          <h3>관리자 토큰</h3>
           <p className="control-copy">
-            Token is stored in browser local storage only. It is required for provider updates, runtime profile saves, and hard reset.
+            토큰은 브라우저 local storage에만 저장됩니다. 프로바이더 수정, 런타임 저장, 하드 리셋에 필요합니다.
           </p>
           <label className="field-label" htmlFor="admin-token">
             SERVICE_ADMIN_TOKEN
@@ -415,40 +415,40 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             type="password"
             value={adminToken}
             onChange={(event) => setAdminToken(event.target.value)}
-            placeholder="Enter SERVICE_ADMIN_TOKEN"
+            placeholder="SERVICE_ADMIN_TOKEN 입력"
           />
           <p className="status-line">
-            status: <strong>{hasAdminToken ? "loaded" : "required"}</strong>
+            상태: <strong>{hasAdminToken ? "로드됨" : "필수"}</strong>
           </p>
           {!writeReady ? (
             <p className="error-line">
-              Set `SERVICE_ADMIN_TOKEN`, `SERVICE_MASTER_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`) in Vercel.
+              Vercel에 `SERVICE_ADMIN_TOKEN`, `SERVICE_MASTER_KEY`, `SUPABASE_SERVICE_ROLE_KEY`(또는 `SUPABASE_SECRET_KEY`)를 설정하세요.
             </p>
           ) : null}
-          {writeReady && !hasAdminToken ? <p className="error-line">Enter admin token before running write operations.</p> : null}
+          {writeReady && !hasAdminToken ? <p className="error-line">쓰기 작업 전에 관리자 토큰을 입력하세요.</p> : null}
         </section>
 
         <section className="control-card execution-card">
           <div className="control-head">
-            <h3>Execution target</h3>
+            <h3>실행 타깃</h3>
             <span>{config.executionTarget}</span>
           </div>
-          <p className="control-copy">This panel updates runtime profile only. Current build keeps crypto fills on demo path.</p>
+          <p className="control-copy">이 패널은 런타임 프로필만 업데이트합니다. 현재 빌드는 크립토 체결을 데모 경로로 유지합니다.</p>
           <div className="badge-row">
-            <span className={`status-badge ${statusBadges.safe ? "active safe" : "inactive"}`}>safe</span>
-            <span className={`status-badge ${statusBadges.configured ? "active configured" : "inactive"}`}>configured</span>
-            <span className={`status-badge ${statusBadges.armed ? "active armed" : "inactive"}`}>armed</span>
+            <span className={`status-badge ${statusBadges.safe ? "active safe" : "inactive"}`}>안전</span>
+            <span className={`status-badge ${statusBadges.configured ? "active configured" : "inactive"}`}>설정됨</span>
+            <span className={`status-badge ${statusBadges.armed ? "active armed" : "inactive"}`}>활성</span>
           </div>
           <p className="status-line">{liveSummary}</p>
           <div className="status-stack compact">
             <p className="status-line">
-              key hint <strong>{providerStatuses?.bybit?.api_key_hint || "not_set"}</strong>
+              키 힌트 <strong>{providerStatuses?.bybit?.api_key_hint || "미설정"}</strong>
             </p>
             <p className="status-line">
-              last update <strong>{providerStatuses?.bybit?.updated_at || "-"}</strong>
+              최근 업데이트 <strong>{providerStatuses?.bybit?.updated_at || "-"}</strong>
             </p>
             <p className="status-line">
-              intrabar policy <strong>{config.intrabarConflictPolicy}</strong>
+              인트라바 정책 <strong>{config.intrabarConflictPolicy}</strong>
             </p>
           </div>
         </section>
@@ -456,11 +456,11 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
 
       <section className="control-card provider-section">
         <div className="control-head">
-          <h3>Provider Vault Credentials</h3>
-          <span>execution + market data split</span>
+          <h3>프로바이더 Vault 자격정보</h3>
+          <span>실행 + 마켓데이터 분리</span>
         </div>
         <p className="control-copy">
-          Credentials are written to Supabase vault via encrypted RPC. Keep GitHub secrets and runtime vault credentials separate.
+          자격정보는 암호화된 RPC를 통해 Supabase vault에 저장됩니다. GitHub 시크릿과 런타임 vault 자격정보를 분리하세요.
         </p>
         <div className="provider-grid">
           {PROVIDERS.map((provider) => {
@@ -470,18 +470,18 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
               <section key={provider.id} className="control-card provider-card">
                 <div className="control-head">
                   <h3>{provider.label}</h3>
-                  <span>{status?.configured ? "configured" : "empty"}</span>
+                  <span>{status?.configured ? "설정됨" : "비어있음"}</span>
                 </div>
                 <p className="control-copy">{provider.description}</p>
                 <div className="status-stack compact">
                   <p className="status-line">
-                    role <strong>{provider.role}</strong>
+                    역할 <strong>{provider.role}</strong>
                   </p>
                   <p className="status-line">
-                    key hint <strong>{status?.api_key_hint || "not_set"}</strong>
+                    키 힌트 <strong>{status?.api_key_hint || "미설정"}</strong>
                   </p>
                   <p className="status-line">
-                    last update <strong>{status?.updated_at || "-"}</strong>
+                    최근 업데이트 <strong>{status?.updated_at || "-"}</strong>
                   </p>
                 </div>
                 <form className="control-form" onSubmit={(event) => saveProvider(event, provider.id)}>
@@ -494,7 +494,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
                     type="password"
                     value={form.apiKey}
                     onChange={(event) => updateProviderForm(provider.id, "apiKey", event.target.value)}
-                    placeholder={`Enter ${provider.label} API Key`}
+                    placeholder={`${provider.label} API 키 입력`}
                   />
                   {provider.requiresSecret ? (
                     <>
@@ -507,13 +507,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
                         type="password"
                         value={form.apiSecret}
                         onChange={(event) => updateProviderForm(provider.id, "apiSecret", event.target.value)}
-                        placeholder={`Enter ${provider.label} API Secret`}
+                        placeholder={`${provider.label} API 시크릿 입력`}
                       />
                     </>
                   ) : null}
                   <div className="button-row">
                     <button className="action-button" type="submit" disabled={providerSaving[provider.id] || !writeReady || !hasAdminToken}>
-                      {providerSaving[provider.id] ? "saving..." : `save ${provider.label}`}
+                      {providerSaving[provider.id] ? "저장 중..." : `${provider.label} 저장`}
                     </button>
                     <button
                       className="action-button ghost"
@@ -521,7 +521,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
                       disabled={providerSaving[provider.id] || !writeReady || !hasAdminToken}
                       onClick={() => clearProvider(provider.id)}
                     >
-                      clear
+                      삭제
                     </button>
                   </div>
                 </form>
@@ -535,15 +535,15 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
 
       <section className="control-card runtime-card">
         <div className="control-head">
-          <h3>Runtime profile</h3>
-          <span>{runtimeUpdatedAt ? "loaded from Supabase" : "default profile"}</span>
+          <h3>런타임 프로필</h3>
+          <span>{runtimeUpdatedAt ? "Supabase에서 로드됨" : "기본 프로필"}</span>
         </div>
         <p className="control-copy">
-          Controls scan cadence, rank window, risk sizing, intrabar conflict rule, and source priority. Updated values apply in next cycle.
+          스캔 주기, 랭크 윈도우, 리스크 사이징, 인트라바 충돌 규칙, 소스 우선순위를 제어합니다. 변경값은 다음 사이클에 적용됩니다.
         </p>
         <form className="control-form runtime-form" onSubmit={saveRuntime}>
           <label className="field-label" htmlFor="execution-target">
-            Execution target
+            실행 타깃
           </label>
           <select
             id="execution-target"
@@ -595,7 +595,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           </select>
 
           <label className="field-label" htmlFor="live-arm">
-            Live arm
+            라이브 arm
           </label>
           <select
             id="live-arm"
@@ -609,7 +609,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           </select>
 
           <label className="field-label" htmlFor="demo-seed">
-            DEMO_SEED_USDT (next reset)
+            DEMO_SEED_USDT (다음 리셋 적용)
           </label>
           <input
             id="demo-seed"
@@ -621,7 +621,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             onChange={(event) => setConfig((prev) => ({ ...prev, demoSeedUsdt: event.target.value }))}
           />
           <p className="status-line full-span">
-            Saving runtime profile does not wipe current seed, open positions, or PnL. Use hard reset below to reinitialize demo state.
+            런타임 프로필 저장은 현재 시드, 오픈 포지션, PnL을 지우지 않습니다. 데모 상태 재초기화는 아래 하드 리셋을 사용하세요.
           </p>
 
           <label className="field-label" htmlFor="max-positions">
@@ -675,9 +675,9 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             value={config.intrabarConflictPolicy}
             onChange={(event) => setConfig((prev) => ({ ...prev, intrabarConflictPolicy: event.target.value }))}
           >
-            <option value="conservative">conservative / SL first</option>
-            <option value="neutral">neutral / nearest to open first</option>
-            <option value="aggressive">aggressive / TP first</option>
+            <option value="conservative">conservative / SL 우선</option>
+            <option value="neutral">neutral / 시가 근접 레벨 우선</option>
+            <option value="aggressive">aggressive / TP 우선</option>
           </select>
           <p className="status-line full-span">{conflictPolicyHelp(config.intrabarConflictPolicy)}</p>
 
@@ -787,7 +787,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label" htmlFor="crypto-universe-mode">
-            Universe mode
+            유니버스 모드
           </label>
           <select
             id="crypto-universe-mode"
@@ -795,13 +795,13 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             value={config.cryptoUniverseMode}
             onChange={(event) => setConfig((prev) => ({ ...prev, cryptoUniverseMode: event.target.value }))}
           >
-            <option value="rank_lock">rank_lock / market-cap top 1-20</option>
-            <option value="fixed_symbols">fixed_symbols / BYBIT_SYMBOLS only</option>
-            <option value="dynamic">dynamic / rotating universe</option>
+            <option value="rank_lock">rank_lock / 시총 상위 1~20</option>
+            <option value="fixed_symbols">fixed_symbols / BYBIT_SYMBOLS만 사용</option>
+            <option value="dynamic">dynamic / 순환 유니버스</option>
           </select>
 
           <label className="field-label" htmlFor="macro-rank-min">
-            Rank min
+            랭크 최소
           </label>
           <input
             id="macro-rank-min"
@@ -815,7 +815,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label" htmlFor="macro-rank-max">
-            Rank max
+            랭크 최대
           </label>
           <input
             id="macro-rank-max"
@@ -829,7 +829,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label" htmlFor="macro-trend-pool-size">
-            Universe pool size
+            유니버스 풀 크기
           </label>
           <input
             id="macro-trend-pool-size"
@@ -843,7 +843,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label" htmlFor="macro-trend-reselect-seconds">
-            Rotation interval(sec)
+            로테이션 주기(초)
           </label>
           <input
             id="macro-trend-reselect-seconds"
@@ -857,7 +857,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label full-span" htmlFor="crypto-priority-symbols">
-            Priority symbols (dynamic mode)
+            우선 심볼(dynamic 모드)
           </label>
           <input
             id="crypto-priority-symbols"
@@ -868,8 +868,8 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             placeholder="BTCUSDT,ETHUSDT"
           />
           <p className="status-line full-span">
-            <strong>rank_lock</strong> keeps tradable symbols in the configured rank window and, when CoinGecko is off, falls back to exchange-turnover ranking from Binance + Bybit.
-            <strong> fixed_symbols</strong> enforces <strong>BYBIT_SYMBOLS</strong> only, while <strong>dynamic</strong> rotates the universe each cycle.
+            <strong>rank_lock</strong>는 설정된 랭크 구간에서 거래 가능한 심볼을 유지하며, CoinGecko가 꺼져 있으면 Binance + Bybit 거래대금 랭킹으로 대체합니다.
+            <strong> fixed_symbols</strong>는 <strong>BYBIT_SYMBOLS</strong>만 강제하고, <strong>dynamic</strong>은 매 사이클 유니버스를 회전합니다.
           </p>
           <label className="field-label full-span" htmlFor="crypto-tune-overrides">
             Crypto tune overrides(JSON)
@@ -883,14 +883,14 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             placeholder={'{\n  "A": { "threshold_bias": -0.003, "entry_atr_mul": 1.05 },\n  "B": { "floor_atr_mul": 1.10, "mid_atr_boost": 0.18 },\n  "D": { "entry_atr_mul": 1.35, "zone_high_atr": 0.38 }\n}'}
           />
           <p className="status-line full-span">
-            Supported keys: <strong>threshold</strong>, <strong>threshold_bias</strong>, <strong>entry_atr_mul</strong>,
+            지원 키: <strong>threshold</strong>, <strong>threshold_bias</strong>, <strong>entry_atr_mul</strong>,
             <strong>floor_atr_mul</strong>, <strong>mid_atr_boost</strong>, <strong>zone_half_atr</strong>,
             <strong>zone_low_atr</strong>, <strong>zone_high_atr</strong>.
           </p>
 
           <div className="button-row full-span">
             <button className="action-button" type="submit" disabled={runtimeSaving || !writeReady || !hasAdminToken}>
-              {runtimeSaving ? "saving..." : "save runtime profile"}
+              {runtimeSaving ? "저장 중..." : "런타임 프로필 저장"}
             </button>
           </div>
         </form>
@@ -900,15 +900,15 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
 
       <section className="control-card reset-card">
         <div className="control-head">
-          <h3>Hard Reset Demo State</h3>
-          <span>positions + pnl + runtime state reset</span>
+          <h3>데모 상태 하드 리셋</h3>
+          <span>positions + pnl + 런타임 상태 초기화</span>
         </div>
         <p className="control-copy">
-          This clears demo positions, recent fills, daily pnl, and model tune state. Provider credentials and runtime profile remain intact.
+          데모 포지션, 최근 체결, 일별 pnl, 모델 튜닝 상태를 초기화합니다. 프로바이더 자격정보와 런타임 프로필은 유지됩니다.
         </p>
         <form className="control-form runtime-form" onSubmit={runHardReset}>
           <label className="field-label" htmlFor="reset-seed-usdt">
-            Seed (USDT)
+            시드 (USDT)
           </label>
           <input
             id="reset-seed-usdt"
@@ -921,7 +921,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <label className="field-label" htmlFor="reset-confirm-text">
-            Confirmation text
+            확인 문구
           </label>
           <input
             id="reset-confirm-text"
@@ -933,7 +933,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
           />
 
           <p className="status-line full-span">
-            Type <strong>{RESET_CONFIRM_TEXT}</strong>. Reset immediately clears Supabase demo state and next cycle starts with seed {resetSeedUsdt || "10000"} USDT.
+            <strong>{RESET_CONFIRM_TEXT}</strong>를 입력하세요. 리셋 즉시 Supabase 데모 상태를 정리하고 다음 사이클은 시드 {resetSeedUsdt || "10000"} USDT로 시작합니다.
           </p>
 
           <div className="button-row full-span">
@@ -942,7 +942,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
               type="submit"
               disabled={resetting || !writeReady || !hasAdminToken || resetConfirmText.trim().toUpperCase() !== RESET_CONFIRM_TEXT}
             >
-              {resetting ? "resetting..." : "run hard reset"}
+              {resetting ? "리셋 중..." : "하드 리셋 실행"}
             </button>
           </div>
         </form>

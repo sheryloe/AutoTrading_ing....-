@@ -4,23 +4,23 @@ export const SERVICE_PROVIDER_DEFS = {
   bybit: {
     id: "bybit",
     label: "Bybit",
-    role: "Execution account",
+    role: "실행 계정",
     requiresSecret: true,
-    description: "Credential set used for exchange execution connectivity and future live routing readiness.",
+    description: "거래소 실행 연결성과 향후 라이브 라우팅 준비 상태를 위한 자격정보 세트입니다.",
   },
   binance: {
     id: "binance",
     label: "Binance",
-    role: "Realtime quote source",
+    role: "실시간 시세 소스",
     requiresSecret: true,
-    description: "Primary source for realtime market data and rank-lock universe updates.",
+    description: "실시간 마켓데이터 및 rank_lock 유니버스 업데이트의 기본 소스입니다.",
   },
   coingecko: {
     id: "coingecko",
     label: "CoinGecko",
-    role: "Macro metadata source",
+    role: "매크로 메타데이터 소스",
     requiresSecret: false,
-    description: "Optional provider for market-cap and metadata enrichment signals.",
+    description: "시가총액 및 메타데이터 보강 신호를 위한 선택형 프로바이더입니다.",
   },
 };
 

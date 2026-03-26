@@ -53,7 +53,7 @@ function TrendChart({ title, caption, points, money = false }) {
           <strong>{title}</strong>
           <span>{caption}</span>
         </div>
-        <div className="chart-empty">No rows yet.</div>
+        <div className="chart-empty">데이터가 아직 없습니다.</div>
       </article>
     );
   }
@@ -77,15 +77,15 @@ function TrendChart({ title, caption, points, money = false }) {
       </svg>
       <div className="trend-stats">
         <div>
-          <span>start</span>
+          <span>시작</span>
           <strong>{formatter(first.value)}</strong>
         </div>
         <div>
-          <span>latest</span>
+          <span>최근</span>
           <strong>{formatter(last.value)}</strong>
         </div>
         <div>
-          <span>delta</span>
+          <span>변화</span>
           <strong className={`trend-delta ${deltaClass}`}>{formatter(delta)}</strong>
         </div>
       </div>
@@ -114,7 +114,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
 
   return (
     <section className="tab-shell">
-      <div className="tab-strip" role="tablist" aria-label="Model selector">
+      <div className="tab-strip" role="tablist" aria-label="모델 선택">
         {MODEL_ORDER.map((modelId) => {
           const item = getModelMeta(modelId);
           const active = activeModel === modelId;
@@ -125,7 +125,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
               className={`tab-button ${active ? "active" : ""}`}
               onClick={() => setActiveModel(modelId)}
             >
-              <span className="tab-eyebrow">MODEL {modelId}</span>
+              <span className="tab-eyebrow">모델 {modelId}</span>
               <strong>{item.name}</strong>
               <small>{item.subtitle}</small>
             </button>
@@ -133,49 +133,49 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
         })}
       </div>
 
-      <SectionCard eyebrow={`MODEL ${activeModel}`} title={meta.name} meta={meta.subtitle} className="model-focus-card">
+      <SectionCard eyebrow={`모델 ${activeModel}`} title={meta.name} meta={meta.subtitle} className="model-focus-card">
         <div className="model-focus-grid">
           <div className="model-focus-copy">
             <p>{meta.description}</p>
             <div className="status-row compact">
-              <StatusBadge tone="info">latest day {activeSummary?.latestDay || "-"}</StatusBadge>
-              <StatusBadge tone="success">win {formatPercent(activeSummary?.latestWinRate || 0)}</StatusBadge>
-              <StatusBadge tone="warning">closed {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
+              <StatusBadge tone="info">최근 일자 {activeSummary?.latestDay || "-"}</StatusBadge>
+              <StatusBadge tone="success">승률 {formatPercent(activeSummary?.latestWinRate || 0)}</StatusBadge>
+              <StatusBadge tone="warning">종료 거래 {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
             </div>
           </div>
 
           <div className="focus-metric-grid">
             <article className="focus-metric-card">
-              <span>cumulative realized pnl</span>
+              <span>누적 실현 pnl</span>
               <strong>{formatMoney(activeSummary?.realizedPnlUsd || 0)}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>latest equity</span>
+              <span>최근 자산</span>
               <strong>{formatMoney(activeSummary?.latestEquityUsd || 0)}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>active variant</span>
-              <strong>{activeTune?.active_variant_id || "default"}</strong>
+              <span>활성 버전</span>
+              <strong>{activeTune?.active_variant_id || "기본값"}</strong>
             </article>
           </div>
         </div>
       </SectionCard>
 
       <section className="chart-grid">
-        <TrendChart title="Cumulative Realized PnL" caption="running total by day" points={realizedTrend} money />
-        <TrendChart title="Equity Curve" caption="daily equity trajectory" points={equityTrend} money />
+        <TrendChart title="누적 실현 PnL" caption="일자별 누적 추이" points={realizedTrend} money />
+        <TrendChart title="자산 곡선" caption="일자별 자산 추이" points={equityTrend} money />
       </section>
 
       <section className="content-grid content-grid-two">
-        <TablePanel eyebrow="Daily Rows" title={`${meta.name} PnL table`} meta={`${activeRows.length} rows`}>
+        <TablePanel eyebrow="일자별 데이터" title={`${meta.name} PnL 테이블`} meta={`${activeRows.length}행`}>
           <table>
             <thead>
               <tr>
-                <th>Day</th>
-                <th>Equity</th>
-                <th>Realized PnL</th>
-                <th>Win Rate</th>
-                <th>Closed Trades</th>
+                <th>일자</th>
+                <th>자산</th>
+                <th>실현 PnL</th>
+                <th>승률</th>
+                <th>종료 거래</th>
               </tr>
             </thead>
             <tbody>
@@ -191,38 +191,38 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5">No rows available.</td>
+                  <td colSpan="5">표시할 데이터가 없습니다.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </TablePanel>
 
-        <SectionCard eyebrow="Runtime Tune" title={`${meta.name} tuning memo`} meta={activeTune?.last_eval_note_code || "-"}>
+        <SectionCard eyebrow="런타임 튠" title={`${meta.name} 튜닝 메모`} meta={activeTune?.last_eval_note_code || "-"}>
           {activeTune ? (
             <div className="mini-list">
               <article className="mini-card">
                 <div>
-                  <strong>Variant</strong>
-                  <p>{activeTune.active_variant_id || "default"}</p>
+                  <strong>버전</strong>
+                  <p>{activeTune.active_variant_id || "기본값"}</p>
                 </div>
                 <div className="mini-metrics">
-                  <span>last eval {activeTune.last_eval_at || "-"}</span>
-                  <span>closed trades {formatNumber(activeTune.last_eval_closed || 0)}</span>
+                  <span>최근 평가 {activeTune.last_eval_at || "-"}</span>
+                  <span>종료 거래 {formatNumber(activeTune.last_eval_closed || 0)}</span>
                 </div>
               </article>
               <article className="mini-card">
                 <div>
-                  <strong>Evaluation Note</strong>
-                  <p>{activeTune.last_eval_note_code || "none"}</p>
+                  <strong>평가 메모</strong>
+                  <p>{activeTune.last_eval_note_code || "없음"}</p>
                 </div>
                 <div className="mini-metrics">
-                  <span>mode {activeTune.trade_mode || "paper"}</span>
+                  <span>모드 {activeTune.trade_mode || "paper"}</span>
                 </div>
               </article>
             </div>
           ) : (
-            <EmptyState title="No runtime tune yet" description="This model does not have a runtime tune record yet." />
+            <EmptyState title="런타임 튠 데이터 없음" description="이 모델의 런타임 튜닝 기록이 아직 없습니다." />
           )}
         </SectionCard>
       </section>
