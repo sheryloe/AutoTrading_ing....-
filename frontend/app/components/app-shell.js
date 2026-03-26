@@ -6,10 +6,30 @@ import { usePathname } from "next/navigation";
 import RefreshBanner from "./refresh-banner";
 
 const NAV_ITEMS = [
-  { href: "/", label: "개요", desc: "오늘의 상태와 핵심 KPI", icon: LayoutDashboard },
-  { href: "/models", label: "모델 성과", desc: "모델별 PnL과 튜닝 상태", icon: LineChart },
-  { href: "/positions", label: "포지션", desc: "오픈 포지션과 최신 진입 계획", icon: BriefcaseBusiness },
-  { href: "/settings", label: "설정", desc: "서비스 콘솔과 운영 입력", icon: SlidersHorizontal },
+  {
+    href: "/",
+    label: "Overview",
+    desc: "Core KPI and runtime state",
+    icon: LayoutDashboard,
+  },
+  {
+    href: "/models",
+    label: "Models",
+    desc: "A/B/C/D performance and trends",
+    icon: LineChart,
+  },
+  {
+    href: "/positions",
+    label: "Positions",
+    desc: "Open positions and fill logs",
+    icon: BriefcaseBusiness,
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    desc: "Runtime, symbols, and seed controls",
+    icon: SlidersHorizontal,
+  },
 ];
 
 export default function AppShell({ children }) {
@@ -22,19 +42,18 @@ export default function AppShell({ children }) {
           <span className="brand-mark" />
           <span className="brand-copy">
             <strong>AI_Auto</strong>
-            <span>운영자용 트레이딩 콘솔</span>
+            <span>Quant Trading Console</span>
           </span>
         </Link>
 
         <div className="sidebar-caption">
-          <span className="caption-chip">HYPER OPS</span>
+          <span className="caption-chip">QUANT ATELIER</span>
           <p>
-            상태 확인, 모델 성과, 포지션 점검, 운영 설정을 역할별 화면으로 분리한
-            운영형 대시보드입니다.
+            Information is split into Overview, Models, Positions, and Settings so decisions stay fast and readable.
           </p>
         </div>
 
-        <nav className="shell-nav" aria-label="운영 메뉴">
+        <nav className="shell-nav" aria-label="Console navigation">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
@@ -52,7 +71,7 @@ export default function AppShell({ children }) {
         </nav>
 
         <div className="sidebar-footer">
-          <p>Vercel 프론트 / Supabase 상태 저장 / Python 배치 실행</p>
+          <p>Vercel + Supabase + Python batch runtime</p>
         </div>
       </aside>
 
@@ -62,10 +81,10 @@ export default function AppShell({ children }) {
             <span className="brand-mark small" />
             <div>
               <strong>AI_Auto</strong>
-              <p>운영자 콘솔</p>
+              <p>Trading Console</p>
             </div>
           </div>
-          <nav className="mobile-nav-links" aria-label="모바일 메뉴">
+          <nav className="mobile-nav-links" aria-label="Mobile navigation">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href;
               const Icon = item.icon;

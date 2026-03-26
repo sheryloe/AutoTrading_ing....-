@@ -1,17 +1,17 @@
 :root {
-  --bg: #03080d;
-  --bg-soft: #08121b;
-  --panel: rgba(9, 18, 28, 0.84);
-  --panel-strong: rgba(7, 15, 24, 0.96);
-  --panel-soft: rgba(15, 27, 40, 0.72);
-  --line: rgba(124, 162, 191, 0.16);
-  --line-strong: rgba(124, 162, 191, 0.3);
-  --text: #eef8ff;
-  --muted: #91a6b7;
-  --cyan: #47e6ff;
-  --green: #49f3ac;
+  --bg: #09151c;
+  --bg-soft: #121d25;
+  --panel: rgba(22, 33, 41, 0.82);
+  --panel-strong: rgba(16, 29, 37, 0.96);
+  --panel-soft: rgba(32, 43, 52, 0.7);
+  --line: rgba(60, 74, 67, 0.32);
+  --line-strong: rgba(133, 148, 140, 0.34);
+  --text: #d8e4ef;
+  --muted: #bbcac1;
+  --cyan: #92ccff;
+  --green: #5af3c1;
   --amber: #f6be5a;
-  --blue: #7db8ff;
+  --blue: #33d6a6;
   --danger: #ff8c8c;
   --shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
   --radius-xl: 30px;
@@ -34,11 +34,12 @@ body {
   min-width: 320px;
   color: var(--text);
   font-family: var(--font-body), "Noto Sans KR", sans-serif;
+  font-variant-numeric: tabular-nums;
   background:
-    radial-gradient(circle at 10% 8%, rgba(71, 230, 255, 0.14), transparent 25rem),
-    radial-gradient(circle at 86% 14%, rgba(73, 243, 172, 0.12), transparent 24rem),
-    radial-gradient(circle at 52% 110%, rgba(246, 190, 90, 0.07), transparent 30rem),
-    linear-gradient(180deg, #03080d 0%, #040a11 100%);
+    radial-gradient(circle at 10% 8%, rgba(146, 204, 255, 0.14), transparent 26rem),
+    radial-gradient(circle at 86% 14%, rgba(90, 243, 193, 0.1), transparent 26rem),
+    radial-gradient(circle at 52% 110%, rgba(246, 190, 90, 0.06), transparent 30rem),
+    linear-gradient(180deg, #09151c 0%, #0b1820 100%);
 }
 
 body::before {
@@ -100,7 +101,7 @@ textarea {
 .quick-link-card,
 .empty-state {
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(10, 20, 30, 0.92) 0%, rgba(5, 11, 18, 0.96) 100%);
+  background: linear-gradient(180deg, rgba(22, 33, 41, 0.86) 0%, rgba(12, 23, 31, 0.92) 100%);
   box-shadow: var(--shadow);
 }
 
@@ -200,6 +201,25 @@ textarea {
   color: var(--muted);
 }
 
+.page-title,
+.page-description,
+.section-title,
+.section-meta,
+.status-line,
+.control-copy,
+.field-label,
+.metric-value,
+.metric-meta,
+.tab-stat,
+.hero-panel h2,
+.hero-panel p,
+.overview-support-copy,
+.warning-card p,
+.warning-card strong {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .sidebar-caption {
   padding: 16px;
   border: 1px solid rgba(71, 230, 255, 0.14);
@@ -243,7 +263,7 @@ textarea {
   padding: 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: rgba(10, 20, 31, 0.46);
+  background: rgba(18, 29, 37, 0.66);
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
@@ -255,8 +275,8 @@ textarea {
 }
 
 .nav-link.active {
-  border-color: rgba(71, 230, 255, 0.34);
-  background: linear-gradient(180deg, rgba(12, 26, 39, 0.92), rgba(8, 16, 25, 0.96));
+  border-color: rgba(90, 243, 193, 0.42);
+  background: linear-gradient(180deg, rgba(32, 43, 52, 0.94), rgba(20, 32, 40, 0.96));
 }
 
 .nav-link span {
@@ -452,6 +472,15 @@ textarea {
   gap: 16px;
 }
 
+.kpi-row > *,
+.content-grid > *,
+.quick-link-grid > *,
+.provider-grid > *,
+.service-grid > *,
+.runtime-form > * {
+  min-width: 0;
+}
+
 .kpi-row {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
@@ -530,6 +559,13 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
 }
 
 .status-row.compact {
@@ -1273,9 +1309,14 @@ textarea {
   margin-bottom: 16px;
 }
 
+.service-grid-top {
+  margin-bottom: 16px;
+}
+
 .control-card {
   padding: 18px;
   border-radius: var(--radius-lg);
+  min-width: 0;
 }
 
 .control-head {
@@ -1319,6 +1360,10 @@ textarea {
 .control-form {
   display: grid;
   gap: 12px;
+}
+
+.provider-card .control-form {
+  margin-top: 12px;
 }
 
 .control-input {
@@ -1687,6 +1732,13 @@ textarea {
   .tab-button-stats {
     grid-template-columns: 1fr;
   }
+}
+
+textarea.control-input {
+  min-height: 180px;
+  padding: 12px 14px;
+  line-height: 1.6;
+  resize: vertical;
 }
 
 @media (max-width: 760px) {

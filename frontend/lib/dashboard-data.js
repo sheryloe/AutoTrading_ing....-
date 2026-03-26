@@ -76,7 +76,7 @@ function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions,
 }
 
 function missingAdminMessage() {
-  return "SUPABASE_URL 또는 서버 비밀키가 설정되지 않았습니다.";
+  return "Supabase admin environment variables are missing. Set SUPABASE_URL and a service-role key.";
 }
 
 export async function loadOverviewPageData() {

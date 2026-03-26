@@ -438,7 +438,7 @@ export async function loadServiceControlData() {
       providerStatuses,
       liveStatus: computeLiveStatus(DEFAULT_RUNTIME_CONFIG, providerStatuses),
       diagnostics: buildRuntimeDiagnostics(DEFAULT_RUNTIME_CONFIG, providerStatuses, DEFAULT_RUNTIME_CONFIG),
-      errors: ["Supabase 서버 연결이 준비되지 않았습니다."],
+      errors: ["Supabase admin connection is not ready."],
     };
   }
 

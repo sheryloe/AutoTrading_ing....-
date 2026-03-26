@@ -37,17 +37,16 @@ export default function RefreshBanner() {
       <div className="refresh-banner-copy">
         <span className="refresh-pill">AUTO REFRESH</span>
         <p>
-          이 화면은 {UI_REFRESH_MINUTES}분마다 자동 갱신됩니다. 다음 갱신 전까지 포지션이 자동으로
-          정리되거나 상태가 바뀔 수 있습니다.
+          Dashboard refreshes every {UI_REFRESH_MINUTES} minutes. Use manual refresh to pull latest Supabase state instantly.
         </p>
       </div>
       <div className="refresh-banner-actions">
         <strong>
-          <TimerReset size={15} strokeWidth={2.1} aria-hidden="true" /> 다음 갱신 {nextLabel}
+          <TimerReset size={15} strokeWidth={2.1} aria-hidden="true" /> next refresh {nextLabel}
         </strong>
         <button type="button" className="refresh-button" onClick={handleRefreshNow}>
-          <RefreshCw size={14} strokeWidth={2.1} aria-hidden="true" />{" "}
-          지금 새로고침
+          <RefreshCw size={14} strokeWidth={2.1} aria-hidden="true" />
+          refresh now
         </button>
       </div>
     </div>

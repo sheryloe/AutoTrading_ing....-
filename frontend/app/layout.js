@@ -20,8 +20,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "AI_Auto 운영자 콘솔",
-  description: "트레이딩 자동화 운영 상태, 모델 성과, 포지션, 설정을 분리한 서비스형 콘솔",
+  title: "AI_Auto Trading Console",
+  description: "Volatility-focused auto-trading dashboard for overview, model performance, positions, and runtime controls.",
 };
 
 export default function RootLayout({ children }) {
