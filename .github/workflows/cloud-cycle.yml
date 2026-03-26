@@ -3,7 +3,8 @@ name: cloud-cycle
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/1 * * * *"
+    # 5분마다 실행 (API 한도 보호 및 안정성 확보)
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: write
@@ -15,7 +16,8 @@ concurrency:
 jobs:
   run-cycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    # 코인이 20개로 늘어났으므로 분석 시간을 고려해 5분으로 연장
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,17 +47,26 @@ jobs:
           LIVE_EXECUTION_ARMED: "false"
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
+          
+          # [핵심 수정] 실행 주기 및 API 최적화
           SCAN_INTERVAL_SECONDS: "60"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
+          
+          # [핵심 수정] 20개 코인 리스트 및 최대 포지션 상향
           BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,XRPUSDT,BNBUSDT,SOLUSDT,DOGEUSDT,ADAUSDT,TRXUSDT,HYPEUSDT,BCHUSDT,SUIUSDT,XLMUSDT,LINKUSDT,DOTUSDT,NEARUSDT,LTCUSDT,AVAXUSDT,SHIBUSDT,ICPUSDT,HBARUSDT
-          CRYPTO_UNIVERSE_MODE: rank_lock
-          CRYPTO_DATA_SOURCE_ORDER: binance,bybit,coingecko
+          BYBIT_MAX_POSITIONS: "20"
+          
+          # [핵심 수정] Universe 모드 변경 (시총조회 API 의존성 제거)
+          CRYPTO_UNIVERSE_MODE: fixed_symbols
+          CRYPTO_DATA_SOURCE_ORDER: binance,bybit
           CRYPTO_USE_BINANCE_DATA: "true"
           CRYPTO_USE_BYBIT_DATA: "true"
-          CRYPTO_USE_COINGECKO_DATA: "true"
+          CRYPTO_USE_COINGECKO_DATA: "false"
+          
           CRYPTO_AUTOTRADE_MODELS: A,B,C,D
           LIVE_CRYPTO_MODELS: A,B,C,D
+          
           GIT_DAILY_REPORTS_ENABLED: "true"
           GIT_DAILY_REPORTS_AUTOCOMMIT: "true"
           GIT_DAILY_REPORTS_AUTOPUSH: "true"
@@ -63,6 +74,7 @@ jobs:
           GIT_DAILY_REPORTS_BRANCH: main
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          
           SUPABASE_SYNC_ENABLED: "true"
           SUPABASE_SYNC_STRICT: "true"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
