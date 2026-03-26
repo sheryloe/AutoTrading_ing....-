@@ -28,6 +28,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -218,6 +219,7 @@ textarea {
 .warning-card strong {
   overflow-wrap: anywhere;
   word-break: break-word;
+  hyphens: auto;
 }
 
 .sidebar-caption {
@@ -393,6 +395,11 @@ textarea {
   justify-items: end;
 }
 
+.refresh-banner-actions strong {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .refresh-button {
   min-height: 40px;
   padding: 0 14px;
@@ -514,8 +521,9 @@ textarea {
 .metric-value {
   display: block;
   margin: 14px 0 8px;
-  font-size: 1.42rem;
-  line-height: 1.1;
+  font-size: clamp(1.05rem, 1.6vw, 1.42rem);
+  line-height: 1.24;
+  letter-spacing: -0.01em;
 }
 
 .metric-meta {
@@ -550,7 +558,9 @@ textarea {
 }
 
 .section-meta {
-  white-space: nowrap;
+  max-width: 22rem;
+  text-align: right;
+  line-height: 1.5;
 }
 
 .status-row,
@@ -575,6 +585,7 @@ textarea {
 .status-badge {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
@@ -1326,6 +1337,13 @@ textarea {
   align-items: center;
 }
 
+.control-head span {
+  max-width: 44%;
+  text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .control-card h3 {
   margin: 0;
   font-size: 1.12rem;
@@ -1337,6 +1355,11 @@ textarea {
 .success-line,
 .error-line {
   line-height: 1.75;
+}
+
+.field-label {
+  display: block;
+  white-space: normal;
 }
 
 .status-stack {
@@ -1734,6 +1757,21 @@ textarea {
   }
 }
 
+.page-stack > * {
+  animation: fade-rise 240ms ease both;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 textarea.control-input {
   min-height: 180px;
   padding: 12px 14px;
@@ -1774,8 +1812,17 @@ textarea.control-input {
     justify-items: start;
   }
 
+  .refresh-banner-actions strong {
+    justify-content: flex-start;
+  }
+
   .page-title {
     font-size: 2rem;
+  }
+
+  .section-meta {
+    max-width: none;
+    text-align: left;
   }
 
   .mobile-nav {
@@ -1806,9 +1853,15 @@ textarea.control-input {
   .overview-open-top,
   .summary-line,
   .overview-board-head,
-  .overview-position-main {
+  .overview-position-main,
+  .control-head {
     flex-direction: column;
     align-items: start;
+  }
+
+  .control-head span {
+    max-width: none;
+    text-align: left;
   }
 
   .summary-value-stack {
