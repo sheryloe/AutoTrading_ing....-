@@ -107,7 +107,7 @@ def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]
     payload["CRYPTO_USE_BYBIT_DATA"] = bool(flags["bybit"])
     payload["CRYPTO_USE_COINGECKO_DATA"] = bool(flags["coingecko"])
     payload["MACRO_REALTIME_SOURCES"] = ",".join(realtime_sources)
-    payload["MACRO_UNIVERSE_SOURCE"] = "coingecko"
+    payload["MACRO_UNIVERSE_SOURCE"] = "bybit"
     return payload
 
 
