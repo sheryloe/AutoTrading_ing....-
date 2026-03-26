@@ -2027,7 +2027,7 @@ class TradingEngine:
         )
 
         market_limits = {
-            "top_markets_calls": 3000.0,
+            "top_markets_calls": 100000.0,
             "realtime_quotes_calls": 120000.0,
             "binance_5m_kline_calls": 180000.0,
             "binance_1m_kline_calls": 180000.0,
