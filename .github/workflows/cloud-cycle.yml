@@ -49,7 +49,7 @@ jobs:
           GOOGLE_TREND_ENABLED: "false"
           
           # [핵심 수정] 실행 주기 및 API 최적화
-          SCAN_INTERVAL_SECONDS: "60"
+          SCAN_INTERVAL_SECONDS: "300"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           
