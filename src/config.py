@@ -66,6 +66,20 @@ CRYPTO_SOURCE_ORDER_DEFAULT = ("binance", "bybit", "coingecko")
 CRYPTO_REALTIME_SOURCE_DEFAULT = ("binance", "bybit")
 CRYPTO_UNIVERSE_MODE_DEFAULT = "rank_lock"
 CRYPTO_UNIVERSE_MODE_VALUES = {"rank_lock", "fixed_symbols", "dynamic"}
+MACRO_UNIVERSE_SOURCE_DEFAULT = "coingecko"
+
+
+def _normalize_macro_universe_source(raw: Any, flags: dict[str, bool]) -> str:
+    requested = _to_str(raw, "").lower()
+    if requested in {"coinmarketcap", "cmc"}:
+        return "coinmarketcap"
+    if requested in {"exchange", "binance", "bybit", "binance_bybit"}:
+        return "exchange"
+    if bool(flags.get("coingecko", False)):
+        return MACRO_UNIVERSE_SOURCE_DEFAULT
+    if bool(flags.get("binance", False) or flags.get("bybit", False)):
+        return "exchange"
+    return MACRO_UNIVERSE_SOURCE_DEFAULT
 
 
 def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -86,17 +100,24 @@ def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]
     flags = {
         "binance": _to_bool(payload.get("CRYPTO_USE_BINANCE_DATA"), True),
         "bybit": _to_bool(payload.get("CRYPTO_USE_BYBIT_DATA"), True),
-        "coingecko": _to_bool(payload.get("CRYPTO_USE_COINGECKO_DATA"), True),
+        "coingecko": _to_bool(payload.get("CRYPTO_USE_COINGECKO_DATA"), False),
     }
     all_disabled = not any(flags.values())
     realtime_disabled = not bool(flags["binance"] or flags["bybit"])
 
     if all_disabled:
-        flags = {"binance": True, "bybit": True, "coingecko": True}
-        ordered = list(CRYPTO_SOURCE_ORDER_DEFAULT)
+        flags = {"binance": True, "bybit": True, "coingecko": False}
     elif realtime_disabled:
         flags["binance"] = True
         flags["bybit"] = True
+
+    enabled_defaults = [provider for provider in CRYPTO_SOURCE_ORDER_DEFAULT if flags.get(provider, False)]
+    ordered = [provider for provider in requested if flags.get(provider, False)]
+    if not ordered:
+        ordered = list(enabled_defaults or CRYPTO_REALTIME_SOURCE_DEFAULT)
+    for provider in enabled_defaults:
+        if provider not in ordered:
+            ordered.append(provider)
 
     realtime_sources = [provider for provider in ordered if provider in CRYPTO_REALTIME_SOURCE_DEFAULT and flags[provider]]
     if not realtime_sources:
@@ -107,7 +128,7 @@ def normalize_runtime_data_sources(raw: dict[str, Any] | None) -> dict[str, Any]
     payload["CRYPTO_USE_BYBIT_DATA"] = bool(flags["bybit"])
     payload["CRYPTO_USE_COINGECKO_DATA"] = bool(flags["coingecko"])
     payload["MACRO_REALTIME_SOURCES"] = ",".join(realtime_sources)
-    payload["MACRO_UNIVERSE_SOURCE"] = "bybit"
+    payload["MACRO_UNIVERSE_SOURCE"] = _normalize_macro_universe_source(payload.get("MACRO_UNIVERSE_SOURCE"), flags)
     return payload
 
 
@@ -303,6 +324,12 @@ class Settings:
     supabase_secret_key: str
     supabase_sync_timeout_seconds: int
     supabase_history_retention_days: int
+    supabase_signals_retention_days: int
+    supabase_setups_retention_days: int
+    supabase_closed_positions_retention_days: int
+    supabase_daily_pnl_retention_days: int
+    supabase_model_runtime_tunes_retention_days: int
+    supabase_model_tune_history_retention_days: int
     supabase_prune_interval_seconds: int
     openai_budget_state_file: str
     model_file: str
@@ -463,10 +490,10 @@ class Settings:
                 data.get("LIVE_CRYPTO_MODELS"),
                 _to_str(data.get("CRYPTO_AUTOTRADE_MODELS"), "A,B,C,D"),
             ),
-            crypto_data_source_order=_to_str(data.get("CRYPTO_DATA_SOURCE_ORDER"), "binance,bybit,coingecko").lower(),
+            crypto_data_source_order=_to_str(data.get("CRYPTO_DATA_SOURCE_ORDER"), "binance,bybit").lower(),
             crypto_use_binance_data=_to_bool(data.get("CRYPTO_USE_BINANCE_DATA"), True),
             crypto_use_bybit_data=_to_bool(data.get("CRYPTO_USE_BYBIT_DATA"), True),
-            crypto_use_coingecko_data=_to_bool(data.get("CRYPTO_USE_COINGECKO_DATA"), True),
+            crypto_use_coingecko_data=_to_bool(data.get("CRYPTO_USE_COINGECKO_DATA"), False),
             crypto_deriv_data_enabled=_to_bool(data.get("CRYPTO_DERIV_DATA_ENABLED"), True),
             crypto_deriv_sources=_to_str(data.get("CRYPTO_DERIV_SOURCES"), "bybit,binance").lower(),
             crypto_deriv_cache_seconds=max(15, min(600, _to_int(data.get("CRYPTO_DERIV_CACHE_SECONDS"), 60))),
@@ -509,7 +536,7 @@ class Settings:
             ),
             demo_enable_bybit=_to_bool(data.get("DEMO_ENABLE_BYBIT"), False),
             demo_enable_macro=_to_bool(data.get("DEMO_ENABLE_MACRO"), True),
-            macro_universe_source=_to_str(data.get("MACRO_UNIVERSE_SOURCE"), "coingecko").lower(),
+            macro_universe_source=_to_str(data.get("MACRO_UNIVERSE_SOURCE"), "exchange").lower(),
             macro_top_n=max(5, min(2000, _to_int(data.get("MACRO_TOP_N"), 50))),
             macro_rank_min=max(1, min(5000, _to_int(data.get("MACRO_RANK_MIN"), 1))),
             macro_rank_max=max(1, min(5000, _to_int(data.get("MACRO_RANK_MAX"), 20))),
@@ -549,6 +576,30 @@ class Settings:
             supabase_history_retention_days=max(
                 1,
                 min(3650, _to_int(data.get("SUPABASE_HISTORY_RETENTION_DAYS"), 7)),
+            ),
+            supabase_signals_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_SIGNALS_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 7))),
+            ),
+            supabase_setups_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_SETUPS_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 7))),
+            ),
+            supabase_closed_positions_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_CLOSED_POSITIONS_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 7))),
+            ),
+            supabase_daily_pnl_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_DAILY_PNL_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 30))),
+            ),
+            supabase_model_runtime_tunes_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_MODEL_RUNTIME_TUNES_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 60))),
+            ),
+            supabase_model_tune_history_retention_days=max(
+                1,
+                min(3650, _to_int(data.get("SUPABASE_TUNE_HISTORY_RETENTION_DAYS"), int(data.get("SUPABASE_HISTORY_RETENTION_DAYS") or 30))),
             ),
             supabase_prune_interval_seconds=max(
                 300,

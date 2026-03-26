@@ -91,7 +91,7 @@ function sourceGuardForConfig(config) {
   if (allDisabled) {
     return {
       autoRepair: true,
-      message: "All crypto data sources are off. Saving will restore the default demo source set.",
+      message: "All crypto data sources are off. Saving will restore Binance + Bybit so paper trading can keep running.",
     };
   }
   if (realtimeDisabled) {
@@ -135,10 +135,10 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     macroRankMin: String(initialConfig?.MACRO_RANK_MIN || 1),
     macroRankMax: String(initialConfig?.MACRO_RANK_MAX || 20),
     cryptoTuneOverrides: JSON.stringify(initialConfig?.CRYPTO_TUNE_OVERRIDES || {}, null, 2),
-    cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit,coingecko"),
+    cryptoDataSourceOrder: String(initialConfig?.CRYPTO_DATA_SOURCE_ORDER || "binance,bybit"),
     useBinanceData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BINANCE_DATA ?? true)),
     useBybitData: boolToString(Boolean(initialConfig?.CRYPTO_USE_BYBIT_DATA ?? true)),
-    useCoingeckoData: boolToString(Boolean(initialConfig?.CRYPTO_USE_COINGECKO_DATA ?? true)),
+    useCoingeckoData: boolToString(Boolean(initialConfig?.CRYPTO_USE_COINGECKO_DATA ?? false)),
   });
   const [runtimeMessage, setRuntimeMessage] = useState("");
   const [runtimeError, setRuntimeError] = useState("");
@@ -207,10 +207,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
     };
   }, [config.enableLiveExecution, config.executionTarget, config.liveEnableCrypto, config.liveExecutionArmed, providerStatuses]);
 
-  const sourceGuard = useMemo(
-    () => sourceGuardForConfig(config),
-    [config.cryptoDataSourceOrder, config.useBinanceData, config.useBybitData, config.useCoingeckoData]
-  );
+  const sourceGuard = useMemo(() => sourceGuardForConfig(config), [config]);
 
   function updateProviderForm(provider, field, value) {
     setProviderForms((prev) => ({
@@ -775,7 +772,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             type="text"
             value={config.cryptoDataSourceOrder}
             onChange={(event) => setConfig((prev) => ({ ...prev, cryptoDataSourceOrder: event.target.value }))}
-            placeholder="binance,bybit,coingecko"
+            placeholder="binance,bybit"
           />
           {sourceGuard.autoRepair ? <p className="error-line full-span">{sourceGuard.message}</p> : null}
 
@@ -873,7 +870,7 @@ export default function ControlConsole({ initialConfig, runtimeUpdatedAt, provid
             placeholder="BTCUSDT,ETHUSDT"
           />
           <p className="status-line full-span">
-            <strong>rank_lock</strong> keeps tradable market-cap symbols in the configured rank window and refills when exclusions remove entries.
+            <strong>rank_lock</strong> keeps tradable symbols in the configured rank window and, when CoinGecko is off, falls back to exchange-turnover ranking from Binance + Bybit.
             <strong> fixed_symbols</strong> enforces <strong>BYBIT_SYMBOLS</strong> only, while <strong>dynamic</strong> rotates the universe each cycle.
           </p>
           <label className="field-label full-span" htmlFor="crypto-tune-overrides">

@@ -150,10 +150,10 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
     [openPositions, recentTradeRows, setupRows, signalAuditRows]
   );
 
-  const activePositions = groupedRows.openByModel[activeModel] || [];
-  const activeSetups = groupedRows.setupByModel[activeModel] || [];
-  const activeAudits = groupedRows.auditByModel[activeModel] || [];
-  const activeTrades = groupedRows.tradeByModel[activeModel] || [];
+  const activePositions = useMemo(() => groupedRows.openByModel[activeModel] || [], [groupedRows.openByModel, activeModel]);
+  const activeSetups = useMemo(() => groupedRows.setupByModel[activeModel] || [], [groupedRows.setupByModel, activeModel]);
+  const activeAudits = useMemo(() => groupedRows.auditByModel[activeModel] || [], [groupedRows.auditByModel, activeModel]);
+  const activeTrades = useMemo(() => groupedRows.tradeByModel[activeModel] || [], [groupedRows.tradeByModel, activeModel]);
 
   const latestAuditCycleAt = activeAudits[0]?.cycle_at || null;
   const latestAuditRows = useMemo(

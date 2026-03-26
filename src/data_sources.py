@@ -2262,9 +2262,27 @@ class MacroMarketClient:
                 if self._cache_rows:
                     return list(self._cache_rows)
 
+        if src in {"exchange", "binance", "bybit", "binance_bybit"}:
+            rows = self._fetch_exchange_top_markets(n)
+            if rows:
+                self._cache_rows = list(rows)
+                self._cache_ts = now
+                self._cache_key = cache_key
+            return rows
+
         try:
             rows = self._fetch_coingecko(n, coingecko_api_key)
         except Exception:
+            if src == "coingecko":
+                try:
+                    rows = self._fetch_exchange_top_markets(n)
+                except Exception:
+                    rows = []
+                if rows:
+                    self._cache_rows = list(rows)
+                    self._cache_ts = now
+                    self._cache_key = cache_key
+                    return rows
             if self._cache_rows:
                 return list(self._cache_rows)
             raise
@@ -2273,6 +2291,77 @@ class MacroMarketClient:
             self._cache_ts = now
             self._cache_key = cache_key
         return rows
+
+    def _fetch_exchange_top_markets(self, limit: int) -> list[dict[str, Any]]:
+        n = max(10, min(2000, int(limit)))
+        excluded_bases = {
+            "USDT",
+            "USDC",
+            "DAI",
+            "FDUSD",
+            "TUSD",
+            "USDE",
+            "USDD",
+            "PYUSD",
+            "BUSD",
+            "USDS",
+            "USD0",
+            "USD1",
+            "FRAX",
+            "EURC",
+        }
+        try:
+            binance_quotes, binance_meta = self._fetch_binance_quotes()
+        except Exception:
+            binance_quotes, binance_meta = {}, {}
+        try:
+            bybit_quotes, bybit_meta = self._fetch_bybit_public_quotes()
+        except Exception:
+            bybit_quotes, bybit_meta = {}, {}
+
+        candidate_symbols: set[str]
+        if bybit_quotes and binance_quotes:
+            candidate_symbols = set(bybit_quotes).intersection(binance_quotes) or set(bybit_quotes)
+        else:
+            candidate_symbols = set(bybit_quotes) or set(binance_quotes)
+
+        rows: list[dict[str, Any]] = []
+        for symbol in sorted(candidate_symbols):
+            if not str(symbol or "").endswith("USDT"):
+                continue
+            base_symbol = str(symbol).removesuffix("USDT").upper().strip()
+            if not base_symbol or base_symbol in excluded_bases:
+                continue
+            binance_row = dict(binance_meta.get(symbol) or {})
+            bybit_row = dict(bybit_meta.get(symbol) or {})
+            price = float(bybit_quotes.get(symbol) or binance_quotes.get(symbol) or 0.0)
+            if price <= 0.0:
+                continue
+            volume_24h = max(float(binance_row.get("volume_24h") or 0.0), float(bybit_row.get("volume_24h") or 0.0))
+            rows.append(
+                {
+                    "symbol": base_symbol,
+                    "price_usd": float(price),
+                    "volume_24h": float(volume_24h),
+                    "change_24h": float(bybit_row.get("change_24h") or binance_row.get("change_24h") or 0.0),
+                    "market_cap": 0.0,
+                    "market_cap_rank": 0,
+                    "source": "exchange",
+                    "realtime_source": str(
+                        bybit_row.get("realtime_source") or binance_row.get("realtime_source") or "exchange"
+                    ),
+                }
+            )
+
+        rows.sort(
+            key=lambda row: (
+                -float(row.get("volume_24h") or 0.0),
+                str(row.get("symbol") or ""),
+            )
+        )
+        for idx, row in enumerate(rows, start=1):
+            row["market_cap_rank"] = idx
+        return rows[:n]
 
     def fetch_realtime_quotes(
         self,

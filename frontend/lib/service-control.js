@@ -4,7 +4,7 @@ import { getServiceProviderDef, SERVICE_PROVIDER_ORDER } from "./service-provide
 export const SERVICE_RUNTIME_BLOB_KEY = "service_runtime_config";
 export const SERVICE_FREE_TIER_BLOB_KEY = "free_tier_capacity_report";
 
-const DEFAULT_SOURCE_ORDER = "binance,bybit,coingecko";
+const DEFAULT_SOURCE_ORDER = "binance,bybit";
 const DEFAULT_SYMBOLS = "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT";
 
 const DEFAULT_RUNTIME_CONFIG = {
@@ -35,13 +35,13 @@ const DEFAULT_RUNTIME_CONFIG = {
   CRYPTO_DATA_SOURCE_ORDER: DEFAULT_SOURCE_ORDER,
   CRYPTO_USE_BINANCE_DATA: true,
   CRYPTO_USE_BYBIT_DATA: true,
-  CRYPTO_USE_COINGECKO_DATA: true,
+  CRYPTO_USE_COINGECKO_DATA: false,
   CRYPTO_DERIV_DATA_ENABLED: true,
   CRYPTO_DERIV_SOURCES: "bybit,binance",
   CRYPTO_DERIV_CACHE_SECONDS: 60,
   CRYPTO_DERIV_FAIL_OPEN: true,
   MACRO_REALTIME_SOURCES: "binance,bybit",
-  MACRO_UNIVERSE_SOURCE: "coingecko",
+  MACRO_UNIVERSE_SOURCE: "exchange",
   MACRO_RANK_MIN: 1,
   MACRO_RANK_MAX: 20,
   DEMO_ENABLE_MACRO: true,
@@ -172,6 +172,15 @@ function deriveRealtimeSources(order, flags) {
   return (enabled.length ? enabled : ["binance", "bybit"]).join(",");
 }
 
+function deriveMacroUniverseSource(rawSource, flags) {
+  const requested = String(rawSource || "").trim().toLowerCase();
+  if (["coinmarketcap", "cmc"].includes(requested)) return "coinmarketcap";
+  if (["exchange", "binance", "bybit", "binance_bybit"].includes(requested)) return "exchange";
+  if (flags.coingecko) return "coingecko";
+  if (flags.binance || flags.bybit) return "exchange";
+  return "coingecko";
+}
+
 function normalizeSourceConfig(raw = {}) {
   const sourceOrderRaw = String(raw.CRYPTO_DATA_SOURCE_ORDER || raw.MARKET_DATA_SOURCE_ORDER || "").trim();
   let sourceOrder = normalizeSourceOrder(sourceOrderRaw || DEFAULT_SOURCE_ORDER);
@@ -194,8 +203,8 @@ function normalizeSourceConfig(raw = {}) {
   const realtimeDisabled = !flags.binance && !flags.bybit;
   if (allDisabled) {
     autoRepaired = true;
-    warnings.push("All crypto data sources were disabled, so the default demo source set was restored.");
-    flags = { binance: true, bybit: true, coingecko: true };
+    warnings.push("All crypto data sources were disabled, so Binance + Bybit were restored for paper trading.");
+    flags = { binance: true, bybit: true, coingecko: false };
     sourceOrder = normalizeSourceOrder(DEFAULT_SOURCE_ORDER);
   } else if (realtimeDisabled) {
     autoRepaired = true;
@@ -203,12 +212,21 @@ function normalizeSourceConfig(raw = {}) {
     flags = { ...flags, binance: true, bybit: true };
   }
 
+  const filteredOrder = sourceOrder.filter((provider) => {
+    if (provider === "binance") return flags.binance;
+    if (provider === "bybit") return flags.bybit;
+    if (provider === "coingecko") return flags.coingecko;
+    return false;
+  });
+  sourceOrder = filteredOrder.length ? filteredOrder : ["binance", "bybit"];
+
   return {
     sourceOrder,
     flags,
     warnings,
     autoRepaired,
     realtimeSources: deriveRealtimeSources(sourceOrder, flags),
+    macroUniverseSource: deriveMacroUniverseSource(raw.MACRO_UNIVERSE_SOURCE, flags),
   };
 }
 
@@ -258,6 +276,10 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
   const liveStatus = computeLiveStatus(runtimeConfig, providerStatuses);
   const sourceConfig = normalizeSourceConfig(rawRuntimeConfig || {});
   const sourceFlags = sourceConfig.flags;
+  const rankSourceLabel =
+    String(sourceConfig.macroUniverseSource || runtimeConfig.MACRO_UNIVERSE_SOURCE || "exchange") === "exchange"
+      ? "top exchange-turnover tradable symbols are selected from the rank window each cycle."
+      : "top market-cap tradable symbols are selected from the rank window each cycle.";
   const sourceFlagSummary = `binance ${sourceFlags.binance ? "on" : "off"} / bybit ${
     sourceFlags.bybit ? "on" : "off"
   } / coingecko ${sourceFlags.coingecko ? "on" : "off"}`;
@@ -271,7 +293,7 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
     dynamicUniverseEnabled,
     symbolModeLabel:
       universeMode === "rank_lock"
-        ? "Rank lock mode: top market-cap tradable symbols are selected from rank range each cycle."
+        ? `Rank lock mode: ${rankSourceLabel}`
         : dynamicUniverseEnabled
       ? "Dynamic rotation mode: BYBIT_SYMBOLS is only a reference or fallback list."
       : "Fixed universe mode: BYBIT_SYMBOLS is the enforced crypto watchlist.",
@@ -281,7 +303,9 @@ function buildRuntimeDiagnostics(runtimeConfig, providerStatuses, rawRuntimeConf
       : "The current build does not send real Bybit crypto orders yet; it only prepares future live routing.",
     symbolSummary:
       universeMode === "rank_lock"
-        ? "Rank lock mode ignores BYBIT_SYMBOLS and keeps tradable market-cap symbols inside the rank window."
+        ? String(sourceConfig.macroUniverseSource || runtimeConfig.MACRO_UNIVERSE_SOURCE || "exchange") === "exchange"
+          ? "Rank lock mode ignores BYBIT_SYMBOLS and keeps Bybit-tradable symbols ranked by exchange turnover inside the configured window."
+          : "Rank lock mode ignores BYBIT_SYMBOLS and keeps tradable market-cap symbols inside the rank window."
         : dynamicUniverseEnabled
       ? "A symbol can still end up as symbol_not_allowed when it falls outside the rotating universe."
       : "A symbol must be present in BYBIT_SYMBOLS to be eligible when dynamic rotation is off.",
@@ -375,7 +399,7 @@ export function normalizeRuntimeConfig(raw = {}) {
     ),
     CRYPTO_DERIV_FAIL_OPEN: toBool(raw.CRYPTO_DERIV_FAIL_OPEN, DEFAULT_RUNTIME_CONFIG.CRYPTO_DERIV_FAIL_OPEN),
     MACRO_REALTIME_SOURCES: sourceConfig.realtimeSources,
-    MACRO_UNIVERSE_SOURCE: "coingecko",
+    MACRO_UNIVERSE_SOURCE: sourceConfig.macroUniverseSource,
     MACRO_RANK_MIN: toInt(raw.MACRO_RANK_MIN, DEFAULT_RUNTIME_CONFIG.MACRO_RANK_MIN, 1, 5000),
     MACRO_RANK_MAX: toInt(raw.MACRO_RANK_MAX, DEFAULT_RUNTIME_CONFIG.MACRO_RANK_MAX, 1, 5000),
     MACRO_TREND_POOL_SIZE: toInt(
