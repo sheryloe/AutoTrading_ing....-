@@ -1,0 +1,5 @@
+date,model_id,bybit_equity_usd,bybit_total_pnl_usd,bybit_realized_pnl_usd,bybit_unrealized_pnl_usd,bybit_win_rate,bybit_closed_trades,total_equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades
+2026-03-26,A,1000.0,0.0,0.0,0.0,0.0,0,2000.0,0.0,0.0,0.0,0.0,0
+2026-03-26,B,1000.0,0.0,0.0,0.0,0.0,0,2000.0,0.0,0.0,0.0,0.0,0
+2026-03-26,C,1000.0,0.0,0.0,0.0,0.0,0,2000.0,0.0,0.0,0.0,0.0,0
+2026-03-26,D,1000.0,0.0,0.0,0.0,0.0,0,1000.0,-1000.0,0.0,0.0,0.0,0
