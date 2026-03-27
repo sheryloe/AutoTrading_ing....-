@@ -3,8 +3,8 @@ name: cloud-cycle
 on:
   workflow_dispatch:
   schedule:
-    # 5분마다 실행 (API 한도 보호 및 안정성 확보)
-    - cron: "*/5 * * * *"
+    # 1분마다 실행
+    - cron: "* * * * *"
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   run-cycle:
     runs-on: ubuntu-latest
-    # 코인이 20개로 늘어났으므로 분석 시간을 고려해 5분으로 연장
+    # 1분 주기 실행
     timeout-minutes: 5
     steps:
       - name: Checkout repository
@@ -48,8 +48,8 @@ jobs:
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
           
-          # [핵심 수정] 실행 주기 및 API 최적화
-          SCAN_INTERVAL_SECONDS: "300"
+          # [핵심 수정] 실행 주기
+          SCAN_INTERVAL_SECONDS: "60"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           
