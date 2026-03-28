@@ -2609,18 +2609,83 @@ class TradingEngine:
     def _maybe_prune_supabase_history(self, now_ts: int) -> dict[str, Any]:
         if not bool(getattr(getattr(self, "supabase_sync", None), "enabled", False)):
             return {"ok": True, "skipped": "disabled"}
-        retention_days = max(1, int(getattr(self.settings, "supabase_history_retention_days", 7) or 7))
+
+        def _is_missing_table_error(result: dict[str, Any]) -> bool:
+            status = int(result.get("status") or 0)
+            if status != 404:
+                return False
+            text = str(result.get("error") or "")
+            return "PGRST205" in text or "Could not find the table" in text
+
+        def _delete_history_rows(table: str, *, filters: dict[str, Any], optional: bool = False) -> dict[str, Any]:
+            result = self.supabase_sync.delete_rows(table, filters=filters)
+            if optional and not bool(result.get("ok")) and _is_missing_table_error(result):
+                return {
+                    "ok": True,
+                    "skipped": "missing_table",
+                    "table": table,
+                }
+            return result
+
         interval_seconds = max(300, int(getattr(self.settings, "supabase_prune_interval_seconds", 21600) or 21600))
         if int(now_ts) < int(self._last_supabase_prune_ts or 0) + int(interval_seconds):
             return {"ok": True, "skipped": "interval"}
 
-        cutoff_ts = int(now_ts - (retention_days * 86400))
-        cutoff_iso = self._iso_datetime(cutoff_ts)
-        filters = {"market": "eq.crypto", "cycle_at": f"lt.{cutoff_iso}"}
-        results = {
-            "model_setups": self.supabase_sync.delete_rows("model_setups", filters=filters),
-            "model_signal_audit": self.supabase_sync.delete_rows("model_signal_audit", filters=filters),
+        retention_days = {
+            "model_signal_audit": int(getattr(self.settings, "supabase_signals_retention_days", 7) or 7),
+            "model_setups": int(getattr(self.settings, "supabase_setups_retention_days", 7) or 7),
+            "positions": int(getattr(self.settings, "supabase_closed_positions_retention_days", 7) or 7),
+            "daily_model_pnl": int(getattr(self.settings, "supabase_daily_pnl_retention_days", 30) or 30),
+            "model_runtime_tunes": int(getattr(self.settings, "supabase_model_runtime_tunes_retention_days", 60) or 60),
+            "model_tune_history": int(getattr(self.settings, "supabase_model_tune_history_retention_days", 30) or 30),
         }
+
+        results = {}
+
+        # keep only last N days of high-frequency setup/signal history
+        cutoff_setup_iso = self._iso_datetime(int(now_ts - retention_days["model_setups"] * 86400))
+        cutoff_signal_iso = self._iso_datetime(int(now_ts - retention_days["model_signal_audit"] * 86400))
+        results["model_setups"] = _delete_history_rows(
+            "model_setups",
+            filters={"market": "eq.crypto", "cycle_at": f"lt.{cutoff_setup_iso}"},
+        )
+        results["model_signal_audit"] = _delete_history_rows(
+            "model_signal_audit",
+            filters={"market": "eq.crypto", "cycle_at": f"lt.{cutoff_signal_iso}"},
+        )
+
+        # high turnover scalping: drop closed positions faster for fast recycle of capital tracking
+        cutoff_position_iso = self._iso_datetime(int(now_ts - retention_days["positions"] * 86400))
+        results["positions"] = _delete_history_rows(
+            "positions",
+            filters={
+                "market": "eq.crypto",
+                "status": "eq.closed",
+                "closed_at": f"lt.{cutoff_position_iso}",
+            },
+        )
+
+        # keep short monthly-equivalent history for model performance / tune history
+        cutoff_daily_pnl_iso = self._iso_datetime(int(now_ts - retention_days["daily_model_pnl"] * 86400))
+        cutoff_runtime_tunes_iso = self._iso_datetime(int(now_ts - retention_days["model_runtime_tunes"] * 86400))
+        cutoff_tune_iso = self._iso_datetime(int(now_ts - retention_days["model_tune_history"] * 86400))
+        results["daily_model_pnl"] = _delete_history_rows(
+            "daily_model_pnl",
+            filters={"updated_at": f"lt.{cutoff_daily_pnl_iso}"},
+        )
+        results["model_runtime_tunes"] = _delete_history_rows(
+            "model_runtime_tunes",
+            filters={"updated_at": f"lt.{cutoff_runtime_tunes_iso}"},
+        )
+        results["model_tune_history"] = _delete_history_rows(
+            "model_tune_history",
+            filters={
+                "market": "eq.crypto",
+                "created_at": f"lt.{cutoff_tune_iso}",
+            },
+            optional=True,
+        )
+
         errors = {key: value for key, value in results.items() if not bool((value or {}).get("ok"))}
         if errors:
             self.runtime_feedback.append_event(
@@ -2629,27 +2694,24 @@ class TradingEngine:
                 status="partial_failure",
                 detail="Supabase history prune failed",
                 meta={
-                    "retention_days": int(retention_days),
+                    "retention_days": retention_days,
                     "interval_seconds": int(interval_seconds),
-                    "cutoff_iso": str(cutoff_iso),
                     "errors": errors,
                 },
                 now_ts=now_ts,
             )
             return {
                 "ok": False,
-                "retention_days": int(retention_days),
                 "interval_seconds": int(interval_seconds),
-                "cutoff_iso": str(cutoff_iso),
+                "retention_days": retention_days,
                 "errors": errors,
             }
 
         self._last_supabase_prune_ts = int(now_ts)
         return {
             "ok": True,
-            "retention_days": int(retention_days),
             "interval_seconds": int(interval_seconds),
-            "cutoff_iso": str(cutoff_iso),
+            "retention_days": retention_days,
         }
 
     def _build_recent_crypto_trade_rows(self, limit: int = 80) -> list[dict[str, Any]]:
