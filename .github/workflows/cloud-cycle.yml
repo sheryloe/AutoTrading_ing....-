@@ -49,13 +49,14 @@ jobs:
           GOOGLE_TREND_ENABLED: "false"
           
           # [핵심 수정] 실행 주기
-          SCAN_INTERVAL_SECONDS: "60"
+          SCAN_INTERVAL_SECONDS: "600"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           
           # [핵심 수정] 20개 코인 리스트 및 최대 포지션 상향
-          BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,XRPUSDT,BNBUSDT,SOLUSDT,DOGEUSDT,ADAUSDT,TRXUSDT,HYPEUSDT,BCHUSDT,SUIUSDT,XLMUSDT,LINKUSDT,DOTUSDT,NEARUSDT,LTCUSDT,AVAXUSDT,SHIBUSDT,ICPUSDT,HBARUSDT
-          BYBIT_MAX_POSITIONS: "20"
+          BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,TRXUSDT
+          BYBIT_MAX_POSITIONS: "8"
+          MACRO_TREND_POOL_SIZE: "8"
           
           # [핵심 수정] Universe 모드 변경 (시총조회 API 의존성 제거)
           CRYPTO_UNIVERSE_MODE: fixed_symbols
@@ -63,6 +64,8 @@ jobs:
           CRYPTO_USE_BINANCE_DATA: "true"
           CRYPTO_USE_BYBIT_DATA: "true"
           CRYPTO_USE_COINGECKO_DATA: "false"
+          CRYPTO_DERIV_DATA_ENABLED: "false"
+          MACRO_UNIVERSE_SOURCE: exchange
           
           CRYPTO_AUTOTRADE_MODELS: A,B,C,D
           LIVE_CRYPTO_MODELS: A,B,C,D

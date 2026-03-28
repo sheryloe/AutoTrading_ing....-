@@ -1972,10 +1972,13 @@ class TradingEngine:
 
         macro_usage = self.macro.usage_snapshot() if hasattr(self.macro, "usage_snapshot") else {}
         macro_elapsed = max(1, int(macro_usage.get("elapsed_seconds") or 1))
+        # usage_snapshot elapsed is active compute time; normalize with scan interval to avoid burst-overestimation
+        # on scheduled runs where most of the wall clock is idle between cycles.
+        macro_effective_elapsed = max(int(scan_interval), int(macro_elapsed))
         macro_counters = dict(macro_usage.get("counters") or {})
         macro_daily_est: dict[str, float] = {}
         for key, value in macro_counters.items():
-            macro_daily_est[str(key)] = float(value) * (86400.0 / float(macro_elapsed))
+            macro_daily_est[str(key)] = float(value) * (86400.0 / float(macro_effective_elapsed))
 
         openai_state = dict(self.openai_advisor.dashboard_payload(now))
         openai_budget = dict(openai_state.get("budget") or {})
@@ -2105,6 +2108,7 @@ class TradingEngine:
             "observed": {
                 "macro_usage": {
                     "elapsed_seconds": int(macro_elapsed),
+                    "effective_elapsed_seconds": int(macro_effective_elapsed),
                     "counters": {str(k): int(v) for k, v in macro_counters.items()},
                 }
             },
