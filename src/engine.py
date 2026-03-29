@@ -138,6 +138,7 @@ SECRET_UPDATE_KEYS: tuple[str, ...] = (
 DEFAULT_MODEL_AUTOTUNE_INTERVAL_SECONDS = 86400
 MODEL_AUTOTUNE_MIN_CLOSED_TRADES = 8
 MODEL_AUTOTUNE_LOOKBACK_TRADES = 80
+CRYPTO_ADAPTIVE_LOOKBACK_TRADES = 32
 RUN_TRADE_HISTORY_LIMIT = 9_999_999
 RUN_TRADE_HISTORY_MAX_AGE_SECONDS = 60 * 60 * 24 * 190
 STATE_BACKUP_INTERVAL_SECONDS = 600
@@ -157,10 +158,10 @@ MEME_C_SL_CONFIRM_SECONDS = 90
 MEME_C_SL_RECOVERY_RESET_FACTOR = 0.70
 MEME_C_REENTRY_WAIT_SECONDS = 120
 MODEL_RUNTIME_TUNE_DEFAULTS: dict[str, dict[str, float]] = {
-    "A": {"threshold": 0.060, "tp_mul": 1.12, "sl_mul": 0.98},
-    "B": {"threshold": 0.066, "tp_mul": 1.20, "sl_mul": 0.96},
-    "C": {"threshold": 0.070, "tp_mul": 1.30, "sl_mul": 0.92},
-    "D": {"threshold": 0.058, "tp_mul": 1.14, "sl_mul": 1.02},
+    "A": {"threshold": 0.062, "tp_mul": 1.18, "sl_mul": 0.94},
+    "B": {"threshold": 0.065, "tp_mul": 1.26, "sl_mul": 0.91},
+    "C": {"threshold": 0.069, "tp_mul": 1.40, "sl_mul": 0.86},
+    "D": {"threshold": 0.060, "tp_mul": 1.24, "sl_mul": 0.90},
 }
 CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
     "A": {"rank_min": 1, "rank_max": 20, "trend_stack_min": 0.0, "overheat_max": 0.52, "smallcap_trend_only": False},
@@ -170,51 +171,51 @@ CRYPTO_MODEL_GATE_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
     "A": {
-        "threshold_bias": -0.012,
-        "entry_atr_mul": 1.55,
-        "shallow_pullback_atr": 0.06,
-        "zone_half_atr": 0.82,
+        "threshold_bias": -0.010,
+        "entry_atr_mul": 1.45,
+        "shallow_pullback_atr": 0.10,
+        "zone_half_atr": 0.72,
         "bias_gate_min": 0.00,
         "rebound_min": 0.00,
         "range_min_pct": 0.0008,
-        "atr_pct_max": 0.180,
+        "atr_pct_max": 0.155,
         "rsi_max": 82.0,
         "ema_gap_min": -0.100,
-        "risk_reward_min": 0.92,
-    },
-    "B": {
-        "threshold_bias": -0.010,
-        "floor_atr_mul": 1.05,
-        "mid_atr_boost": 0.40,
-        "shallow_pullback_atr": 0.24,
-        "zone_half_atr": 0.58,
-        "reclaim_min": -0.28,
-        "rebound_min": 0.04,
-        "ema_align_min": 0.20,
-        "atr_pct_max": 0.135,
-        "risk_reward_min": 0.96,
-    },
-    "C": {
-        "threshold_bias": -0.006,
-        "entry_atr_mul": 1.10,
-        "zone_half_atr": 0.66,
-        "atr_pct_max": 0.200,
-        "ema_gap_min": -0.080,
         "risk_reward_min": 1.00,
     },
-    "D": {
+    "B": {
         "threshold_bias": -0.012,
-        "entry_atr_mul": 1.70,
-        "shallow_pullback_atr": 0.07,
-        "zone_low_atr": 0.70,
-        "zone_high_atr": 0.74,
-        "washout_min": 0.00,
-        "rebound_min": 0.00,
-        "reset_min": 0.02,
-        "lower_bias_min": 0.00,
-        "atr_pct_max": 0.210,
-        "ema_gap_min": -0.120,
-        "risk_reward_min": 0.92,
+        "floor_atr_mul": 1.00,
+        "mid_atr_boost": 0.44,
+        "shallow_pullback_atr": 0.20,
+        "zone_half_atr": 0.52,
+        "reclaim_min": -0.20,
+        "rebound_min": 0.08,
+        "ema_align_min": 0.24,
+        "atr_pct_max": 0.145,
+        "risk_reward_min": 1.04,
+    },
+    "C": {
+        "threshold_bias": -0.010,
+        "entry_atr_mul": 1.06,
+        "zone_half_atr": 0.60,
+        "atr_pct_max": 0.215,
+        "ema_gap_min": -0.070,
+        "risk_reward_min": 1.08,
+    },
+    "D": {
+        "threshold_bias": -0.014,
+        "entry_atr_mul": 1.55,
+        "shallow_pullback_atr": 0.10,
+        "zone_low_atr": 0.62,
+        "zone_high_atr": 0.68,
+        "washout_min": 0.04,
+        "rebound_min": 0.10,
+        "reset_min": 0.08,
+        "lower_bias_min": 0.04,
+        "atr_pct_max": 0.220,
+        "ema_gap_min": -0.100,
+        "risk_reward_min": 1.00,
     },
 }
 CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
@@ -249,6 +250,10 @@ AUTOTUNE_NOTE_KO: dict[str, str] = {
     "reclaim_defensive": "리클레임 방어 튜닝",
     "breakout_risk_off": "돌파형 리스크오프 튜닝",
     "reset_bounce_defensive": "리셋 바운스 방어 튜닝",
+    "range_reversion_boost": "레인지 리버전 공격 튜닝",
+    "reclaim_boost": "리클레임 공격 튜닝",
+    "breakout_boost": "돌파형 공격 튜닝",
+    "reset_bounce_boost": "리셋 바운스 공격 튜닝",
 }
 
 NON_MEME_SYMBOLS = {
@@ -5747,6 +5752,145 @@ class TradingEngine:
             "profit_factor": float(profit_factor),
         }
 
+    @staticmethod
+    def _tail_streak(pnl_rows: list[float], *, positive: bool) -> int:
+        count = 0
+        for value in reversed(list(pnl_rows or [])):
+            v = float(value)
+            if positive and v > 0.0:
+                count += 1
+                continue
+            if (not positive) and v < 0.0:
+                count += 1
+                continue
+            break
+        return int(count)
+
+    def _crypto_adaptive_profile(
+        self,
+        model_id: str,
+        run: dict[str, Any],
+        lookback: int = CRYPTO_ADAPTIVE_LOOKBACK_TRADES,
+    ) -> dict[str, Any]:
+        trades = list(run.get("trades") or [])
+        closed_rows = [
+            t
+            for t in trades
+            if str((t or {}).get("source") or "").lower() == "crypto_demo"
+            and self._crypto_demo_trade_is_close(t)
+        ]
+        use_lookback = max(8, int(lookback or CRYPTO_ADAPTIVE_LOOKBACK_TRADES))
+        if use_lookback > 0:
+            closed_rows = closed_rows[-use_lookback:]
+        pnl_rows = [float((row or {}).get("pnl_usd") or 0.0) for row in closed_rows]
+        closed = int(len(pnl_rows))
+        wins = [v for v in pnl_rows if v > 0.0]
+        losses = [v for v in pnl_rows if v < 0.0]
+        gross_win = float(sum(wins))
+        gross_loss = float(abs(sum(losses)))
+        win_rate = float((len(wins) / closed) * 100.0) if closed > 0 else 0.0
+        pnl_usd = float(sum(pnl_rows))
+        if gross_loss <= 1e-9:
+            profit_factor = 9.99 if gross_win > 0 else 0.0
+        else:
+            profit_factor = float(gross_win / gross_loss)
+        win_streak = self._tail_streak(pnl_rows, positive=True)
+        loss_streak = self._tail_streak(pnl_rows, positive=False)
+        avg_abs_pnl = float(sum(abs(v) for v in pnl_rows) / closed) if closed > 0 else 0.0
+
+        atr_samples: list[float] = []
+        for row in list(run.get("latest_crypto_signals") or [])[:20]:
+            snap = (row.get("indicator_snapshot") or {}) if isinstance(row, dict) else {}
+            atr_pct_display = float(snap.get("atr_pct") or 0.0)
+            if atr_pct_display <= 0.0:
+                continue
+            atr_samples.append(_clamp(atr_pct_display / 100.0, 0.0, 0.40))
+        mean_atr_pct = float(sum(atr_samples) / len(atr_samples)) if atr_samples else 0.0
+        vol_norm = _clamp(mean_atr_pct / 0.08, 0.0, 1.0)
+
+        base = {
+            "state": "neutral",
+            "closed": int(closed),
+            "win_rate": float(win_rate),
+            "pnl_usd": float(pnl_usd),
+            "profit_factor": float(profit_factor),
+            "win_streak": int(win_streak),
+            "loss_streak": int(loss_streak),
+            "avg_abs_pnl_usd": float(avg_abs_pnl),
+            "mean_atr_pct": float(mean_atr_pct),
+            "threshold_boost": 0.0,
+            "order_mul": 1.0,
+            "leverage_mul": 1.0,
+            "tp_mul": 1.0,
+            "sl_mul": 1.0,
+        }
+        if closed < 6:
+            base["state"] = "insufficient_samples"
+            return base
+
+        model_aggression = {"A": 0.90, "B": 1.00, "C": 1.18, "D": 1.06}.get(str(model_id or "").upper(), 1.0)
+        risk_score = 0.0
+        edge_score = 0.0
+
+        if profit_factor < 0.98:
+            risk_score += (0.98 - profit_factor) / 0.34
+        elif profit_factor > 1.08:
+            edge_score += (profit_factor - 1.08) / 0.85
+
+        if win_rate < 47.0:
+            risk_score += (47.0 - win_rate) / 19.0
+        elif win_rate > 54.0:
+            edge_score += (win_rate - 54.0) / 24.0
+
+        if pnl_usd < 0.0:
+            risk_score += min(abs(pnl_usd) / 20.0, 1.4)
+        elif pnl_usd > 0.0:
+            edge_score += min(pnl_usd / 24.0, 1.2)
+
+        if loss_streak >= 2:
+            risk_score += min(0.16 * float(loss_streak - 1), 0.72)
+        if win_streak >= 2:
+            edge_score += min(0.12 * float(win_streak - 1), 0.60)
+
+        if vol_norm >= 0.80:
+            risk_score += 0.16
+        elif vol_norm <= 0.45:
+            edge_score += 0.12
+
+        net = float(edge_score - risk_score)
+
+        if net <= -0.12:
+            severity = _clamp((-net) * model_aggression, 0.0, 1.35)
+            base.update(
+                {
+                    "state": "risk_off_hard" if severity >= 0.85 else "risk_off_soft",
+                    "threshold_boost": round(0.004 + (0.012 * severity), 6),
+                    "order_mul": round(_clamp(1.0 - (0.16 + (0.30 * severity)), 0.52, 1.0), 6),
+                    "leverage_mul": round(_clamp(1.0 - (0.12 + (0.26 * severity)), 0.64, 1.0), 6),
+                    "tp_mul": round(_clamp(1.0 - (0.02 + (0.10 * severity)), 0.88, 1.0), 6),
+                    "sl_mul": round(_clamp(1.0 - (0.04 + (0.18 * severity)), 0.76, 1.0), 6),
+                }
+            )
+            return base
+
+        if net >= 0.12:
+            severity = _clamp(net * model_aggression, 0.0, 1.15)
+            c_bias = 0.02 if str(model_id or "").upper() == "C" else 0.0
+            base.update(
+                {
+                    "state": "risk_on",
+                    "threshold_boost": round(-(0.001 + (0.006 * severity)), 6),
+                    "order_mul": round(_clamp(1.0 + 0.08 + (0.22 * severity), 1.0, 1.35), 6),
+                    "leverage_mul": round(_clamp(1.0 + 0.05 + (0.16 * severity), 1.0, 1.22), 6),
+                    "tp_mul": round(_clamp(1.0 + 0.04 + (0.16 * severity), 1.0, 1.22), 6),
+                    "sl_mul": round(_clamp(1.0 + c_bias + (0.06 * severity), 1.0, 1.12), 6),
+                }
+            )
+            return base
+
+        base["state"] = "balanced"
+        return base
+
     def _maybe_autotune_models(self, now_ts: int) -> None:
         now = int(now_ts)
         alert_lines: list[str] = []
@@ -5777,28 +5921,67 @@ class TradingEngine:
                 if closed < MODEL_AUTOTUNE_MIN_CLOSED_TRADES:
                     note = "hold_not_enough_samples"
                 else:
-                    if self._autotune_should_tune(model_id, pnl, win_rate, pf):
+                    stress = 0.0
+                    edge = 0.0
+                    if pnl < 0.0:
+                        stress += min(abs(pnl) / 18.0, 1.4)
+                    elif pnl > 0.0:
+                        edge += min(pnl / 20.0, 1.3)
+                    if win_rate < 48.0:
+                        stress += (48.0 - win_rate) / 18.0
+                    elif win_rate > 55.0:
+                        edge += (win_rate - 55.0) / 22.0
+                    if pf < 0.98:
+                        stress += (0.98 - pf) / 0.36
+                    elif pf > 1.10:
+                        edge += (pf - 1.10) / 0.85
+
+                    if self._autotune_should_tune(model_id, pnl, win_rate, pf) or stress >= 0.22:
                         should_tune = True
+                        severity = _clamp(max(0.45, stress), 0.45, 1.40)
                         if model_id == "A":
-                            new_thr += 0.003
-                            new_tp -= 0.03
-                            new_sl += 0.04
+                            new_thr += (0.0026 * severity)
+                            new_tp -= (0.035 * severity)
+                            new_sl += (0.035 * severity)
                             note = "range_reversion_defensive"
                         elif model_id == "B":
-                            new_thr += 0.004
-                            new_tp -= 0.03
-                            new_sl += 0.04
+                            new_thr += (0.0030 * severity)
+                            new_tp -= (0.040 * severity)
+                            new_sl += (0.038 * severity)
                             note = "reclaim_defensive"
                         elif model_id == "C":
-                            new_thr += 0.005
-                            new_tp -= 0.06
-                            new_sl += 0.05
+                            new_thr += (0.0038 * severity)
+                            new_tp -= (0.060 * severity)
+                            new_sl += (0.048 * severity)
                             note = "breakout_risk_off"
                         else:
-                            new_thr += 0.003
-                            new_tp -= 0.03
-                            new_sl += 0.03
+                            new_thr += (0.0028 * severity)
+                            new_tp -= (0.040 * severity)
+                            new_sl += (0.032 * severity)
                             note = "reset_bounce_defensive"
+                    elif edge >= 0.26:
+                        should_tune = True
+                        severity = _clamp(edge, 0.30, 1.30)
+                        if model_id == "A":
+                            new_thr -= (0.0018 * severity)
+                            new_tp += (0.036 * severity)
+                            new_sl -= (0.018 * severity)
+                            note = "range_reversion_boost"
+                        elif model_id == "B":
+                            new_thr -= (0.0022 * severity)
+                            new_tp += (0.042 * severity)
+                            new_sl -= (0.016 * severity)
+                            note = "reclaim_boost"
+                        elif model_id == "C":
+                            new_thr -= (0.0028 * severity)
+                            new_tp += (0.065 * severity)
+                            new_sl -= (0.006 * severity)
+                            note = "breakout_boost"
+                        else:
+                            new_thr -= (0.0020 * severity)
+                            new_tp += (0.046 * severity)
+                            new_sl -= (0.012 * severity)
+                            note = "reset_bounce_boost"
                     else:
                         note = "hold_good_pnl"
 
@@ -8452,10 +8635,19 @@ class TradingEngine:
         atr_pct = float(ind.get("atr_pct") or 0.0)
         return _clamp(atr_pct / 0.08, 0.0, 1.0)
 
-    def _compute_risk_profile(self, model_id: str, market: str, volatility: float) -> tuple[float, float]:
+    def _compute_risk_profile(
+        self,
+        model_id: str,
+        market: str,
+        volatility: float,
+        adaptive: dict[str, Any] | None = None,
+    ) -> tuple[float, float]:
         base_tp = float(self.settings.take_profit_pct)
         base_sl = float(self.settings.stop_loss_pct)
         vol = _clamp(volatility, 0.0, 1.0)
+        adaptive_row = dict(adaptive or {})
+        adaptive_tp_mul = _clamp(float(adaptive_row.get("tp_mul") or 1.0), 0.80, 1.30)
+        adaptive_sl_mul = _clamp(float(adaptive_row.get("sl_mul") or 1.0), 0.70, 1.20)
 
         if market == "meme":
             if model_id == "A":  # topdogri quality hybrid
@@ -8479,19 +8671,25 @@ class TradingEngine:
             sl_mul = float(tune.get("sl_mul") or 0.78)
             tp = base_tp * tp_mul * (0.82 + (0.58 * vol))
             sl = base_sl * sl_mul * (0.68 + (0.62 * vol))
-            return (_clamp(sl, 0.008, 0.10), _clamp(tp, 0.03, 0.24))
+            sl = _clamp(sl * adaptive_sl_mul, 0.008, 0.10)
+            tp = _clamp(tp * adaptive_tp_mul, 0.03, 0.24)
+            return (sl, tp)
         if model_id == "B":  # trend-flow balance
             tp_mul = float(tune.get("tp_mul") or 1.08)
             sl_mul = float(tune.get("sl_mul") or 0.84)
             tp = base_tp * tp_mul * (0.82 + (0.56 * vol))
             sl = base_sl * sl_mul * (0.64 + (0.72 * vol))
-            return (_clamp(sl, 0.008, 0.11), _clamp(tp, 0.03, 0.28))
+            sl = _clamp(sl * adaptive_sl_mul, 0.008, 0.11)
+            tp = _clamp(tp * adaptive_tp_mul, 0.03, 0.28)
+            return (sl, tp)
         # C: aggressive momentum capture
         tp_mul = float(tune.get("tp_mul") or 1.32)
         sl_mul = float(tune.get("sl_mul") or 0.88)
         tp = base_tp * tp_mul * (0.92 + (0.86 * vol))
         sl = base_sl * sl_mul * (0.70 + (0.84 * vol))
-        return (_clamp(sl, 0.010, 0.16), _clamp(tp, 0.05, 0.40))
+        sl = _clamp(sl * adaptive_sl_mul, 0.010, 0.16)
+        tp = _clamp(tp * adaptive_tp_mul, 0.05, 0.40)
+        return (sl, tp)
 
     def _demo_order_pct_for_entry(self, market: str, score: float, threshold: float) -> float:
         if str(market).lower() == "crypto":
@@ -11882,6 +12080,9 @@ class TradingEngine:
         scored_at_ts = int(time.time())
         min_score_floor = _clamp(float(getattr(self.settings, "crypto_min_entry_score", 0.30) or 0.30), 0.0, 1.0)
         open_positions = set((run.get("bybit_positions") or {}).keys())
+        adaptive = self._crypto_adaptive_profile(model_id, run)
+        adaptive_threshold_boost = float(adaptive.get("threshold_boost") or 0.0)
+        adaptive_leverage_mul = _clamp(float(adaptive.get("leverage_mul") or 1.0), 0.64, 1.24)
         out: list[dict[str, Any]] = []
         for symbol, price in prices.items():
             if symbol not in open_positions and not self._crypto_symbol_allowed_for_model(model_id, symbol):
@@ -11894,7 +12095,7 @@ class TradingEngine:
             score_raw = float(profile.get("score_raw") or 0.0)
             threshold = float(profile.get("threshold") or 0.0)
             threshold_raw = float(profile.get("threshold_raw") or self._bybit_entry_threshold(model_id))
-            effective_threshold = max(threshold, min_score_floor)
+            effective_threshold = max(threshold + adaptive_threshold_boost, min_score_floor)
             indicators = dict(profile.get("features") or {})
             vol = self._crypto_volatility_proxy(symbol)
             sl_pct = float(profile.get("sl_pct") or 0.0)
@@ -11932,6 +12133,12 @@ class TradingEngine:
                     "gate_ok": bool(profile.get("gate_ok")),
                     "symbol_allowed": bool(profile.get("symbol_allowed", True)),
                     "gate_reason": str(profile.get("gate_reason") or ""),
+                    "adaptive_state": str(adaptive.get("state") or "neutral"),
+                    "adaptive_threshold_boost": float(adaptive_threshold_boost),
+                    "adaptive_order_mul": float(adaptive.get("order_mul") or 1.0),
+                    "adaptive_leverage_mul": float(adaptive_leverage_mul),
+                    "adaptive_tp_mul": float(adaptive.get("tp_mul") or 1.0),
+                    "adaptive_sl_mul": float(adaptive.get("sl_mul") or 1.0),
                     "indicator_snapshot": {
                         "ret_5m_pct": float(indicators.get("ret_5m") or 0.0) * 100.0,
                         "ret_15m_pct": float(indicators.get("ret_15m") or 0.0) * 100.0,
@@ -11987,9 +12194,8 @@ class TradingEngine:
             rank_norm = _clamp(1.0 - (idx / denom), 0.0, 1.0)
             base = lev_min + ((lev_max - lev_min) * (rank_norm**1.15))
             vol_scale = 1.0 - (0.45 * vol)
-            lev = lev_min + ((base - lev_min) * vol_scale * model_scale)
+            lev = lev_min + ((base - lev_min) * vol_scale * model_scale * adaptive_leverage_mul)
             row["leverage"] = round(_clamp(lev, lev_min, lev_max), 2)
-            row.pop("volatility", None)
         return out
 
     def _evaluate_model_bybit_exits(self, model_id: str, run: dict[str, Any], prices: dict[str, float]) -> None:
@@ -12263,6 +12469,28 @@ class TradingEngine:
         positions = run.get("bybit_positions") or {}
         max_positions = max(1, int(self.settings.bybit_max_positions))
         min_score_floor = _clamp(float(getattr(self.settings, "crypto_min_entry_score", 0.30) or 0.30), 0.0, 1.0)
+        guard = self._entry_guard_profile(model_id, "crypto")
+        loss_guard = self._run_loss_guard(run)
+        adaptive = self._crypto_adaptive_profile(model_id, run)
+        threshold_boost = (
+            float(guard.get("threshold_boost") or 0.0)
+            + float(loss_guard.get("threshold_boost") or 0.0)
+            + float(adaptive.get("threshold_boost") or 0.0)
+        )
+        order_mul = _clamp(
+            float(guard.get("order_mul") or 1.0)
+            * float(loss_guard.get("order_mul") or 1.0)
+            * float(adaptive.get("order_mul") or 1.0),
+            0.20,
+            1.35,
+        )
+        leverage_mul = _clamp(float(adaptive.get("leverage_mul") or 1.0), 0.64, 1.24)
+        lev_cfg_min, lev_cfg_max = self._crypto_leverage_bounds()
+        risk_prof = self._crypto_model_risk_profile(model_id)
+        lev_min = max(lev_cfg_min, float(risk_prof.get("lev_min") or lev_cfg_min))
+        lev_max = min(lev_cfg_max, float(risk_prof.get("lev_max") or lev_cfg_max))
+        if lev_max < lev_min:
+            lev_max = lev_min
         self._normalize_crypto_reentry_cooldowns(run, int(now_ts))
         pending_rows = sorted(
             [dict(row or {}) for row in list(run.get("latest_crypto_signals") or []) if isinstance(row, dict)],
@@ -12277,7 +12505,7 @@ class TradingEngine:
             if not symbol or symbol in positions:
                 continue
             score = float(row.get("score") or 0.0)
-            entry_threshold = max(min_score_floor, float(row.get("entry_threshold") or min_score_floor))
+            entry_threshold = max(min_score_floor, float(row.get("entry_threshold") or min_score_floor) + threshold_boost)
             if score <= entry_threshold:
                 continue
             if float(row.get("risk_reward") or 0.0) < 1.10:
@@ -12307,20 +12535,31 @@ class TradingEngine:
             if cash < min_order:
                 break
             order_pct = self._demo_order_pct_for_entry("crypto", score, entry_threshold)
+            order_pct = _clamp(float(order_pct) * order_mul, 0.01, 0.95)
             order_usd = min(cash, max(min_order, self._crypto_target_order_usd(run, order_pct, prices)))
             if order_usd < min_order:
                 continue
             leverage = float(row.get("leverage") or 0.0)
             if leverage <= 0.0:
                 leverage = self._compute_crypto_leverage(model_id, float(score), float(entry_threshold), float(row.get("volatility") or 0.0))
+            leverage = _clamp(float(leverage) * leverage_mul, lev_min, lev_max)
             tp_pct = float(row.get("tp_pct") or 0.0)
             sl_pct = float(row.get("sl_pct") or 0.0)
             if sl_pct <= 0.0 or tp_pct <= 0.0:
-                sl_pct, tp_pct = self._compute_risk_profile(model_id, "crypto", float(row.get("volatility") or 0.0))
+                sl_pct, tp_pct = self._compute_risk_profile(
+                    model_id,
+                    "crypto",
+                    float(row.get("volatility") or 0.0),
+                    adaptive=adaptive,
+                )
             atr_pct = float(((row.get("indicator_snapshot") or {}) if isinstance(row.get("indicator_snapshot"), dict) else {}).get("atr_pct") or 0.0)
             reason_text = str(row.get("reason") or "").strip()
             if not reason_text:
                 reason_text = f"{str(row.get('strategy') or ('MODEL-' + model_id))} | intrabar-fill conf={score:.4f} thr={entry_threshold:.4f}"
+            reason_text = (
+                f"{reason_text} | adapt={str(adaptive.get('state') or 'neutral')} "
+                f"mul(order={order_mul:.2f},lev={leverage_mul:.2f},tp={float(adaptive.get('tp_mul') or 1.0):.2f},sl={float(adaptive.get('sl_mul') or 1.0):.2f})"
+            )
             opened_at = int((rows[hit_index] or {}).get("close_ts") or int(now_ts))
             position_side = self._normalize_crypto_side(row.get("side"))
             opened = self._open_crypto_demo_position(
@@ -12477,7 +12716,26 @@ class TradingEngine:
         opened = 0
         guard = self._entry_guard_profile(model_id, "crypto")
         loss_guard = self._run_loss_guard(run)
-        guard_boost = float(guard.get("threshold_boost") or 0.0) + float(loss_guard.get("threshold_boost") or 0.0)
+        adaptive = self._crypto_adaptive_profile(model_id, run)
+        guard_boost = (
+            float(guard.get("threshold_boost") or 0.0)
+            + float(loss_guard.get("threshold_boost") or 0.0)
+            + float(adaptive.get("threshold_boost") or 0.0)
+        )
+        order_mul = _clamp(
+            float(guard.get("order_mul") or 1.0)
+            * float(loss_guard.get("order_mul") or 1.0)
+            * float(adaptive.get("order_mul") or 1.0),
+            0.20,
+            1.35,
+        )
+        leverage_mul = _clamp(float(adaptive.get("leverage_mul") or 1.0), 0.64, 1.24)
+        lev_cfg_min, lev_cfg_max = self._crypto_leverage_bounds()
+        risk_prof = self._crypto_model_risk_profile(model_id)
+        lev_min = max(lev_cfg_min, float(risk_prof.get("lev_min") or lev_cfg_min))
+        lev_max = min(lev_cfg_max, float(risk_prof.get("lev_max") or lev_cfg_max))
+        if lev_max < lev_min:
+            lev_max = lev_min
         self._normalize_crypto_reentry_cooldowns(run, now)
         for symbol, score in ranked:
             if len(positions) + opened >= max_positions:
@@ -12504,7 +12762,7 @@ class TradingEngine:
             if cash < min_order:
                 break
             order_pct = self._demo_order_pct_for_entry("crypto", score, entry_threshold)
-            order_pct = _clamp(order_pct, 0.01, 0.95)
+            order_pct = _clamp(float(order_pct) * order_mul, 0.01, 0.95)
             target_order_usd = self._crypto_target_order_usd(run, order_pct, prices)
             order_usd = min(cash, max(min_order, target_order_usd))
             if order_usd < min_order:
@@ -12516,10 +12774,11 @@ class TradingEngine:
             sl_pct = float(plan.get("sl_pct") or 0.0)
             tp_pct = float(plan.get("tp_pct") or 0.0)
             if sl_pct <= 0.0 or tp_pct <= 0.0:
-                sl_pct, tp_pct = self._compute_risk_profile(model_id, "crypto", vol)
+                sl_pct, tp_pct = self._compute_risk_profile(model_id, "crypto", vol, adaptive=adaptive)
             leverage = float(leverage_by_symbol.get(symbol) or 0.0)
             if leverage <= 0.0:
                 leverage = self._compute_crypto_leverage(model_id, float(score), float(entry_threshold), vol)
+            leverage = _clamp(float(leverage) * leverage_mul, lev_min, lev_max)
             score_raw = float(score_raw_by_symbol.get(symbol) or 0.0)
             threshold_raw = float(threshold_raw_by_symbol.get(symbol) or self._bybit_entry_threshold(model_id))
             reason_text = str(reason_by_symbol.get(symbol) or "").strip()
@@ -12528,6 +12787,10 @@ class TradingEngine:
                     f"{strategy_by_symbol.get(symbol) or ('MODEL-' + model_id)} | "
                     f"conf={score:.4f} thr={entry_threshold:.4f} raw={score_raw:+.4f}/{threshold_raw:+.4f}"
                 )
+            reason_text = (
+                f"{reason_text} | adapt={str(adaptive.get('state') or 'neutral')} "
+                f"mul(order={order_mul:.2f},lev={leverage_mul:.2f},tp={float(adaptive.get('tp_mul') or 1.0):.2f},sl={float(adaptive.get('sl_mul') or 1.0):.2f})"
+            )
             indicator_snapshot = dict(snapshot_by_symbol.get(symbol) or {})
             atr_pct = float(indicator_snapshot.get("atr_pct") or 0.0)
             fill_price = float(price)
