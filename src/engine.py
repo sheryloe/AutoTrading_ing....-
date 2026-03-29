@@ -175,6 +175,10 @@ CRYPTO_TUNE_OVERRIDE_DEFAULTS: dict[str, dict[str, float]] = {
         "entry_atr_mul": 1.45,
         "shallow_pullback_atr": 0.10,
         "zone_half_atr": 0.72,
+        "short_overheat_min": 0.18,
+        "short_breakout_min": 0.40,
+        "short_atr_min": 0.0008,
+        "short_taker_min": 0.42,
         "bias_gate_min": 0.00,
         "rebound_min": 0.00,
         "range_min_pct": 0.0008,
@@ -231,6 +235,10 @@ CRYPTO_TUNE_OVERRIDE_LIMITS: dict[str, tuple[float, float]] = {
     "bias_gate_min": (0.00, 0.50),
     "rebound_min": (0.00, 0.80),
     "range_min_pct": (0.000, 0.050),
+    "short_overheat_min": (0.00, 1.00),
+    "short_breakout_min": (0.00, 1.00),
+    "short_atr_min": (0.0000, 0.0300),
+    "short_taker_min": (0.00, 1.00),
     "reclaim_min": (-0.50, 0.50),
     "ema_align_min": (0.00, 1.00),
     "atr_pct_max": (0.010, 0.250),
@@ -5825,6 +5833,19 @@ class TradingEngine:
             "sl_mul": 1.0,
         }
         if closed < 6:
+            if loss_streak >= 2 or pnl_usd < 0.0:
+                early_severity = _clamp((abs(pnl_usd) / max(2.0, avg_abs_pnl + 1e-9)) * 0.25 + (0.16 * loss_streak), 0.30, 1.00)
+                base.update(
+                    {
+                        "state": "early_risk_off",
+                        "threshold_boost": round(0.004 + (0.006 * early_severity), 6),
+                        "order_mul": round(_clamp(1.0 - (0.18 + (0.20 * early_severity)), 0.58, 1.0), 6),
+                        "leverage_mul": round(_clamp(1.0 - (0.16 + (0.20 * early_severity)), 0.64, 1.0), 6),
+                        "tp_mul": round(_clamp(1.0 - (0.02 + (0.06 * early_severity)), 0.88, 1.0), 6),
+                        "sl_mul": round(_clamp(1.0 - (0.04 + (0.10 * early_severity)), 0.80, 1.0), 6),
+                    }
+                )
+                return base
             base["state"] = "insufficient_samples"
             return base
 
@@ -11275,8 +11296,12 @@ class TradingEngine:
                     and max(upper_range_bias, breakout_ready) >= float(plan_cfg.get("bias_gate_min") or 0.08)
                     and range_36_pct >= float(plan_cfg.get("range_min_pct") or 0.006)
                     and atr_pct <= float(plan_cfg.get("atr_pct_max") or 0.082)
+                    and atr_pct >= float(plan_cfg.get("short_atr_min") or 0.0008)
+                    and overheat_penalty >= float(plan_cfg.get("short_overheat_min") or 0.18)
+                    and breakout_ready >= float(plan_cfg.get("short_breakout_min") or 0.40)
                     and rsi >= float(plan_cfg.get("short_rsi_min") or 56.0)
                     and ema_gap_pct <= float(plan_cfg.get("short_ema_gap_max") or 0.028)
+                    and taker_short_bias >= float(plan_cfg.get("short_taker_min") or 0.42)
                     and book_imbalance_1m <= 0.35
                     and not (breakdown_ready >= 0.90 and book_imbalance_1m > 0.08)
                     and not deriv_hard_fail
