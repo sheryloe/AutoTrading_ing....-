@@ -36,6 +36,7 @@ body {
   color: var(--text);
   font-family: var(--font-body), "Noto Sans KR", sans-serif;
   font-variant-numeric: tabular-nums;
+  line-break: strict;
   background:
     radial-gradient(circle at 10% 8%, rgba(146, 204, 255, 0.14), transparent 26rem),
     radial-gradient(circle at 86% 14%, rgba(90, 243, 193, 0.1), transparent 26rem),
@@ -174,6 +175,16 @@ textarea {
 .empty-state strong,
 .warning-card strong {
   font-family: var(--font-display), "Space Grotesk", sans-serif;
+}
+
+.page-title,
+.section-title,
+.hero-panel h2,
+.hero-metric strong,
+.model-pulse-title strong,
+.model-pulse-metrics strong,
+.metric-value {
+  font-family: var(--font-body), "Noto Sans KR", sans-serif;
 }
 
 .brand-copy strong,
@@ -524,11 +535,15 @@ textarea {
   font-size: clamp(1.05rem, 1.6vw, 1.42rem);
   line-height: 1.24;
   letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .metric-meta {
   margin: 0;
   line-height: 1.75;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .content-grid-two {
@@ -744,6 +759,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(7, 14, 22, 0.78);
+  min-width: 0;
 }
 
 .hero-metric span {
@@ -751,10 +767,11 @@ textarea {
   font-size: 0.72rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-metric strong {
-  font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 1.1rem;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -762,6 +779,8 @@ textarea {
 
 .hero-metric small {
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-actions {
@@ -883,7 +902,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: end;
+  align-items: start;
 }
 
 .model-pulse-grid {
@@ -942,6 +961,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(7, 14, 22, 0.78);
+  min-width: 0;
 }
 
 .model-pulse-metrics label {
@@ -952,7 +972,6 @@ textarea {
 }
 
 .model-pulse-metrics strong {
-  font-family: var(--font-display), "Space Grotesk", sans-serif;
   font-size: 0.96rem;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -973,6 +992,18 @@ textarea {
 .model-pulse-meta small {
   color: var(--muted);
   line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.page-title,
+.page-description,
+.section-meta,
+.metric-label,
+.hero-chip,
+.hero-action,
+.model-pulse-link,
+.model-pulse-meta strong {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
