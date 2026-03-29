@@ -2,27 +2,41 @@ import MetricCard from "../components/metric-card";
 import ModelsPerformanceTabs from "../components/models-performance-tabs";
 import PageHeader from "../components/page-header";
 import { loadModelsPageData } from "../../lib/dashboard-data";
-import { getModelMeta } from "../../lib/model-meta";
 import { formatMoney, formatNumber } from "../../lib/formatters";
 
 export const dynamic = "force-dynamic";
 
+const MODEL_TONE = {
+  A: "cyan",
+  B: "green",
+  C: "amber",
+  D: "cyan",
+};
+
+function latestDayOf(summaries = []) {
+  const days = summaries.map((row) => String(row?.latestDay || "")).filter(Boolean).sort();
+  return days.at(-1) || "-";
+}
+
 export default async function ModelsPage() {
   const data = await loadModelsPageData();
-  const bestModel = [...data.modelSummaries].sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd)[0] || null;
+
+  const totalSeed = data.modelSummaries.reduce((sum, row) => sum + Number(row.seedUsd || 0), 0);
+  const totalEquity = data.modelSummaries.reduce((sum, row) => sum + Number(row.latestEquityUsd || 0), 0);
   const totalRealized = data.modelSummaries.reduce((sum, row) => sum + Number(row.realizedPnlUsd || 0), 0);
+  const totalUnrealized = data.modelSummaries.reduce((sum, row) => sum + Number(row.unrealizedPnlUsd || 0), 0);
+  const totalPnl = data.modelSummaries.reduce((sum, row) => sum + Number(row.totalPnlUsd || 0), 0);
   const totalClosed = data.modelSummaries.reduce((sum, row) => sum + Number(row.closedTrades || 0), 0);
-  const bestModelMeta = bestModel ? getModelMeta(bestModel.modelId) : null;
 
   return (
     <>
       <PageHeader
         eyebrow="모델 성과"
-        title="A/B/C/D 성과 분석"
-        description="모델별 실현 PnL, 승률, 자산 추이를 탭으로 분리해 비교합니다."
+        title="A/B/C/D 모델별 손익 대시보드"
+        description="누적 실현, 미실현, 총손익, 총자산을 모델별로 고정 분리해 표시합니다."
         actions={[
-          { href: "/positions", label: "실행 추적", tone: "primary" },
-          { href: "/settings", label: "런타임 설정", tone: "ghost" },
+          { href: "/positions", label: "포지션 상세", tone: "primary" },
+          { href: "/settings", label: "운영 설정", tone: "ghost" },
         ]}
       />
 
@@ -35,16 +49,24 @@ export default async function ModelsPage() {
         </section>
       ) : null}
 
-      <section className="kpi-row">
-        <MetricCard label="누적 실현 PnL" value={formatMoney(totalRealized)} meta="최근 기준 전체 합계" tone="green" />
-        <MetricCard label="종료 거래 수" value={formatNumber(totalClosed)} meta="전 모델 합산" tone="amber" />
-        <MetricCard
-          label="최상위 모델"
-          value={bestModelMeta ? bestModelMeta.name : "데이터 없음"}
-          meta={bestModel ? formatMoney(bestModel.realizedPnlUsd) : "집계 대기"}
-          tone="cyan"
-        />
-        <MetricCard label="집계 모델 수" value={formatNumber(data.modelSummaries.length)} meta="A/B/C/D 커버리지" />
+      <section className="kpi-row model-summary-grid">
+        {data.modelSummaries.map((summary) => (
+          <MetricCard
+            key={summary.modelId}
+            label={`모델 ${summary.modelId} 누적 실현 PnL`}
+            value={formatMoney(summary.realizedPnlUsd)}
+            meta={`미실현 ${formatMoney(summary.unrealizedPnlUsd)} · 총손익 ${formatMoney(summary.totalPnlUsd)} · 총자산 ${formatMoney(summary.latestEquityUsd)}`}
+            tone={MODEL_TONE[summary.modelId] || "default"}
+          />
+        ))}
+      </section>
+
+      <section className="warning-card">
+        <strong>전체 요약 (기준일 {latestDayOf(data.modelSummaries)})</strong>
+        <p>
+          총 시드 {formatMoney(totalSeed)} · 총자산 {formatMoney(totalEquity)} · 누적 실현 {formatMoney(totalRealized)} ·
+          미실현 {formatMoney(totalUnrealized)} · 총손익 {formatMoney(totalPnl)} · 종료 거래 {formatNumber(totalClosed)}
+        </p>
       </section>
 
       <ModelsPerformanceTabs modelSummaries={data.modelSummaries} dailyRows={data.dailyRows} tunes={data.tunes} />

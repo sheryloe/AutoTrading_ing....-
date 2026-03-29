@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "./supabase-admin";
+import { MODEL_ORDER } from "./model-meta";
 
 function emptyState(errors = []) {
   return {
@@ -9,6 +10,15 @@ function emptyState(errors = []) {
 
 function collectErrors(results) {
   return results.map((item) => item?.error?.message).filter(Boolean);
+}
+
+function normalizeModelId(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function toNumber(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function compareDateLike(a, b) {
@@ -26,13 +36,71 @@ function isRowNewer(nextRow, prevRow) {
 function pickLatestDailyRowsByModel(rows = []) {
   const latestByModel = new Map();
   for (const row of rows || []) {
-    const modelId = String(row?.model_id || "-");
+    const modelId = normalizeModelId(row?.model_id);
+    if (!MODEL_ORDER.includes(modelId)) {
+      continue;
+    }
     const previous = latestByModel.get(modelId);
     if (!previous || isRowNewer(row, previous)) {
       latestByModel.set(modelId, row);
     }
   }
   return latestByModel;
+}
+
+function buildDailyRowsWithDelta(rows = []) {
+  const grouped = new Map();
+  for (const modelId of MODEL_ORDER) {
+    grouped.set(modelId, []);
+  }
+
+  for (const row of rows || []) {
+    const modelId = normalizeModelId(row?.model_id);
+    if (!grouped.has(modelId)) continue;
+    grouped.get(modelId).push({
+      ...row,
+      model_id: modelId,
+      equity_usd: toNumber(row?.equity_usd),
+      total_pnl_usd: toNumber(row?.total_pnl_usd),
+      realized_pnl_usd: toNumber(row?.realized_pnl_usd),
+      unrealized_pnl_usd: toNumber(row?.unrealized_pnl_usd),
+      closed_trades: toNumber(row?.closed_trades),
+      win_rate: toNumber(row?.win_rate),
+    });
+  }
+
+  const withDelta = [];
+  for (const modelId of MODEL_ORDER) {
+    const orderedAsc = [...(grouped.get(modelId) || [])].sort((a, b) => {
+      const dayCmp = compareDateLike(a?.day, b?.day);
+      if (dayCmp !== 0) return dayCmp;
+      return compareDateLike(a?.updated_at, b?.updated_at);
+    });
+
+    let prevRealized = null;
+    let prevTotal = null;
+    for (const row of orderedAsc) {
+      const realized = toNumber(row.realized_pnl_usd);
+      const total = toNumber(row.total_pnl_usd);
+      const dailyRealizedDelta = prevRealized === null ? realized : realized - prevRealized;
+      const dailyTotalDelta = prevTotal === null ? total : total - prevTotal;
+      withDelta.push({
+        ...row,
+        daily_realized_delta: dailyRealizedDelta,
+        daily_total_pnl_delta: dailyTotalDelta,
+      });
+      prevRealized = realized;
+      prevTotal = total;
+    }
+  }
+
+  return withDelta.sort((a, b) => {
+    const dayCmp = compareDateLike(b?.day, a?.day);
+    if (dayCmp !== 0) return dayCmp;
+    const modelCmp = MODEL_ORDER.indexOf(normalizeModelId(a?.model_id)) - MODEL_ORDER.indexOf(normalizeModelId(b?.model_id));
+    if (modelCmp !== 0) return modelCmp;
+    return compareDateLike(b?.updated_at, a?.updated_at);
+  });
 }
 
 function countRowsForLatestCycle(rows = [], key = "cycle_at") {
@@ -50,27 +118,31 @@ function countRowsForLatestCycle(rows = [], key = "cycle_at") {
 
 function buildModelSummaries(dailyRows = [], tunes = []) {
   const latestByModel = pickLatestDailyRowsByModel(dailyRows);
-  const tuneMap = new Map((tunes || []).map((item) => [item.model_id, item]));
+  const tuneMap = new Map((tunes || []).map((item) => [normalizeModelId(item?.model_id), item]));
 
-  return Array.from(latestByModel.entries())
-    .map(([modelId, row]) => ({
+  return MODEL_ORDER.map((modelId) => {
+    const row = latestByModel.get(modelId) || null;
+    const equityUsd = toNumber(row?.equity_usd);
+    const totalPnlUsd = toNumber(row?.total_pnl_usd);
+    return {
       modelId,
       latestDay: row?.day || null,
-      latestEquityUsd: Number(row?.equity_usd || 0),
-      latestWinRate: Number(row?.win_rate || 0),
-      // daily_model_pnl.realized_pnl_usd is cumulative-by-day; use latest row only.
-      realizedPnlUsd: Number(row?.realized_pnl_usd || 0),
-      // daily_model_pnl.closed_trades is cumulative closed count.
-      closedTrades: Number(row?.closed_trades || 0),
-    }))
+      latestEquityUsd: equityUsd,
+      latestWinRate: toNumber(row?.win_rate),
+      realizedPnlUsd: toNumber(row?.realized_pnl_usd),
+      unrealizedPnlUsd: toNumber(row?.unrealized_pnl_usd),
+      totalPnlUsd,
+      seedUsd: row ? equityUsd - totalPnlUsd : 10000,
+      closedTrades: toNumber(row?.closed_trades),
+    };
+  })
     .map((summary) => {
       const tune = tuneMap.get(summary.modelId) || null;
       return {
         ...summary,
         tune,
       };
-    })
-    .sort((a, b) => String(a.modelId).localeCompare(String(b.modelId)));
+    });
 }
 
 function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions, openPositionCount, latestSignalCount }) {
@@ -169,7 +241,7 @@ export async function loadModelsPageData() {
   ]);
 
   const errors = collectErrors([dailyRes, tunesRes]);
-  const dailyRows = dailyRes.data || [];
+  const dailyRows = buildDailyRowsWithDelta(dailyRes.data || []);
   const tunes = tunesRes.data || [];
 
   return {

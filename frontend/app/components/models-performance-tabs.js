@@ -17,17 +17,12 @@ function pickDefaultModel(modelSummaries, dailyRows, tunes) {
   return MODEL_ORDER.find((id) => ids.has(id)) || "A";
 }
 
-function buildTrendPoints(rows, valueKey, cumulative = false) {
-  const ordered = [...rows].sort((a, b) => String(a.day).localeCompare(String(b.day)));
-  let running = 0;
-  return ordered.map((row) => {
-    const nextValue = Number(row[valueKey] || 0);
-    running = cumulative ? running + nextValue : nextValue;
-    return {
-      label: String(row.day || ""),
-      value: running,
-    };
-  });
+function buildTrendPoints(rows, valueKey) {
+  const ordered = [...rows].sort((a, b) => String(a.day || "").localeCompare(String(b.day || "")));
+  return ordered.map((row) => ({
+    label: String(row.day || ""),
+    value: Number(row[valueKey] || 0),
+  }));
 }
 
 function buildPolyline(points) {
@@ -45,7 +40,7 @@ function buildPolyline(points) {
     .join(" ");
 }
 
-function TrendChart({ title, caption, points, money = false }) {
+function TrendChart({ title, caption, points }) {
   if (!points.length) {
     return (
       <article className="chart-card">
@@ -62,7 +57,6 @@ function TrendChart({ title, caption, points, money = false }) {
   const last = points[points.length - 1];
   const delta = last.value - first.value;
   const deltaClass = delta > 0 ? "positive" : delta < 0 ? "negative" : "flat";
-  const formatter = money ? formatMoney : (value) => formatNumber(value, 2);
 
   return (
     <article className="chart-card">
@@ -78,19 +72,27 @@ function TrendChart({ title, caption, points, money = false }) {
       <div className="trend-stats">
         <div>
           <span>시작</span>
-          <strong>{formatter(first.value)}</strong>
+          <strong>{formatMoney(first.value)}</strong>
         </div>
         <div>
-          <span>최근</span>
-          <strong>{formatter(last.value)}</strong>
+          <span>최신</span>
+          <strong>{formatMoney(last.value)}</strong>
         </div>
         <div>
           <span>변화</span>
-          <strong className={`trend-delta ${deltaClass}`}>{formatter(delta)}</strong>
+          <strong className={`trend-delta ${deltaClass}`}>{formatMoney(delta)}</strong>
         </div>
       </div>
     </article>
   );
+}
+
+function sortDailyRowsDesc(rows = []) {
+  return [...rows].sort((a, b) => {
+    const dayCmp = String(b.day || "").localeCompare(String(a.day || ""));
+    if (dayCmp !== 0) return dayCmp;
+    return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+  });
 }
 
 export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes }) {
@@ -102,18 +104,16 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
   );
   const activeRows = useMemo(
     () =>
-      dailyRows
-        .filter((item) => String(item.model_id || "").toUpperCase() === activeModel)
-        .sort((a, b) => String(b.day || "").localeCompare(String(a.day || ""))),
+      sortDailyRowsDesc(dailyRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel)),
     [activeModel, dailyRows]
   );
   const activeTune = useMemo(
     () => tunes.find((item) => String(item.model_id || "").toUpperCase() === activeModel) || null,
     [activeModel, tunes]
   );
-  // realized_pnl_usd is already cumulative-by-day; do not cumulatively sum again.
+
   const realizedTrend = useMemo(() => buildTrendPoints(activeRows, "realized_pnl_usd"), [activeRows]);
-  const equityTrend = useMemo(() => buildTrendPoints(activeRows, "equity_usd"), [activeRows]);
+  const totalTrend = useMemo(() => buildTrendPoints(activeRows, "total_pnl_usd"), [activeRows]);
   const meta = getModelMeta(activeModel);
 
   return (
@@ -142,7 +142,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
           <div className="model-focus-copy">
             <p>{meta.description}</p>
             <div className="status-row compact">
-              <StatusBadge tone="info">최근 일자 {activeSummary?.latestDay || "-"}</StatusBadge>
+              <StatusBadge tone="info">기준일 {activeSummary?.latestDay || "-"}</StatusBadge>
               <StatusBadge tone="success">승률 {formatPercent(activeSummary?.latestWinRate || 0)}</StatusBadge>
               <StatusBadge tone="warning">종료 거래 {formatNumber(activeSummary?.closedTrades || 0)}</StatusBadge>
             </div>
@@ -150,35 +150,41 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
 
           <div className="focus-metric-grid">
             <article className="focus-metric-card">
-              <span>누적 실현 pnl</span>
+              <span>누적 실현 PnL</span>
               <strong>{formatMoney(activeSummary?.realizedPnlUsd || 0)}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>최근 자산</span>
-              <strong>{formatMoney(activeSummary?.latestEquityUsd || 0)}</strong>
+              <span>미실현 PnL</span>
+              <strong>{formatMoney(activeSummary?.unrealizedPnlUsd || 0)}</strong>
             </article>
             <article className="focus-metric-card">
-              <span>활성 버전</span>
-              <strong>{activeTune?.active_variant_id || "기본값"}</strong>
+              <span>총손익</span>
+              <strong>{formatMoney(activeSummary?.totalPnlUsd || 0)}</strong>
+            </article>
+            <article className="focus-metric-card">
+              <span>총자산(시드+총손익)</span>
+              <strong>{formatMoney(activeSummary?.latestEquityUsd || 0)}</strong>
             </article>
           </div>
         </div>
       </SectionCard>
 
       <section className="chart-grid">
-        <TrendChart title="누적 실현 PnL" caption="일자별 누적 추이" points={realizedTrend} money />
-        <TrendChart title="자산 곡선" caption="일자별 자산 추이" points={equityTrend} money />
+        <TrendChart title="누적 실현 PnL 추이" caption="일자별 누적 실현값" points={realizedTrend} />
+        <TrendChart title="총손익 추이" caption="일자별 총손익" points={totalTrend} />
       </section>
 
       <section className="content-grid content-grid-two">
-        <TablePanel eyebrow="일자별 데이터" title={`${meta.name} PnL 테이블`} meta={`${activeRows.length}행`}>
+        <TablePanel eyebrow="일자별 성과" title={`${meta.name} PnL 상세`} meta={`${activeRows.length}일`}>
           <table>
             <thead>
               <tr>
                 <th>일자</th>
-                <th>자산</th>
-                <th>실현 PnL</th>
-                <th>승률</th>
+                <th>총자산</th>
+                <th>누적 실현</th>
+                <th>당일 실현Δ</th>
+                <th>미실현</th>
+                <th>총손익</th>
                 <th>종료 거래</th>
               </tr>
             </thead>
@@ -186,23 +192,25 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
               {activeRows.length ? (
                 activeRows.map((row) => (
                   <tr key={`${row.day}-${row.model_id}`}>
-                    <td>{String(row.day)}</td>
+                    <td>{String(row.day || "-")}</td>
                     <td>{formatMoney(row.equity_usd)}</td>
                     <td>{formatMoney(row.realized_pnl_usd)}</td>
-                    <td>{formatPercent(row.win_rate)}</td>
-                    <td>{row.closed_trades}</td>
+                    <td>{formatMoney(row.daily_realized_delta)}</td>
+                    <td>{formatMoney(row.unrealized_pnl_usd)}</td>
+                    <td>{formatMoney(row.total_pnl_usd)}</td>
+                    <td>{formatNumber(row.closed_trades || 0)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5">표시할 데이터가 없습니다.</td>
+                  <td colSpan="7">표시할 일자 데이터가 없습니다.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </TablePanel>
 
-        <SectionCard eyebrow="런타임 튠" title={`${meta.name} 튜닝 메모`} meta={activeTune?.last_eval_note_code || "-"}>
+        <SectionCard eyebrow="튜닝 상태" title={`${meta.name} 튜닝 메모`} meta={activeTune?.last_eval_note_code || "-"}>
           {activeTune ? (
             <div className="mini-list">
               <article className="mini-card">
@@ -226,7 +234,7 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
               </article>
             </div>
           ) : (
-            <EmptyState title="런타임 튠 데이터 없음" description="이 모델의 런타임 튜닝 기록이 아직 없습니다." />
+            <EmptyState title="튜닝 데이터 없음" description="이 모델의 튜닝 이력이 아직 없습니다." />
           )}
         </SectionCard>
       </section>
