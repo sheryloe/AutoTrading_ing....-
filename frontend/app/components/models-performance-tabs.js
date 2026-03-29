@@ -101,14 +101,18 @@ export default function ModelsPerformanceTabs({ modelSummaries, dailyRows, tunes
     [activeModel, modelSummaries]
   );
   const activeRows = useMemo(
-    () => dailyRows.filter((item) => String(item.model_id || "").toUpperCase() === activeModel),
+    () =>
+      dailyRows
+        .filter((item) => String(item.model_id || "").toUpperCase() === activeModel)
+        .sort((a, b) => String(b.day || "").localeCompare(String(a.day || ""))),
     [activeModel, dailyRows]
   );
   const activeTune = useMemo(
     () => tunes.find((item) => String(item.model_id || "").toUpperCase() === activeModel) || null,
     [activeModel, tunes]
   );
-  const realizedTrend = useMemo(() => buildTrendPoints(activeRows, "realized_pnl_usd", true), [activeRows]);
+  // realized_pnl_usd is already cumulative-by-day; do not cumulatively sum again.
+  const realizedTrend = useMemo(() => buildTrendPoints(activeRows, "realized_pnl_usd"), [activeRows]);
   const equityTrend = useMemo(() => buildTrendPoints(activeRows, "equity_usd"), [activeRows]);
   const meta = getModelMeta(activeModel);
 

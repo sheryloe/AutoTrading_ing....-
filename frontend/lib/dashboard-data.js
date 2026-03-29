@@ -11,6 +11,30 @@ function collectErrors(results) {
   return results.map((item) => item?.error?.message).filter(Boolean);
 }
 
+function compareDateLike(a, b) {
+  return String(a || "").localeCompare(String(b || ""));
+}
+
+function isRowNewer(nextRow, prevRow) {
+  const dayCmp = compareDateLike(nextRow?.day, prevRow?.day);
+  if (dayCmp !== 0) return dayCmp > 0;
+  const updatedCmp = compareDateLike(nextRow?.updated_at, prevRow?.updated_at);
+  if (updatedCmp !== 0) return updatedCmp > 0;
+  return false;
+}
+
+function pickLatestDailyRowsByModel(rows = []) {
+  const latestByModel = new Map();
+  for (const row of rows || []) {
+    const modelId = String(row?.model_id || "-");
+    const previous = latestByModel.get(modelId);
+    if (!previous || isRowNewer(row, previous)) {
+      latestByModel.set(modelId, row);
+    }
+  }
+  return latestByModel;
+}
+
 function countRowsForLatestCycle(rows = [], key = "cycle_at") {
   const latestCycleAt = rows[0]?.[key] || null;
   if (!latestCycleAt) {
@@ -25,32 +49,20 @@ function countRowsForLatestCycle(rows = [], key = "cycle_at") {
 }
 
 function buildModelSummaries(dailyRows = [], tunes = []) {
-  const map = new Map();
+  const latestByModel = pickLatestDailyRowsByModel(dailyRows);
   const tuneMap = new Map((tunes || []).map((item) => [item.model_id, item]));
 
-  for (const row of dailyRows) {
-    const modelId = String(row.model_id || "-");
-    if (!map.has(modelId)) {
-      map.set(modelId, {
-        modelId,
-        latestDay: row.day || null,
-        latestEquityUsd: Number(row.equity_usd || 0),
-        latestWinRate: Number(row.win_rate || 0),
-        realizedPnlUsd: 0,
-        closedTrades: 0,
-      });
-    }
-    const summary = map.get(modelId);
-    summary.realizedPnlUsd += Number(row.realized_pnl_usd || 0);
-    summary.closedTrades += Number(row.closed_trades || 0);
-    if (!summary.latestDay || String(row.day) > String(summary.latestDay)) {
-      summary.latestDay = row.day || null;
-      summary.latestEquityUsd = Number(row.equity_usd || 0);
-      summary.latestWinRate = Number(row.win_rate || 0);
-    }
-  }
-
-  return Array.from(map.values())
+  return Array.from(latestByModel.entries())
+    .map(([modelId, row]) => ({
+      modelId,
+      latestDay: row?.day || null,
+      latestEquityUsd: Number(row?.equity_usd || 0),
+      latestWinRate: Number(row?.win_rate || 0),
+      // daily_model_pnl.realized_pnl_usd is cumulative-by-day; use latest row only.
+      realizedPnlUsd: Number(row?.realized_pnl_usd || 0),
+      // daily_model_pnl.closed_trades is cumulative closed count.
+      closedTrades: Number(row?.closed_trades || 0),
+    }))
     .map((summary) => {
       const tune = tuneMap.get(summary.modelId) || null;
       return {
@@ -63,11 +75,13 @@ function buildModelSummaries(dailyRows = [], tunes = []) {
 
 function buildOverviewSnapshot({ heartbeat, dailyRows, setupRows, openPositions, openPositionCount, latestSignalCount }) {
   const latestSetup = countRowsForLatestCycle(setupRows, "cycle_at");
+  const latestByModel = pickLatestDailyRowsByModel(dailyRows);
+  const latestRows = Array.from(latestByModel.values());
 
   return {
     latestPnlDay: dailyRows[0]?.day || "-",
-    totalRealizedUsd: dailyRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0),
-    totalClosedTrades: dailyRows.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0),
+    totalRealizedUsd: latestRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0),
+    totalClosedTrades: latestRows.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0),
     openPositionCount: Number(openPositionCount ?? openPositions.length ?? 0),
     latestCycleAt: latestSetup.latestCycleAt,
     latestSignalCount: Number(latestSignalCount ?? latestSetup.count ?? 0),

@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 export default async function ModelsPage() {
   const data = await loadModelsPageData();
   const bestModel = [...data.modelSummaries].sort((a, b) => b.realizedPnlUsd - a.realizedPnlUsd)[0] || null;
-  const totalRealized = data.dailyRows.reduce((sum, row) => sum + Number(row.realized_pnl_usd || 0), 0);
-  const totalClosed = data.dailyRows.reduce((sum, row) => sum + Number(row.closed_trades || 0), 0);
+  const totalRealized = data.modelSummaries.reduce((sum, row) => sum + Number(row.realizedPnlUsd || 0), 0);
+  const totalClosed = data.modelSummaries.reduce((sum, row) => sum + Number(row.closedTrades || 0), 0);
   const bestModelMeta = bestModel ? getModelMeta(bestModel.modelId) : null;
 
   return (
