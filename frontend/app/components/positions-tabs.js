@@ -51,18 +51,14 @@ function realizedPnlLabel(row) {
   const isCloseEvent =
     String(row.event_kind || "").toLowerCase() === "close" ||
     (!row.event_kind && String(row.side || "").toLowerCase() === "sell");
-  return isCloseEvent && row.pnl_usd !== null && row.pnl_usd !== undefined
-    ? formatMoney(row.pnl_usd)
-    : "-";
+  return isCloseEvent && row.pnl_usd !== null && row.pnl_usd !== undefined ? formatMoney(row.pnl_usd) : "-";
 }
 
 function realizedPctLabel(row) {
   const isCloseEvent =
     String(row.event_kind || "").toLowerCase() === "close" ||
     (!row.event_kind && String(row.side || "").toLowerCase() === "sell");
-  return isCloseEvent && row.pnl_pct !== null && row.pnl_pct !== undefined
-    ? formatPct(row.pnl_pct, 2)
-    : "-";
+  return isCloseEvent && row.pnl_pct !== null && row.pnl_pct !== undefined ? formatPct(row.pnl_pct, 2) : "-";
 }
 
 function entryLabel(row) {
@@ -224,8 +220,8 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
         meta={latestAuditCycleAt ? formatTs(latestAuditCycleAt) : "감사 데이터 없음"}
       >
         <p className="panel-note">
-          `filtered_symbol`은 현재 허용 유니버스 밖의 심볼이라는 의미입니다. 동적 유니버스가 켜져 있으면
-          `BYBIT_SYMBOLS`는 참고 목록으로만 동작합니다.
+          `filtered_symbol`은 현재 사용 중인 유니버스 밖의 종목을 뜻합니다. 동적 유니버스가 꺼져 있으면
+          `BYBIT_SYMBOLS` 목록만 사용합니다.
         </p>
         <div className="status-row compact">
           {auditSummary.length ? (
@@ -241,7 +237,7 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
       </SectionCard>
 
       <section className="content-grid content-grid-two">
-        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}행`}>
+        <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}건`}>
           {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
@@ -251,7 +247,7 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                     <p>
                       {String(row.side || "").toUpperCase()} / {row.status}
                     </p>
-                    <p className="position-secondary">진입시각 {openedMeta(row)}</p>
+                    <p className="position-secondary">진입시간 {openedMeta(row)}</p>
                   </div>
                   <div className="mini-metrics position-metrics">
                     <span className="position-secondary">진입가 {entryLabel(row)}</span>
@@ -262,17 +258,17 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                     <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
                       {formatMoney(row.unrealized_pnl_usd)}
                     </strong>
-                    <span className="position-secondary">미실현 pnl</span>
+                    <span className="position-secondary">미실현 PnL</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="오픈 포지션 없음" description="현재 이 모델의 오픈 크립토 포지션이 없습니다." />
+            <EmptyState title="오픈 포지션 없음" description="현재 이 모델의 오픈 포지션이 없습니다." />
           )}
         </SectionCard>
 
-        <SectionCard eyebrow="최근 체결" title={`${meta.name} 최근 크립토 체결`} meta={`${activeTrades.length}행`}>
+        <SectionCard eyebrow="최근 체결" title={`${meta.name} 최근 포지션 체결`} meta={`${activeTrades.length}건`}>
           {activeTrades.length ? (
             <div className="mini-list">
               {activeTrades.slice(0, 6).map((row, idx) => (
@@ -288,23 +284,23 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                   <div className="mini-metrics">
                     <span>레버리지 {leverageLabel(row.leverage)}</span>
                     <span>{realizedPnlLabel(row)}</span>
-                    <span className="position-secondary">실현 pnl</span>
+                    <span className="position-secondary">실현 PnL</span>
                   </div>
                 </article>
               ))}
             </div>
           ) : (
-            <EmptyState title="최근 체결 없음" description="이 모델은 아직 최근 크립토 데모 체결 기록이 없습니다." />
+            <EmptyState title="최근 체결 없음" description="이 모델의 최근 포지션 체결 기록이 없습니다." />
           )}
         </SectionCard>
       </section>
 
-      <TablePanel eyebrow="신호 감사 상세" title={`${meta.name} 감사 로그`} meta={`최근 ${latestAuditRows.length}행`}>
+      <TablePanel eyebrow="신호 감사 상세" title={`${meta.name} 감사 로그`} meta={`최근 ${latestAuditRows.length}건`}>
         <table>
           <thead>
             <tr>
-              <th>사이클</th>
-              <th>심볼</th>
+              <th>시간</th>
+              <th>종목</th>
               <th>상태</th>
               <th>사유</th>
               <th>점수 / 임계값</th>
@@ -338,12 +334,16 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="포지션 상세" title={`${meta.name} 진입 / TP / SL / PnL`} meta={`${activePositions.length}행`}>
+      <TablePanel
+        eyebrow="포지션 상세"
+        title={`${meta.name} 진입 / TP / SL / PnL`}
+        meta={`${activePositions.length}건`}
+      >
         <table>
           <thead>
             <tr>
-              <th>심볼</th>
-              <th>진입시각</th>
+              <th>종목</th>
+              <th>진입시간</th>
               <th>진입가</th>
               <th>현재가</th>
               <th>TP</th>
@@ -381,13 +381,13 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="진입 계획" title={`${meta.name} 셋업 로그`} meta={`${activeSetups.length}행`}>
+      <TablePanel eyebrow="진입 준비" title={`${meta.name} 셋업 로그`} meta={`${activeSetups.length}건`}>
         <table>
           <thead>
             <tr>
-              <th>사이클</th>
+              <th>시간</th>
               <th>방향</th>
-              <th>심볼</th>
+              <th>종목</th>
               <th>진입가</th>
               <th>손절가</th>
               <th>목표가1</th>
@@ -418,16 +418,14 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
         </table>
       </TablePanel>
 
-      <TablePanel eyebrow="체결 상세" title={`${meta.name} 최근 체결`} meta={`${activeTrades.length}행`}>
-        <p className="panel-note">
-          현재 빌드의 크립토 체결은 데모 경로(`crypto_demo`)로 기록됩니다.
-        </p>
+      <TablePanel eyebrow="체결 상세" title={`${meta.name} 최근 체결`} meta={`${activeTrades.length}건`}>
+        <p className="panel-note">현재 빌드에서 포지션 체결은 거래 경로(`crypto_demo`)로 기록됩니다.</p>
         <table>
           <thead>
             <tr>
               <th>시간</th>
               <th>소스</th>
-              <th>심볼</th>
+              <th>종목</th>
               <th>구분</th>
               <th>모드</th>
               <th>레버리지</th>

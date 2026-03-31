@@ -1312,6 +1312,7 @@ textarea {
 .table-wrap table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .table-wrap th,
@@ -1319,14 +1320,17 @@ textarea {
   padding: 12px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
-  white-space: nowrap;
-  font-size: 0.82rem;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .table-wrap th {
   color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -1624,7 +1628,9 @@ textarea {
 
 .tab-button strong {
   font-family: var(--font-display), sans-serif;
-  font-size: 1rem;
+  font-size: 0.94rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .tab-button small,
@@ -1633,6 +1639,12 @@ textarea {
 .overview-model-metrics label,
 .tab-stat {
   color: var(--muted);
+}
+
+.tab-button small {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .tab-eyebrow {
