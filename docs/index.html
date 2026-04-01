@@ -227,12 +227,6 @@
             return (Number(row?.total_pnl_usd || 0) / EQUITY_BASE) * 100;
         }
 
-        function liveModelPct(latestRow, positions) {
-            const realized = Number(latestRow?.realized_pnl_usd || 0);
-            const openUnrealized = (positions || []).reduce((sum, row) => sum + Number(row?.unrealized_pnl_usd || 0), 0);
-            return ((realized + openUnrealized) / EQUITY_BASE) * 100;
-        }
-
         function buildLatestByModel(dailyRows) {
             const latestByModel = new Map();
             for (const row of dailyRows) {
@@ -274,8 +268,7 @@
                     el.classList.remove("pnl-plus", "pnl-minus");
                     return;
                 }
-                const modelPositions = positionsByModel.get(modelId) || [];
-                const pct = liveModelPct(latest, modelPositions);
+                const pct = modelReturnPct(latest);
                 el.innerText = formatPct(pct);
                 el.classList.toggle("pnl-plus", pct >= 0);
                 el.classList.toggle("pnl-minus", pct < 0);
@@ -309,17 +302,6 @@
                 if (!lookup[modelId] || !day) return;
                 lookup[modelId][day] = Number(modelReturnPct(row).toFixed(2));
             });
-
-            const latestDay = orderedDays[orderedDays.length - 1];
-            if (latestDay) {
-                MODEL_IDS.forEach((modelId) => {
-                    const modelPositions = positionsByModel.get(modelId) || [];
-                    const latest = latestByModel.get(modelId);
-                    if (latest) {
-                        lookup[modelId][latestDay] = Number(liveModelPct(latest, modelPositions).toFixed(2));
-                    }
-                });
-            }
 
             const options = {
                 series: MODEL_IDS.map((modelId) => ({

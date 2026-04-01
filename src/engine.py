@@ -3561,12 +3561,18 @@ class TradingEngine:
         row["strategy_id"] = self._meme_strategy_id_for_model(model_id)
         row["strategy_name"] = self._meme_strategy_name(model_id)
         row["strategy_engine"] = str(self.settings.meme_strategy_engine or "unified_strategy_bridge")
-        row["meme_seed_usd"] = float(meme_run.get("meme_seed_usd") or seed)
+        if "meme_seed_usd" in meme_run:
+            row["meme_seed_usd"] = float(meme_run.get("meme_seed_usd") or 0.0)
+        else:
+            row["meme_seed_usd"] = float(seed if model_id in MEME_MODEL_IDS else 0.0)
         row["meme_cash_usd"] = float(meme_run.get("meme_cash_usd") or 0.0)
         row["meme_positions"] = dict(meme_run.get("meme_positions") or {})
         row["latest_signals"] = list(meme_run.get("latest_signals") or [])
         row["last_signal_ts"] = dict(meme_run.get("last_signal_ts") or {})
-        row["bybit_seed_usd"] = float(crypto_run.get("bybit_seed_usd") or (seed if self.settings.demo_enable_macro else 0.0))
+        if "bybit_seed_usd" in crypto_run:
+            row["bybit_seed_usd"] = float(crypto_run.get("bybit_seed_usd") or 0.0)
+        else:
+            row["bybit_seed_usd"] = float(seed if self.settings.demo_enable_macro else 0.0)
         row["bybit_cash_usd"] = float(crypto_run.get("bybit_cash_usd") or 0.0)
         row["bybit_positions"] = dict(crypto_run.get("bybit_positions") or {})
         row["latest_crypto_signals"] = list(crypto_run.get("latest_crypto_signals") or [])
@@ -13396,8 +13402,17 @@ class TradingEngine:
         bybit_enabled = bool(self.settings.demo_enable_macro)
         meme_cash = float(run.get("meme_cash_usd") or 0.0)
         bybit_cash = float(run.get("bybit_cash_usd") or 0.0) if bybit_enabled else 0.0
-        meme_seed = float(run.get("meme_seed_usd") or self.state.demo_seed_usdt)
-        bybit_seed = float(run.get("bybit_seed_usd") or self.state.demo_seed_usdt) if bybit_enabled else 0.0
+        if "meme_seed_usd" in run:
+            meme_seed = float(run.get("meme_seed_usd") or 0.0)
+        else:
+            meme_seed = float(self.state.demo_seed_usdt)
+        if bybit_enabled:
+            if "bybit_seed_usd" in run:
+                bybit_seed = float(run.get("bybit_seed_usd") or 0.0)
+            else:
+                bybit_seed = float(self.state.demo_seed_usdt)
+        else:
+            bybit_seed = 0.0
 
         meme_unrealized = 0.0
         meme_value = 0.0
@@ -13490,7 +13505,10 @@ class TradingEngine:
     ) -> dict[str, Any]:
         market_id = "meme" if market == "meme" else "crypto"
         if market_id == "meme":
-            seed = float(run.get("meme_seed_usd") or self.state.demo_seed_usdt)
+            if "meme_seed_usd" in run:
+                seed = float(run.get("meme_seed_usd") or 0.0)
+            else:
+                seed = float(self.state.demo_seed_usdt)
             cash = float(run.get("meme_cash_usd") or 0.0)
             value = 0.0
             unrealized = 0.0
@@ -13528,7 +13546,10 @@ class TradingEngine:
                 unrealized = 0.0
                 open_positions = 0
             else:
-                seed = float(run.get("bybit_seed_usd") or self.state.demo_seed_usdt)
+                if "bybit_seed_usd" in run:
+                    seed = float(run.get("bybit_seed_usd") or 0.0)
+                else:
+                    seed = float(self.state.demo_seed_usdt)
                 cash = float(run.get("bybit_cash_usd") or 0.0)
                 value = 0.0
                 unrealized = 0.0
