@@ -2217,6 +2217,128 @@ class TradingEngine:
             "forced_symbol_fetch": True,
         }
 
+    def _open_crypto_position_symbols(self, runs: dict[str, Any] | None = None) -> list[str]:
+        if isinstance(runs, dict):
+            source_runs = dict(runs or {})
+        else:
+            with self._lock:
+                source_runs = dict(self.state.model_runs or {})
+        symbols: list[str] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(source_runs, "crypto", model_id)
+            for pos in list((run.get("bybit_positions") or {}).values()):
+                symbol = str((pos or {}).get("symbol") or "").upper().strip()
+                if symbol and symbol not in symbols:
+                    symbols.append(symbol)
+        return symbols
+
+    def _apply_crypto_realtime_quote(
+        self,
+        symbol: str,
+        price: float,
+        incoming_meta: dict[str, Any] | None = None,
+        *,
+        default_source: str = "forced_exit_sync",
+    ) -> bool:
+        symbol_u = str(symbol or "").upper().strip()
+        px = float(price or 0.0)
+        if not symbol_u or px <= 0.0:
+            return False
+        prev_meta = dict(self._macro_meta.get(symbol_u) or {})
+        merged_meta = self._merge_realtime_quote_meta(prev_meta, dict(incoming_meta or {}), default_source)
+        next_meta = dict(prev_meta)
+        next_meta.update(merged_meta)
+        next_meta.pop("price_guard", None)
+        self._macro_meta[symbol_u] = next_meta
+        self._bybit_last_prices[symbol_u] = float(px)
+        hist = self._bybit_price_history.get(symbol_u) or []
+        hist.append(float(px))
+        if len(hist) > 240:
+            hist = hist[-240:]
+        self._bybit_price_history[symbol_u] = hist
+        return True
+
+    def _force_sync_crypto_exit_quotes(
+        self,
+        symbols: list[str] | tuple[str, ...] | set[str],
+        *,
+        prices: dict[str, float] | None = None,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        requested: list[str] = []
+        for raw in list(symbols or []):
+            symbol = str(raw or "").upper().strip()
+            if not symbol:
+                continue
+            if not symbol.endswith("USDT"):
+                symbol = f"{symbol}USDT"
+            if symbol not in requested:
+                requested.append(symbol)
+        if not requested:
+            return {"prices": {}, "meta": {}, "missing": []}
+
+        synced_prices: dict[str, float] = {}
+        synced_meta: dict[str, dict[str, Any]] = {}
+        try:
+            direct_prices, direct_meta = self.macro.fetch_realtime_quotes_for_symbols(
+                requested,
+                sources_csv="bybit,binance",
+                binance_api_key=self.settings.binance_api_key,
+                binance_api_secret=self.settings.binance_api_secret,
+            )
+        except Exception:
+            direct_prices, direct_meta = {}, {}
+        synced_prices.update({str(k).upper().strip(): float(v or 0.0) for k, v in dict(direct_prices or {}).items()})
+        synced_meta.update({str(k).upper().strip(): dict(v or {}) for k, v in dict(direct_meta or {}).items()})
+
+        missing = [symbol for symbol in requested if float(synced_prices.get(symbol) or 0.0) <= 0.0]
+        if missing and bool(getattr(self.settings, "crypto_use_coingecko_data", True)):
+            try:
+                cg_prices, cg_meta = self.macro.fetch_coingecko_quotes_for_symbols(
+                    missing,
+                    api_key=self.settings.coingecko_api_key,
+                )
+            except Exception:
+                cg_prices, cg_meta = {}, {}
+            for symbol, price in dict(cg_prices or {}).items():
+                symbol_u = str(symbol or "").upper().strip()
+                px = float(price or 0.0)
+                if px <= 0.0 or symbol_u in synced_prices:
+                    continue
+                synced_prices[symbol_u] = px
+                synced_meta[symbol_u] = dict((cg_meta or {}).get(symbol_u) or {})
+
+        applied_prices: dict[str, float] = {}
+        applied_meta: dict[str, dict[str, Any]] = {}
+        for symbol in requested:
+            px = float(synced_prices.get(symbol) or 0.0)
+            if px <= 0.0:
+                continue
+            meta_row = dict(synced_meta.get(symbol) or {})
+            if not self._apply_crypto_realtime_quote(symbol, px, meta_row, default_source="forced_exit_sync"):
+                continue
+            applied_prices[symbol] = float(px)
+            applied_meta[symbol] = meta_row
+            if isinstance(prices, dict):
+                prices[symbol] = float(px)
+
+        missing = [symbol for symbol in requested if symbol not in applied_prices]
+        if missing:
+            error_text = "held_quote_sync_missing"
+            if reason:
+                error_text = f"{error_text}[{reason}]"
+            error_text = f"{error_text}: " + ",".join(missing[:12])
+            with self._lock:
+                current = str(self.state.bybit_error or "")
+                if not current or current.startswith("held_quote_sync_missing"):
+                    self.state.bybit_error = error_text
+        else:
+            with self._lock:
+                current = str(self.state.bybit_error or "")
+                if current.startswith("held_quote_sync_missing"):
+                    self.state.bybit_error = ""
+        return {"prices": applied_prices, "meta": applied_meta, "missing": missing}
+
     def _priority_crypto_symbols(self) -> tuple[str, ...]:
         configured: list[str] = []
         raw_text = str(getattr(self.settings, "crypto_priority_symbols", "") or "")
@@ -4104,10 +4226,14 @@ class TradingEngine:
             self._update_new_meme_feed(snapshots, trend_bundle)
             self._persist_trend_history(now, trend_bundle)
             self._refresh_meme_watch_scores(now)
+        held_crypto_symbols = self._open_crypto_position_symbols() if self.settings.demo_enable_macro else []
         bybit_prices = self._fetch_macro_demo_prices(trend_bundle) if self.settings.demo_enable_macro else {}
+        if self.settings.demo_enable_macro and held_crypto_symbols:
+            self._force_sync_crypto_exit_quotes(held_crypto_symbols, prices=bybit_prices, reason="cycle_holdings")
+        crypto_intrabar_symbols = sorted(set(list(bybit_prices.keys()) + list(held_crypto_symbols or [])))
         crypto_intrabar_candles = (
-            self._fetch_crypto_intrabar_candles(list(bybit_prices.keys()))
-            if self.settings.demo_enable_macro and bybit_prices
+            self._fetch_crypto_intrabar_candles(crypto_intrabar_symbols)
+            if self.settings.demo_enable_macro and crypto_intrabar_symbols
             else {}
         )
 
@@ -12411,10 +12537,21 @@ class TradingEngine:
             "C": "C-CompressionBreakoutPlanner",
             "D": "D-ResetBouncePlanner",
         }.get(model_id, "")
+        refresh_symbols: list[str] = []
+        for pos in list((run.get("bybit_positions") or {}).values()):
+            symbol = str((pos or {}).get("symbol") or "").upper().strip()
+            if not symbol:
+                continue
+            quote_status = str(self._crypto_quote_health(symbol).get("quote_status") or "stale")
+            if symbol not in prices or quote_status != "fresh":
+                refresh_symbols.append(symbol)
+        if refresh_symbols:
+            self._force_sync_crypto_exit_quotes(refresh_symbols, prices=prices, reason=f"exit_eval_{model_id}")
         for pos in list((run.get("bybit_positions") or {}).values()):
             symbol = str(pos.get("symbol") or "")
             position_side = self._normalize_crypto_side((pos or {}).get("side"))
             entry = float(pos.get("avg_price_usd") or 0.0)
+            quote_status = str(self._crypto_quote_health(symbol).get("quote_status") or "stale")
             current = float(self._crypto_current_price(pos, prices))
             pos_reason = str(pos.get("reason") or "")
             entry_score = float(pos.get("entry_score") or 0.0)
@@ -12446,6 +12583,8 @@ class TradingEngine:
                 )
                 continue
             if current <= 0 or entry <= 0:
+                continue
+            if quote_status != "fresh":
                 continue
             marked = self._mark_crypto_position(pos, current)
             pos["last_mark_price_usd"] = float(marked["mark_price_usd"])
