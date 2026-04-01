@@ -1,0 +1,649 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+from dotenv import dotenv_values
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.config import load_settings
+from src.daily_reports import write_daily_pnl_report
+from src.supabase_sync import SupabaseSyncClient
+
+
+MODEL_IDS = ("A", "B", "C", "D")
+UTC = timezone.utc
+
+
+def _parse_day(value: str) -> date:
+    return datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+
+
+def _try_parse_day(value: Any) -> date | None:
+    try:
+        return _parse_day(str(value or "").strip())
+    except Exception:
+        return None
+
+
+def _day_key(day_value: date) -> str:
+    return day_value.strftime("%Y-%m-%d")
+
+
+def _day_start_ts(day_value: date) -> int:
+    return int(datetime(day_value.year, day_value.month, day_value.day, tzinfo=UTC).timestamp())
+
+
+def _day_end_ts(day_value: date) -> int:
+    return int((datetime(day_value.year, day_value.month, day_value.day, tzinfo=UTC) + timedelta(days=1)).timestamp()) - 1
+
+
+def _iter_days(start_day: date, end_day: date) -> list[date]:
+    out: list[date] = []
+    current = start_day
+    while current <= end_day:
+        out.append(current)
+        current += timedelta(days=1)
+    return out
+
+
+def _normalize_symbol(raw: Any) -> str:
+    symbol = str(raw or "").upper().strip()
+    if not symbol:
+        return ""
+    if not symbol.endswith("USDT"):
+        symbol = f"{symbol}USDT"
+    return symbol
+
+
+def _load_env_files() -> None:
+    candidates = [ROOT / "env" / ".env", ROOT / ".env"]
+    for path in candidates:
+        if not path.exists():
+            continue
+        payload = dotenv_values(str(path))
+        for key, value in payload.items():
+            if key and value is not None and not os.getenv(key):
+                os.environ[str(key)] = str(value)
+
+
+def _build_supabase_client() -> SupabaseSyncClient:
+    url = str(os.getenv("SUPABASE_URL") or "").strip()
+    key = str(os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY") or "").strip()
+    return SupabaseSyncClient(url=url, secret_key=key, enabled=bool(url and key), timeout_seconds=20)
+
+
+def _load_state_payload(state_path: Path | None, client: SupabaseSyncClient) -> dict[str, Any]:
+    if state_path and state_path.exists():
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    if client.enabled:
+        result = client.fetch_blob("engine_state")
+        payload = result.get("payload") if bool(result.get("ok")) else None
+        if isinstance(payload, dict):
+            return payload
+    raise RuntimeError("engine_state_not_found")
+
+
+def _persist_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    serialized = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+    tmp_path.write_text(serialized, encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _mark_crypto_position(pos: dict[str, Any], current_price: float) -> dict[str, float]:
+    qty = float(pos.get("qty") or 0.0)
+    avg = float(pos.get("avg_price_usd") or 0.0)
+    side = "short" if str(pos.get("side") or "").strip().lower() == "short" else "long"
+    leverage = max(1.0, float(pos.get("leverage") or 1.0))
+    margin = float(pos.get("margin_usd") or 0.0)
+    if margin <= 0.0 and avg > 0.0 and qty > 0.0:
+        margin = (avg * qty) / leverage
+    mark = float(current_price or 0.0)
+    if mark <= 0.0:
+        mark = float(pos.get("last_mark_price_usd") or 0.0)
+    if mark <= 0.0:
+        mark = avg
+    exposure = max(0.0, mark * qty)
+    if avg > 0.0 and qty > 0.0:
+        pnl_raw = (avg - mark) * qty if side == "short" else (mark - avg) * qty
+        price_pnl_pct = ((avg - mark) / avg) if side == "short" else ((mark - avg) / avg)
+    else:
+        pnl_raw = 0.0
+        price_pnl_pct = 0.0
+    pnl_floor = -max(0.0, margin)
+    pnl = max(pnl_floor, pnl_raw)
+    position_equity = max(0.0, margin + pnl)
+    roe_pct = 0.0 if margin <= 0.0 else (pnl / margin)
+    return {
+        "qty": qty,
+        "avg_price_usd": avg,
+        "mark_price_usd": mark,
+        "leverage": leverage,
+        "margin_usd": max(0.0, margin),
+        "exposure_usd": exposure,
+        "pnl_usd": pnl,
+        "position_equity_usd": position_equity,
+        "price_pnl_pct": price_pnl_pct,
+        "roe_pct": roe_pct,
+    }
+
+
+class DailyPriceClient:
+    def __init__(self, timeout_seconds: int = 15) -> None:
+        self.session = requests.Session()
+        self.timeout_seconds = max(5, int(timeout_seconds))
+
+    def _fetch_binance_daily(self, symbol: str, start_day: date, end_day: date) -> dict[str, dict[str, Any]]:
+        sym = _normalize_symbol(symbol)
+        if not sym:
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        current_start = _day_start_ts(start_day) * 1000
+        final_end = (_day_end_ts(end_day) * 1000)
+        while current_start <= final_end:
+            res = self.session.get(
+                "https://api.binance.com/api/v3/klines",
+                params={
+                    "symbol": sym,
+                    "interval": "1d",
+                    "startTime": current_start,
+                    "endTime": final_end,
+                    "limit": 1000,
+                },
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            rows = res.json()
+            if not isinstance(rows, list) or not rows:
+                break
+            last_open_ms = None
+            for row in rows:
+                if not isinstance(row, list) or len(row) < 5:
+                    continue
+                try:
+                    open_ms = int(row[0])
+                    close_price = float(row[4] or 0.0)
+                except Exception:
+                    continue
+                if close_price <= 0.0:
+                    continue
+                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=UTC).strftime("%Y-%m-%d")
+                out[day_key] = {
+                    "price": close_price,
+                    "source": "binance_1d",
+                    "as_of_ts": _day_end_ts(_parse_day(day_key)),
+                }
+                last_open_ms = open_ms
+            if last_open_ms is None or len(rows) < 1000:
+                break
+            current_start = int(last_open_ms + 86400000)
+        return out
+
+    def _fetch_bybit_daily(self, symbol: str, start_day: date, end_day: date) -> dict[str, dict[str, Any]]:
+        sym = _normalize_symbol(symbol)
+        if not sym:
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        current_start = _day_start_ts(start_day) * 1000
+        final_end = _day_end_ts(end_day) * 1000
+        while current_start <= final_end:
+            res = self.session.get(
+                "https://api.bybit.com/v5/market/kline",
+                params={
+                    "category": "linear",
+                    "symbol": sym,
+                    "interval": "D",
+                    "start": current_start,
+                    "end": final_end,
+                    "limit": 1000,
+                },
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            body = res.json()
+            rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+            if not isinstance(rows, list) or not rows:
+                break
+            parsed: list[tuple[int, float]] = []
+            for row in rows:
+                if not isinstance(row, list) or len(row) < 5:
+                    continue
+                try:
+                    open_ms = int(row[0])
+                    close_price = float(row[4] or 0.0)
+                except Exception:
+                    continue
+                if close_price <= 0.0:
+                    continue
+                parsed.append((open_ms, close_price))
+            parsed.sort(key=lambda item: item[0])
+            if not parsed:
+                break
+            for open_ms, close_price in parsed:
+                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=UTC).strftime("%Y-%m-%d")
+                out[day_key] = {
+                    "price": close_price,
+                    "source": "bybit_1d",
+                    "as_of_ts": _day_end_ts(_parse_day(day_key)),
+                }
+            if len(parsed) < 1000:
+                break
+            current_start = int(parsed[-1][0] + 86400000)
+        return out
+
+    def fetch_symbol_daily_series(self, symbol: str, start_day: date, end_day: date) -> dict[str, dict[str, Any]]:
+        result = self._fetch_binance_daily(symbol, start_day, end_day)
+        wanted_days = {_day_key(day_value) for day_value in _iter_days(start_day, end_day)}
+        missing = sorted(day_key for day_key in wanted_days if day_key not in result)
+        if missing:
+            fallback = self._fetch_bybit_daily(symbol, start_day, end_day)
+            for day_key in missing:
+                if day_key in fallback:
+                    result[day_key] = dict(fallback[day_key])
+        return result
+
+
+def _trade_sort_key(row: dict[str, Any], index: int) -> tuple[int, int]:
+    return (_safe_int(row.get("ts"), 0), int(index))
+
+
+def _is_crypto_trade(row: dict[str, Any]) -> bool:
+    return str((row or {}).get("source") or "").strip().lower() == "crypto_demo"
+
+
+def _is_close_trade(row: dict[str, Any]) -> bool:
+    if not _is_crypto_trade(row):
+        return False
+    if str((row or {}).get("event_kind") or "").strip().lower() == "close":
+        return True
+    return bool(str((row or {}).get("close_mode") or "").strip())
+
+
+def _is_open_trade(row: dict[str, Any]) -> bool:
+    if not _is_crypto_trade(row):
+        return False
+    if str((row or {}).get("event_kind") or "").strip().lower() == "open":
+        return True
+    return not _is_close_trade(row)
+
+
+def _normalize_position_side(row: dict[str, Any]) -> str:
+    raw = str((row or {}).get("position_side") or (row or {}).get("side") or "").strip().lower()
+    if raw in {"short", "sell"}:
+        return "short"
+    return "long"
+
+
+def _build_open_position_from_trade(row: dict[str, Any]) -> dict[str, Any]:
+    position_side = _normalize_position_side(row)
+    price = _safe_float(row.get("price_usd"), 0.0)
+    qty = _safe_float(row.get("qty"), 0.0)
+    leverage = max(1.0, _safe_float(row.get("leverage"), 1.0))
+    notional = _safe_float(row.get("notional_usd"), 0.0)
+    margin = _safe_float(row.get("margin_usd"), 0.0)
+    if margin <= 0.0 and notional > 0.0:
+        margin = notional / leverage
+    if margin <= 0.0 and price > 0.0 and qty > 0.0:
+        margin = (price * qty) / leverage
+    symbol = _normalize_symbol(row.get("symbol"))
+    return {
+        "symbol": symbol,
+        "side": position_side,
+        "qty": qty,
+        "avg_price_usd": price,
+        "last_mark_price_usd": price,
+        "margin_usd": margin,
+        "leverage": leverage,
+        "notional_usd": notional if notional > 0.0 else price * qty,
+        "opened_at": _safe_int(row.get("ts"), 0),
+        "entry_score": _safe_float(row.get("entry_score"), 0.0),
+        "reason": str(row.get("reason") or ""),
+    }
+
+
+def _build_synthetic_open_trades(run: dict[str, Any], trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    open_positions = dict(run.get("bybit_positions") or {})
+    if not open_positions:
+        return []
+    existing_pairs = {
+        (str((row or {}).get("symbol") or "").upper().strip(), _safe_int((row or {}).get("ts"), 0))
+        for row in trades
+        if _is_open_trade(row)
+    }
+    synthetic: list[dict[str, Any]] = []
+    for pos in list(open_positions.values()):
+        symbol = _normalize_symbol((pos or {}).get("symbol"))
+        opened_at = _safe_int((pos or {}).get("opened_at"), 0)
+        if not symbol or opened_at <= 0:
+            continue
+        if any(existing_symbol == symbol and abs(existing_ts - opened_at) <= 300 for existing_symbol, existing_ts in existing_pairs):
+            continue
+        position_side = "short" if str((pos or {}).get("side") or "").strip().lower() == "short" else "long"
+        synthetic.append(
+            {
+                "ts": opened_at,
+                "source": "crypto_demo",
+                "event_kind": "open",
+                "symbol": symbol,
+                "token_address": symbol,
+                "side": "sell" if position_side == "short" else "buy",
+                "position_side": position_side,
+                "qty": _safe_float((pos or {}).get("qty"), 0.0),
+                "price_usd": _safe_float((pos or {}).get("avg_price_usd"), 0.0),
+                "notional_usd": _safe_float((pos or {}).get("notional_usd"), 0.0),
+                "margin_usd": _safe_float((pos or {}).get("margin_usd"), 0.0),
+                "leverage": _safe_float((pos or {}).get("leverage"), 1.0),
+                "reason": "rebuild_synthetic_open",
+                "fill_mode": "rebuild",
+            }
+        )
+    return synthetic
+
+
+def _provider_summary_from_sources(sources: dict[str, str]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for source in dict(sources or {}).values():
+        name = str(source or "").strip() or "unknown"
+        summary[name] = int(summary.get(name) or 0) + 1
+    return summary
+
+
+def _rebuild_model_rows(
+    model_id: str,
+    run: dict[str, Any],
+    *,
+    start_day: date,
+    end_day: date,
+    seed_usdt: float,
+    price_map: dict[str, dict[str, dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    trades = [dict(row or {}) for row in list(run.get("trades") or []) if isinstance(row, dict) and _is_crypto_trade(row)]
+    trades.extend(_build_synthetic_open_trades(run, trades))
+    events = sorted(enumerate(trades), key=lambda item: _trade_sort_key(item[1], item[0]))
+    cash = float(run.get("bybit_seed_usd") or seed_usdt)
+    realized = 0.0
+    closed = 0
+    wins = 0
+    open_positions: dict[str, dict[str, Any]] = {}
+    rows: list[dict[str, Any]] = []
+    skipped_days: list[dict[str, Any]] = []
+    event_index = 0
+    days = _iter_days(start_day, end_day)
+
+    for day_value in days:
+        day_end = _day_end_ts(day_value)
+        while event_index < len(events) and _safe_int(events[event_index][1].get("ts"), 0) <= day_end:
+            event = dict(events[event_index][1] or {})
+            symbol = _normalize_symbol(event.get("symbol"))
+            if _is_open_trade(event):
+                pos = _build_open_position_from_trade(event)
+                if symbol:
+                    open_positions[symbol] = pos
+                    cash -= float(pos.get("margin_usd") or 0.0)
+            elif _is_close_trade(event):
+                pnl = _safe_float(event.get("pnl_usd"), 0.0)
+                margin = _safe_float(event.get("margin_usd"), 0.0)
+                pos = open_positions.pop(symbol, None) if symbol else None
+                if margin <= 0.0 and isinstance(pos, dict):
+                    margin = _safe_float(pos.get("margin_usd"), 0.0)
+                cash += max(0.0, margin + pnl)
+                realized += pnl
+                closed += 1
+                wins += 1 if pnl > 0.0 else 0
+            event_index += 1
+
+        missing_symbols: list[str] = []
+        eod_price_sources: dict[str, str] = {}
+        position_value = 0.0
+        unrealized = 0.0
+        quote_as_of_ts = 0
+        for symbol, pos in open_positions.items():
+            day_series = dict(price_map.get(symbol) or {})
+            mark_row = dict(day_series.get(_day_key(day_value)) or {})
+            price = _safe_float(mark_row.get("price"), 0.0)
+            if price <= 0.0:
+                missing_symbols.append(symbol)
+                continue
+            eod_price_sources[symbol] = str(mark_row.get("source") or "")
+            quote_as_of_ts = max(quote_as_of_ts, _safe_int(mark_row.get("as_of_ts"), day_end))
+            marked = _mark_crypto_position(pos, price)
+            position_value += float(marked.get("position_equity_usd") or 0.0)
+            unrealized += float(marked.get("pnl_usd") or 0.0)
+
+        if missing_symbols:
+            skipped_days.append(
+                {
+                    "day": _day_key(day_value),
+                    "model_id": model_id,
+                    "missing_symbols": sorted(missing_symbols),
+                }
+            )
+            continue
+
+        equity = float(cash + position_value)
+        total_pnl = float(equity - seed_usdt)
+        win_rate = (wins / closed * 100.0) if closed > 0 else 0.0
+        provider_summary = _provider_summary_from_sources(eod_price_sources)
+        rows.append(
+            {
+                "date": _day_key(day_value),
+                "model_id": model_id,
+                "meme_equity_usd": 0.0,
+                "bybit_equity_usd": round(equity, 6),
+                "meme_total_pnl_usd": 0.0,
+                "bybit_total_pnl_usd": round(total_pnl, 6),
+                "meme_realized_pnl_usd": 0.0,
+                "bybit_realized_pnl_usd": round(realized, 6),
+                "meme_unrealized_pnl_usd": 0.0,
+                "bybit_unrealized_pnl_usd": round(unrealized, 6),
+                "meme_win_rate": 0.0,
+                "bybit_win_rate": round(win_rate, 4),
+                "meme_closed_trades": 0,
+                "bybit_closed_trades": int(closed),
+                "meme_open_positions": 0,
+                "bybit_open_positions": int(len(open_positions)),
+                "total_equity_usd": round(equity, 6),
+                "total_pnl_usd": round(total_pnl, 6),
+                "realized_pnl_usd": round(realized, 6),
+                "unrealized_pnl_usd": round(unrealized, 6),
+                "win_rate": round(win_rate, 4),
+                "closed_trades": int(closed),
+                "bybit_quote_status": "fresh",
+                "bybit_quote_stale": False,
+                "bybit_quote_as_of_ts": int(quote_as_of_ts or day_end),
+                "bybit_quote_age_seconds": 0,
+                "bybit_quote_stale_after_seconds": 0,
+                "bybit_quote_symbols": sorted(open_positions.keys()),
+                "bybit_quote_stale_symbols": [],
+                "bybit_quote_guard_symbols": [],
+                "bybit_quote_realtime_sources": sorted({source for source in eod_price_sources.values() if source}),
+                "bybit_quote_fallback_sources": [],
+                "bybit_quote_sync_attempted_symbols": sorted(open_positions.keys()),
+                "bybit_quote_sync_synced_symbols": sorted(open_positions.keys()),
+                "bybit_quote_sync_missing_symbols": [],
+                "bybit_quote_sync_provider_summary": dict(provider_summary),
+                "bybit_quote_sync_reason": "daily_close_replay",
+                "bybit_quote_sync_at_ts": int(quote_as_of_ts or day_end),
+                "rebuild_source": "daily_close_replay",
+                "eod_price_sources": dict(eod_price_sources),
+                "replay_window": {"from": _day_key(start_day), "to": _day_key(end_day)},
+            }
+        )
+    return rows, skipped_days
+
+
+def _build_supabase_daily_rows(rows: list[dict[str, Any]], *, updated_ts: int) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    snapshot_iso = datetime.fromtimestamp(updated_ts, tz=UTC).isoformat()
+    for row in rows:
+        payload.append(
+            {
+                "day": str(row.get("date") or ""),
+                "market": "crypto",
+                "model_id": str(row.get("model_id") or ""),
+                "equity_usd": float(row.get("bybit_equity_usd") or 0.0),
+                "total_pnl_usd": float(row.get("bybit_total_pnl_usd") or 0.0),
+                "realized_pnl_usd": float(row.get("bybit_realized_pnl_usd") or 0.0),
+                "unrealized_pnl_usd": float(row.get("bybit_unrealized_pnl_usd") or 0.0),
+                "win_rate": float(row.get("bybit_win_rate") or 0.0),
+                "closed_trades": int(row.get("bybit_closed_trades") or 0),
+                "updated_at": snapshot_iso,
+                "source_json": {
+                    "snapshot_at": snapshot_iso,
+                    "rebuild_source": str(row.get("rebuild_source") or "daily_close_replay"),
+                    "eod_price_sources": dict(row.get("eod_price_sources") or {}),
+                    "quote_sync_missing_symbols": list(row.get("bybit_quote_sync_missing_symbols") or []),
+                    "quote_sync_provider_summary": dict(row.get("bybit_quote_sync_provider_summary") or {}),
+                    "replay_window": dict(row.get("replay_window") or {}),
+                    "quote_status": str(row.get("bybit_quote_status") or "fresh"),
+                    "quote_as_of": datetime.fromtimestamp(
+                        int(row.get("bybit_quote_as_of_ts") or updated_ts), tz=UTC
+                    ).isoformat(),
+                },
+            }
+        )
+    return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Rebuild crypto daily PnL rows from trade replay and daily closes.")
+    parser.add_argument("--from", dest="from_day", default="2026-03-28", help="UTC start day (YYYY-MM-DD)")
+    parser.add_argument("--to", dest="to_day", default=datetime.now(tz=UTC).strftime("%Y-%m-%d"), help="UTC end day (YYYY-MM-DD)")
+    parser.add_argument("--state-file", default="", help="Optional engine state JSON path")
+    parser.add_argument("--output-dir", default="", help="Optional daily report output directory")
+    parser.add_argument("--write-state", action="store_true", help="Write rebuilt daily_pnl into local state and engine_state blob")
+    parser.add_argument("--write-supabase", action="store_true", help="Upsert rebuilt rows into daily_model_pnl")
+    parser.add_argument("--write-docs", action="store_true", help="Rewrite docs/data/daily_pnl artifacts")
+    parser.add_argument("--dry-run", action="store_true", help="Preview only")
+    args = parser.parse_args()
+
+    _load_env_files()
+    settings = load_settings()
+    start_day = _parse_day(args.from_day)
+    end_day = _parse_day(args.to_day)
+    if end_day < start_day:
+        raise SystemExit("end_day_before_start_day")
+
+    client = _build_supabase_client()
+    state_path = Path(args.state_file).resolve() if str(args.state_file or "").strip() else Path(str(settings.state_file or "state.json")).resolve()
+    state_payload = _load_state_payload(state_path if state_path.exists() else None, client)
+    model_runs = dict(state_payload.get("model_runs") or {})
+    price_client = DailyPriceClient()
+
+    symbols: list[str] = []
+    for model_id in MODEL_IDS:
+        run = dict(model_runs.get(f"crypto_{model_id}") or {})
+        for tr in list(run.get("trades") or []):
+            symbol = _normalize_symbol((tr or {}).get("symbol"))
+            if symbol and symbol not in symbols and _is_crypto_trade(tr):
+                symbols.append(symbol)
+        for pos in list((run.get("bybit_positions") or {}).values()):
+            symbol = _normalize_symbol((pos or {}).get("symbol"))
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
+
+    price_map: dict[str, dict[str, dict[str, Any]]] = {}
+    for symbol in symbols:
+        price_map[symbol] = price_client.fetch_symbol_daily_series(symbol, start_day, end_day)
+
+    rebuilt_rows: list[dict[str, Any]] = []
+    skipped_days: list[dict[str, Any]] = []
+    seed_usdt = _safe_float(state_payload.get("demo_seed_usdt"), 10000.0)
+    for model_id in MODEL_IDS:
+        run = dict(model_runs.get(f"crypto_{model_id}") or {})
+        model_rows, model_skipped = _rebuild_model_rows(
+            model_id,
+            run,
+            start_day=start_day,
+            end_day=end_day,
+            seed_usdt=_safe_float(run.get("bybit_seed_usd"), seed_usdt) or seed_usdt,
+            price_map=price_map,
+        )
+        rebuilt_rows.extend(model_rows)
+        skipped_days.extend(model_skipped)
+
+    rebuilt_rows.sort(key=lambda row: (str(row.get("date") or ""), str(row.get("model_id") or "")))
+    updated_ts = int(time.time())
+
+    state_result: dict[str, Any] = {"ok": False, "updated_rows": 0}
+    if args.write_state and not args.dry_run:
+        existing_daily = [dict(row or {}) for row in list(state_payload.get("daily_pnl") or [])]
+        filtered_daily: list[dict[str, Any]] = []
+        for row in existing_daily:
+            parsed_day = _try_parse_day((row or {}).get("date"))
+            model_id = str((row or {}).get("model_id") or "").upper()
+            if parsed_day is not None and start_day <= parsed_day <= end_day and model_id in MODEL_IDS:
+                continue
+            filtered_daily.append(row)
+        filtered_daily.extend(rebuilt_rows)
+        filtered_daily.sort(key=lambda row: (str(row.get("date") or ""), str(row.get("model_id") or "")))
+        state_payload["daily_pnl"] = filtered_daily[-1200:]
+        _persist_json(state_path, state_payload)
+        state_result = {"ok": True, "updated_rows": len(rebuilt_rows), "state_file": str(state_path)}
+        if client.enabled:
+            blob_result = client.upsert_blob("engine_state", state_payload)
+            state_result["engine_state_blob"] = blob_result
+            state_result["ok"] = bool(state_result["ok"] and bool(blob_result.get("ok")))
+
+    supabase_result: dict[str, Any] = {"ok": False, "count": 0}
+    if args.write_supabase and not args.dry_run:
+        if not client.enabled:
+            raise RuntimeError("supabase_client_disabled")
+        supabase_rows = _build_supabase_daily_rows(rebuilt_rows, updated_ts=updated_ts)
+        supabase_result = client.upsert_rows("daily_model_pnl", supabase_rows, on_conflict="day,market,model_id")
+
+    docs_result: dict[str, Any] = {"ok": False, "files": 0}
+    if args.write_docs and not args.dry_run:
+        output_dir = Path(args.output_dir).resolve() if str(args.output_dir or "").strip() else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+        written_files: list[str] = []
+        for day_value in _iter_days(start_day, end_day):
+            day_rows = [dict(row) for row in rebuilt_rows if str(row.get("date") or "") == _day_key(day_value)]
+            if not day_rows:
+                continue
+            written_files.extend(write_daily_pnl_report(_day_key(day_value), day_rows, str(output_dir)))
+        docs_result = {"ok": True, "files": len(written_files), "output_dir": str(output_dir)}
+
+    summary = {
+        "ok": True,
+        "from": _day_key(start_day),
+        "to": _day_key(end_day),
+        "rows": len(rebuilt_rows),
+        "symbols": len(symbols),
+        "dry_run": bool(args.dry_run),
+        "skipped_days": skipped_days,
+        "write_state": state_result,
+        "write_supabase": supabase_result,
+        "write_docs": docs_result,
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

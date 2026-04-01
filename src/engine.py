@@ -592,6 +592,7 @@ class TradingEngine:
         self._telegram_thread_start_ts = 0
         self._last_telegram_report = 0
         self._runtime_error_notice: dict[str, dict[str, Any]] = {}
+        self._last_held_quote_sync: dict[str, Any] = {}
         self._last_state_backup_ts = 0
         self._last_persist_ts = 0
         self._last_trend_brief_emit_ts = 0
@@ -2308,6 +2309,44 @@ class TradingEngine:
                 synced_prices[symbol_u] = px
                 synced_meta[symbol_u] = dict((cg_meta or {}).get(symbol_u) or {})
 
+        missing = [symbol for symbol in requested if float(synced_prices.get(symbol) or 0.0) <= 0.0]
+        for symbol in list(missing):
+            rows: list[dict[str, Any]] = []
+            source_name = ""
+            try:
+                rows = self.macro.fetch_binance_1m_ohlc(
+                    symbol,
+                    limit=3,
+                    cache_seconds=15,
+                    binance_api_key=self.settings.binance_api_key,
+                )
+                if rows:
+                    source_name = "binance_1m_close"
+            except Exception:
+                rows = []
+            if not rows:
+                try:
+                    rows = self.macro.fetch_bybit_1m_ohlc(
+                        symbol,
+                        limit=3,
+                        cache_seconds=15,
+                    )
+                    if rows:
+                        source_name = "bybit_1m_close"
+                except Exception:
+                    rows = []
+            if not rows:
+                continue
+            last_row = dict(rows[-1] or {})
+            px = float(last_row.get("close") or 0.0)
+            if px <= 0.0:
+                continue
+            synced_prices[symbol] = px
+            synced_meta[symbol] = {
+                "realtime_source": str(source_name or "candle_close"),
+                "quote_as_of_ts": int(last_row.get("close_ts") or last_row.get("open_ts") or int(time.time())),
+            }
+
         applied_prices: dict[str, float] = {}
         applied_meta: dict[str, dict[str, Any]] = {}
         for symbol in requested:
@@ -2337,7 +2376,127 @@ class TradingEngine:
                 current = str(self.state.bybit_error or "")
                 if current.startswith("held_quote_sync_missing"):
                     self.state.bybit_error = ""
-        return {"prices": applied_prices, "meta": applied_meta, "missing": missing}
+        provider_summary: dict[str, int] = {}
+        symbol_sources: dict[str, str] = {}
+        for symbol, meta_row in applied_meta.items():
+            source_name = str((meta_row or {}).get("realtime_source") or "unknown").strip() or "unknown"
+            provider_summary[source_name] = int(provider_summary.get(source_name) or 0) + 1
+            symbol_sources[str(symbol or "").upper().strip()] = source_name
+        result = {
+            "prices": applied_prices,
+            "meta": applied_meta,
+            "requested_symbols": list(requested),
+            "synced_symbols": sorted(applied_prices.keys()),
+            "missing": missing,
+            "provider_summary": provider_summary,
+            "symbol_sources": symbol_sources,
+            "reason": str(reason or ""),
+            "attempted": bool(requested),
+            "at_ts": int(time.time()),
+        }
+        self._last_held_quote_sync = dict(result)
+        return result
+
+    def _held_quote_sync_meta(self, symbols: list[str] | tuple[str, ...] | set[str] | None = None) -> dict[str, Any]:
+        raw = dict(self._last_held_quote_sync or {})
+        requested = [str(symbol or "").upper().strip() for symbol in list(raw.get("requested_symbols") or []) if str(symbol or "").strip()]
+        synced = [str(symbol or "").upper().strip() for symbol in list(raw.get("synced_symbols") or []) if str(symbol or "").strip()]
+        missing = [str(symbol or "").upper().strip() for symbol in list(raw.get("missing") or []) if str(symbol or "").strip()]
+        symbol_sources = {
+            str(symbol or "").upper().strip(): str(source or "").strip()
+            for symbol, source in dict(raw.get("symbol_sources") or {}).items()
+            if str(symbol or "").strip()
+        }
+        if symbols is not None:
+            allowed = {
+                str(symbol or "").upper().strip()
+                for symbol in list(symbols or [])
+                if str(symbol or "").strip()
+            }
+            requested = [symbol for symbol in requested if symbol in allowed]
+            synced = [symbol for symbol in synced if symbol in allowed]
+            missing = [symbol for symbol in missing if symbol in allowed]
+            symbol_sources = {symbol: source for symbol, source in symbol_sources.items() if symbol in allowed}
+        provider_summary: dict[str, int] = {}
+        for source_name in symbol_sources.values():
+            name = str(source_name or "unknown").strip() or "unknown"
+            provider_summary[name] = int(provider_summary.get(name) or 0) + 1
+        return {
+            "attempted": bool(raw.get("attempted")) and bool(requested or synced or missing),
+            "requested_symbols": requested,
+            "synced_symbols": synced,
+            "missing_symbols": missing,
+            "provider_summary": provider_summary,
+            "reason": str(raw.get("reason") or ""),
+            "at_ts": int(raw.get("at_ts") or 0),
+        }
+
+    def _snapshot_open_crypto_positions(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        snapshot: dict[str, dict[str, Any]] = {}
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            for pos in list((run.get("bybit_positions") or {}).values()):
+                symbol = str((pos or {}).get("symbol") or "").upper().strip()
+                opened_at = int((pos or {}).get("opened_at") or 0)
+                if not symbol:
+                    continue
+                key = f"{model_id}:{symbol}:{opened_at}"
+                snapshot[key] = {
+                    "model_id": model_id,
+                    "symbol": symbol,
+                    "opened_at": opened_at,
+                    "side": str((pos or {}).get("side") or "long"),
+                }
+        return snapshot
+
+    def _force_revalue_open_crypto_positions(self, now_ts: int, reason: str = "manual_force_sync") -> dict[str, Any]:
+        if not bool(self.settings.demo_enable_macro):
+            return {"synced_symbols": [], "missing_symbols": [], "closed_positions": [], "updated_daily_rows": 0}
+        held_symbols = self._open_crypto_position_symbols()
+        prices = self._fetch_macro_demo_prices({}) if held_symbols else {}
+        sync_result = self._force_sync_crypto_exit_quotes(held_symbols, prices=prices, reason=reason)
+        candle_symbols = sorted(set(list(prices.keys()) + list(held_symbols or [])))
+        candles = self._fetch_crypto_intrabar_candles(candle_symbols) if candle_symbols else {}
+        before_positions = self._snapshot_open_crypto_positions()
+        for model_id in CRYPTO_MODEL_IDS:
+            with self._lock:
+                run = self.state.model_runs.get(self._market_run_key("crypto", model_id))
+                if not isinstance(run, dict):
+                    run = self._blank_market_run("crypto", model_id, self.state.demo_seed_usdt)
+                    self.state.model_runs[self._market_run_key("crypto", model_id)] = run
+                self._normalize_market_run(run, "crypto", model_id, self.state.demo_seed_usdt)
+            self._process_crypto_intrabar_window(model_id, run, prices, candles, now_ts)
+            self._evaluate_model_bybit_exits(model_id, run, prices)
+        after_positions = self._snapshot_open_crypto_positions()
+        closed_positions = [
+            dict(before_positions[key])
+            for key in sorted(before_positions.keys())
+            if key not in after_positions
+        ]
+        self._record_daily_pnl(now_ts)
+        self._sync_primary_views_from_model_a()
+        self._sync_supabase_snapshot(now_ts)
+        self._scan_and_notify_runtime_errors()
+        self._persist(force=True)
+        current_day = datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        with self._lock:
+            updated_daily_rows = len(
+                [
+                    row
+                    for row in list(self.state.daily_pnl or [])
+                    if str((row or {}).get("date") or "") == current_day and str((row or {}).get("model_id") or "").upper() in CRYPTO_MODEL_IDS
+                ]
+            )
+        return {
+            "synced_symbols": list(sync_result.get("synced_symbols") or []),
+            "missing_symbols": list(sync_result.get("missing") or []),
+            "closed_positions": closed_positions,
+            "updated_daily_rows": int(updated_daily_rows),
+            "provider_summary": dict(sync_result.get("provider_summary") or {}),
+            "requested_symbols": list(sync_result.get("requested_symbols") or []),
+        }
 
     def _priority_crypto_symbols(self) -> tuple[str, ...]:
         configured: list[str] = []
@@ -2405,6 +2564,7 @@ class TradingEngine:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, raw))
 
     def _build_supabase_heartbeat_row(self, now_ts: int) -> dict[str, Any]:
+        held_sync = self._held_quote_sync_meta()
         return {
             "engine_name": "ai_auto_core",
             "market": "crypto",
@@ -2420,6 +2580,13 @@ class TradingEngine:
                 "demo_enable_macro": bool(self.settings.demo_enable_macro),
                 "configured_symbols": list(self._configured_crypto_symbols()),
                 "crypto_universe_mode": str(self._crypto_universe_mode()),
+                "held_quote_sync_attempted": bool(held_sync.get("attempted")),
+                "held_quote_sync_requested": list(held_sync.get("requested_symbols") or []),
+                "held_quote_sync_synced": list(held_sync.get("synced_symbols") or []),
+                "held_quote_sync_missing": list(held_sync.get("missing_symbols") or []),
+                "held_quote_provider_summary": dict(held_sync.get("provider_summary") or {}),
+                "held_quote_sync_reason": str(held_sync.get("reason") or ""),
+                "held_quote_sync_at": self._iso_datetime(held_sync.get("at_ts")),
             },
         }
 
@@ -2715,6 +2882,15 @@ class TradingEngine:
                         "quote_guard_symbols": list((row or {}).get("bybit_quote_guard_symbols") or []),
                         "realtime_sources": list((row or {}).get("bybit_quote_realtime_sources") or []),
                         "fallback_sources": list((row or {}).get("bybit_quote_fallback_sources") or []),
+                        "quote_sync_attempted_symbols": list((row or {}).get("bybit_quote_sync_attempted_symbols") or []),
+                        "quote_sync_synced_symbols": list((row or {}).get("bybit_quote_sync_synced_symbols") or []),
+                        "quote_sync_missing_symbols": list((row or {}).get("bybit_quote_sync_missing_symbols") or []),
+                        "quote_sync_provider_summary": dict((row or {}).get("bybit_quote_sync_provider_summary") or {}),
+                        "quote_sync_reason": str((row or {}).get("bybit_quote_sync_reason") or ""),
+                        "quote_sync_at": self._iso_datetime((row or {}).get("bybit_quote_sync_at_ts")),
+                        "rebuild_source": str((row or {}).get("rebuild_source") or ""),
+                        "eod_price_sources": dict((row or {}).get("eod_price_sources") or {}),
+                        "replay_window": dict((row or {}).get("replay_window") or {}),
                     },
                 }
             )
@@ -3968,12 +4144,12 @@ class TradingEngine:
             )
         return self.secret_settings_payload()
 
-    def force_sync(self) -> None:
+    def force_sync(self) -> dict[str, Any]:
         now = int(time.time())
         self._sync_wallet(now, force=True)
         self._sync_bybit(now, force=True)
         self._sync_live_wallet_managed_positions(now)
-        self._persist(force=True)
+        return self._force_revalue_open_crypto_positions(now, reason="manual_force_sync")
 
     def close_all_memecoin_positions(self, reason: str = "manual_close_all") -> dict[str, Any]:
         summary: dict[str, dict[str, int]] = {}
@@ -12279,6 +12455,15 @@ class TradingEngine:
                 )
             except Exception:
                 rows = []
+            if not rows:
+                try:
+                    rows = self.macro.fetch_bybit_1m_ohlc(
+                        symbol,
+                        limit=lookback,
+                        cache_seconds=cache_seconds,
+                    )
+                except Exception:
+                    rows = []
             if rows:
                 out[symbol] = [dict(row) for row in rows]
         return out
@@ -13350,6 +13535,7 @@ class TradingEngine:
             meme_m = self._model_metrics_market(model_id, meme_run, "meme")
             crypto_m = self._model_metrics_market(model_id, crypto_run, "crypto")
             crypto_quote_health = self._crypto_run_quote_health(crypto_run, now_ts)
+            crypto_quote_sync = self._held_quote_sync_meta(crypto_quote_health.get("symbols") or [])
             row = {
                 "date": day_key,
                 "model_id": model_id,
@@ -13383,6 +13569,12 @@ class TradingEngine:
                 "bybit_quote_guard_symbols": list(crypto_quote_health.get("guard_symbols") or []),
                 "bybit_quote_realtime_sources": list(crypto_quote_health.get("realtime_sources") or []),
                 "bybit_quote_fallback_sources": list(crypto_quote_health.get("fallback_sources") or []),
+                "bybit_quote_sync_attempted_symbols": list(crypto_quote_sync.get("requested_symbols") or []),
+                "bybit_quote_sync_synced_symbols": list(crypto_quote_sync.get("synced_symbols") or []),
+                "bybit_quote_sync_missing_symbols": list(crypto_quote_sync.get("missing_symbols") or []),
+                "bybit_quote_sync_provider_summary": dict(crypto_quote_sync.get("provider_summary") or {}),
+                "bybit_quote_sync_reason": str(crypto_quote_sync.get("reason") or ""),
+                "bybit_quote_sync_at_ts": int(crypto_quote_sync.get("at_ts") or 0),
             }
             idx = None
             for i in range(len(table) - 1, -1, -1):
@@ -13390,6 +13582,8 @@ class TradingEngine:
                 if str(old.get("date")) == day_key and str(old.get("model_id")) == model_id:
                     idx = i
                     break
+            if bool(crypto_quote_health.get("quote_stale")) and int(crypto_m["open_positions"]) > 0:
+                continue
             if idx is None:
                 table.append(row)
             else:
@@ -13410,7 +13604,7 @@ class TradingEngine:
                 for row in list(self.state.daily_pnl or [])
                 if str((row or {}).get("date") or "") == previous_day
             ]
-        if not rows:
+        if not rows or len([row for row in rows if str((row or {}).get("model_id") or "").upper() in CRYPTO_MODEL_IDS]) < len(CRYPTO_MODEL_IDS):
             return
         output_dir = self._repo_root / str(self.settings.git_daily_reports_path or "reports/daily_pnl")
         written_files = write_daily_pnl_report(previous_day, rows, str(output_dir))

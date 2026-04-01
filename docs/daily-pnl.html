@@ -159,7 +159,7 @@
         <h1>모델별 일자 누적 손익 (A/B/C/D)</h1>
         <p>
           GitHub Actions에서 적재된 일자별 누적 PnL을 GitHub Pages에서 바로 확인합니다.
-          기본은 <code>summary_4col.json</code>이며, 없으면 CSV/기존 summary/Supabase 순서로 자동 대체합니다.
+          기본은 Supabase 실시간 집계이며, 정적 <code>summary_4col.json</code>은 fallback으로만 사용합니다.
         </p>
         <div class="archive-links">
           <a href="./">GitHub Pages 홈</a>
@@ -371,15 +371,15 @@
         try {
           let rows;
           try {
-            rows = await loadFromSummary4ColJson();
+            rows = await loadFromSupabase();
           } catch (err1) {
             try {
-              rows = await loadFromSummary4ColCsv();
+              rows = await loadFromSummary4ColJson();
             } catch (err2) {
               try {
-                rows = await loadFromSummaryLegacy();
+                rows = await loadFromSummary4ColCsv();
               } catch (err3) {
-                rows = await loadFromSupabase();
+                rows = await loadFromSummaryLegacy();
               }
             }
           }

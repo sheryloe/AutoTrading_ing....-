@@ -371,8 +371,8 @@ def api_adjust_live_performance_flow() -> Any:
 @app.post("/api/control/force-sync")
 @require_admin_token
 def api_force_sync() -> Any:
-    engine.force_sync()
-    return jsonify({"ok": True})
+    result = engine.force_sync()
+    return jsonify({"ok": True, "result": result})
 
 
 @app.post("/api/control/close-meme")
