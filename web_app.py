@@ -375,6 +375,32 @@ def api_force_sync() -> Any:
     return jsonify({"ok": True, "result": result})
 
 
+@app.post("/api/control/test-drawdown-trigger")
+@require_admin_token
+def api_test_drawdown_trigger() -> Any:
+    data = request.get_json(silent=True) or {}
+    model_id = str(data.get("model_id") or "D").strip().upper()
+    raw_target = data.get("target_equity_usd", 4500)
+    raw_apply_note = data.get("apply_note", True)
+    try:
+        target_equity_usd = float(raw_target)
+    except Exception:
+        return jsonify({"ok": False, "error": "target_equity_usd must be a number"}), 400
+    if isinstance(raw_apply_note, bool):
+        apply_note = raw_apply_note
+    else:
+        apply_note = str(raw_apply_note).strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        result = engine.test_drawdown_trigger(
+            model_id=model_id,
+            target_equity_usd=target_equity_usd,
+            apply_note=apply_note,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, **result})
+
+
 @app.post("/api/control/close-meme")
 @require_admin_token
 def api_close_meme() -> Any:

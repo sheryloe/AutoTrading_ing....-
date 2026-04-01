@@ -256,7 +256,7 @@
           const restartNote = String(
             sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
           ).trim();
-          if (restartNote) {
+          if (restartNote && modelId === "D") {
             entry[`${modelId}_note`] = restartNote;
           }
           bucket.set(day, entry);
@@ -372,17 +372,11 @@
             (row) => `
               <tr>
                 <td>${row.date || "-"}</td>
-                <td class="${toneClass(row.A)}">${formatMoney(row.A)}${
-                  row.A_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.A_note)}</div>` : ""
-                }</td>
-                <td class="${toneClass(row.B)}">${formatMoney(row.B)}${
-                  row.B_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.B_note)}</div>` : ""
-                }</td>
-                <td class="${toneClass(row.C)}">${formatMoney(row.C)}${
-                  row.C_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.C_note)}</div>` : ""
-                }</td>
+                <td class="${toneClass(row.A)}">${formatMoney(row.A)}</td>
+                <td class="${toneClass(row.B)}">${formatMoney(row.B)}</td>
+                <td class="${toneClass(row.C)}">${formatMoney(row.C)}</td>
                 <td class="${toneClass(row.D)}">${formatMoney(row.D)}${
-                  row.D_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.D_note)}</div>` : ""
+                  row.D_note ? `(${escapeHtml(row.D_note)})` : ""
                 }</td>
               </tr>
             `

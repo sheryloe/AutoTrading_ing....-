@@ -148,7 +148,7 @@ STATE_PERSIST_MIN_INTERVAL_SECONDS = 12
 LOSS_GUARD_DRAWDOWN_RATIO = 0.50
 LOSS_GUARD_RESTART_COOLDOWN_SECONDS = 6 * 60 * 60
 LOSS_GUARD_REBUILD_SEED_USD = 10_000.0
-LOSS_GUARD_REBUILD_NOTE_KO = "모델 튜닝해서 재시작"
+LOSS_GUARD_REBUILD_NOTE_KO = "4월 1일자로 초기화및 재 튜닝 진행"
 LIVE_MEME_CLOSE_ALERT_STREAK = 3
 LIVE_MEME_CLOSE_ALERT_COOLDOWN_SECONDS = 300
 LIVE_ACCOUNTING_SCHEMA_VERSION = 5
@@ -6870,6 +6870,7 @@ class TradingEngine:
                 )
 
             table = list(self.state.daily_pnl or [])
+            note_model_id = "D"
             for row in restarted:
                 model_id = str(row["model_id"])
                 idx = None
@@ -6883,29 +6884,35 @@ class TradingEngine:
                 meme_total_pnl = float(base.get("meme_total_pnl_usd") or 0.0)
                 meme_realized = float(base.get("meme_realized_pnl_usd") or 0.0)
                 meme_unrealized = float(base.get("meme_unrealized_pnl_usd") or 0.0)
-                rebuilt_row = {
+                bybit_total_pnl = float(base.get("bybit_total_pnl_usd") or 0.0)
+                bybit_realized = float(base.get("bybit_realized_pnl_usd") or 0.0)
+                bybit_unrealized = float(base.get("bybit_unrealized_pnl_usd") or 0.0)
+                bybit_equity = float(base.get("bybit_equity_usd") or (seed_usd + bybit_total_pnl))
+                rebuilt_row = dict(base)
+                rebuilt_row.update(
+                    {
                     "date": day_key,
                     "model_id": model_id,
                     "meme_equity_usd": float(meme_equity),
-                    "bybit_equity_usd": float(seed_usd),
+                    "bybit_equity_usd": float(bybit_equity),
                     "meme_total_pnl_usd": float(meme_total_pnl),
-                    "bybit_total_pnl_usd": 0.0,
+                    "bybit_total_pnl_usd": float(bybit_total_pnl),
                     "meme_realized_pnl_usd": float(meme_realized),
-                    "bybit_realized_pnl_usd": 0.0,
+                    "bybit_realized_pnl_usd": float(bybit_realized),
                     "meme_unrealized_pnl_usd": float(meme_unrealized),
-                    "bybit_unrealized_pnl_usd": 0.0,
+                    "bybit_unrealized_pnl_usd": float(bybit_unrealized),
                     "meme_win_rate": float(base.get("meme_win_rate") or 0.0),
-                    "bybit_win_rate": 0.0,
+                    "bybit_win_rate": float(base.get("bybit_win_rate") or 0.0),
                     "meme_closed_trades": int(base.get("meme_closed_trades") or 0),
-                    "bybit_closed_trades": 0,
+                    "bybit_closed_trades": int(base.get("bybit_closed_trades") or 0),
                     "meme_open_positions": int(base.get("meme_open_positions") or 0),
-                    "bybit_open_positions": 0,
-                    "total_equity_usd": float(meme_equity + seed_usd),
-                    "total_pnl_usd": float(meme_total_pnl),
-                    "realized_pnl_usd": float(meme_realized),
-                    "unrealized_pnl_usd": float(meme_unrealized),
-                    "win_rate": float(base.get("meme_win_rate") or 0.0),
-                    "closed_trades": int(base.get("meme_closed_trades") or 0),
+                    "bybit_open_positions": int(base.get("bybit_open_positions") or 0),
+                    "total_equity_usd": float(meme_equity + bybit_equity),
+                    "total_pnl_usd": float(meme_total_pnl + bybit_total_pnl),
+                    "realized_pnl_usd": float(meme_realized + bybit_realized),
+                    "unrealized_pnl_usd": float(meme_unrealized + bybit_unrealized),
+                    "win_rate": float(base.get("win_rate") or 0.0),
+                    "closed_trades": int(base.get("closed_trades") or 0),
                     "bybit_quote_status": "drawdown_rebuild_reset",
                     "bybit_quote_stale": False,
                     "bybit_quote_as_of_ts": int(now),
@@ -6923,11 +6930,15 @@ class TradingEngine:
                     "bybit_quote_sync_reason": "drawdown_50pct_rebuild_restart",
                     "bybit_quote_sync_at_ts": int(now),
                     "rebuild_source": "drawdown_50pct_rebuild_restart",
-                    "bybit_rebuild_restart_note_ko": note_ko,
                     "bybit_rebuild_restart_variant_id": str(row["variant_id"]),
                     "bybit_rebuild_restart_seed_usd": float(seed_usd),
                     "bybit_rebuild_restart_ts": int(now),
-                }
+                    }
+                )
+                if model_id == note_model_id:
+                    rebuilt_row["bybit_rebuild_restart_note_ko"] = note_ko
+                else:
+                    rebuilt_row.pop("bybit_rebuild_restart_note_ko", None)
                 if idx is None:
                     table.append(rebuilt_row)
                 else:
@@ -7014,6 +7025,87 @@ class TradingEngine:
             send_telegram=True,
         )
         self._request_async_restart("loss_guard_drawdown_50pct")
+
+    def test_drawdown_trigger(
+        self,
+        model_id: str = "D",
+        target_equity_usd: float = 4500.0,
+        apply_note: bool = True,
+    ) -> dict[str, Any]:
+        model = str(model_id or "D").strip().upper()
+        if model not in CRYPTO_MODEL_IDS:
+            raise ValueError(f"model_id must be one of {','.join(CRYPTO_MODEL_IDS)}")
+        try:
+            target_equity = float(target_equity_usd)
+        except Exception as exc:
+            raise ValueError("target_equity_usd must be numeric") from exc
+        if target_equity <= 0.0:
+            raise ValueError("target_equity_usd must be > 0")
+
+        now_ts = int(time.time())
+        day_key = datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+            key = self._market_run_key("crypto", model)
+            run = dict(runs.get(key) or self._blank_market_run("crypto", model, LOSS_GUARD_REBUILD_SEED_USD))
+            seed_usd = float(LOSS_GUARD_REBUILD_SEED_USD)
+            clamped_equity = min(max(target_equity, 1.0), max(1.0, seed_usd - 1.0))
+            run["bybit_seed_usd"] = float(seed_usd)
+            run["bybit_cash_usd"] = float(clamped_equity)
+            run["bybit_positions"] = {}
+            run["trades"] = []
+            runs[key] = run
+            guard_state = dict(runs.get("_system_guard_state") or {})
+            guard_state["last_trigger_ts"] = 0
+            runs["_system_guard_state"] = guard_state
+            self.state.model_runs = runs
+
+        self._record_daily_pnl(now_ts)
+        self._maybe_drawdown_guard_restart(now_ts)
+
+        with self._lock:
+            table = list(self.state.daily_pnl or [])
+            if not bool(apply_note):
+                for i in range(len(table) - 1, -1, -1):
+                    row = dict(table[i] or {})
+                    if str(row.get("date") or "") != day_key:
+                        continue
+                    if str(row.get("model_id") or "").upper() != "D":
+                        continue
+                    row.pop("bybit_rebuild_restart_note_ko", None)
+                    table[i] = row
+                    break
+                self.state.daily_pnl = table[-1200:]
+            guard_state = dict((self.state.model_runs or {}).get("_system_guard_state") or {})
+            day_row = next(
+                (
+                    dict(row or {})
+                    for row in reversed(table)
+                    if str((row or {}).get("date") or "") == day_key and str((row or {}).get("model_id") or "").upper() == "D"
+                ),
+                {},
+            )
+        self._sync_primary_views_from_model_a()
+        self._sync_supabase_snapshot(now_ts)
+        self._persist(force=True)
+
+        reset_models = list(guard_state.get("last_reset_models") or [])
+        d_variant = ""
+        for item in reset_models:
+            if str((item or {}).get("model_id") or "").upper() == "D":
+                d_variant = str((item or {}).get("variant_id") or "")
+                break
+
+        return {
+            "triggered": str(guard_state.get("last_action") or "") == "full_seed_reset_rebuild",
+            "trigger_day_utc": str(guard_state.get("last_reset_day") or day_key),
+            "reset_models": [dict(item) for item in reset_models],
+            "model_d_cell_value_preserved": float(day_row.get("bybit_total_pnl_usd") or 0.0),
+            "model_d_variant_id": d_variant,
+            "target_model_id": model,
+            "target_equity_usd": float(target_equity),
+        }
 
     def _send_telegram_periodic_report(self, now: int) -> None:
         if not self.alert_manager.enabled:
@@ -13864,8 +13956,26 @@ class TradingEngine:
                     "bybit_rebuild_restart_ts",
                 ):
                     value = previous.get(key)
-                    if value not in {None, "", [], {}}:
+                    if value is not None and value != "" and value != [] and value != {}:
                         row[key] = value
+            if str(previous.get("rebuild_source") or "") == "drawdown_50pct_rebuild_restart":
+                for key in (
+                    "bybit_equity_usd",
+                    "bybit_total_pnl_usd",
+                    "bybit_realized_pnl_usd",
+                    "bybit_unrealized_pnl_usd",
+                    "bybit_win_rate",
+                    "bybit_closed_trades",
+                    "bybit_open_positions",
+                    "total_equity_usd",
+                    "total_pnl_usd",
+                    "realized_pnl_usd",
+                    "unrealized_pnl_usd",
+                    "win_rate",
+                    "closed_trades",
+                ):
+                    if key in previous:
+                        row[key] = previous.get(key)
             if idx is None:
                 table.append(row)
             else:

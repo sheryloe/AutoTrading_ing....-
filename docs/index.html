@@ -368,7 +368,7 @@
                 const restartNote = String(
                     sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
                 ).trim();
-                if (restartNote) {
+                if (restartNote && modelId === "D") {
                     entry[`${modelId}_note`] = restartNote;
                 }
                 byDay.set(day, entry);
@@ -394,10 +394,11 @@
                         const value = Number(entry[modelId] || 0);
                         const cls = value >= 0 ? "pnl-plus" : "pnl-minus";
                         const note = String(entry[`${modelId}_note`] || "").trim();
-                        const noteHtml = note
-                            ? `<div class="text-[10px] text-amber-300 mt-1">${escapeHtml(note)}</div>`
-                            : "";
-                        return `<td class="px-3 py-2 font-mono ${cls}">${formatSignedUsd(value)}${noteHtml}</td>`;
+                        const text =
+                            modelId === "D" && note
+                                ? `${formatSignedUsd(value)}(${escapeHtml(note)})`
+                                : formatSignedUsd(value);
+                        return `<td class="px-3 py-2 font-mono ${cls}">${text}</td>`;
                     }).join("");
                     return `<tr class="${rowClass}">${dayCell}${modelCells}</tr>`;
                 })

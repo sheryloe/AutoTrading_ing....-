@@ -13,7 +13,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "21.496021",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-16",
@@ -29,7 +33,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "1575.890703",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-16",
@@ -45,7 +53,11 @@
     "realized_pnl_usd": "7645.164583",
     "unrealized_pnl_usd": "3810.605324",
     "win_rate": "72.7273",
-    "closed_trades": "11"
+    "closed_trades": "11",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-16",
@@ -61,7 +73,11 @@
     "realized_pnl_usd": "-1884.755317",
     "unrealized_pnl_usd": "151.651494",
     "win_rate": "0.0",
-    "closed_trades": "11"
+    "closed_trades": "11",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-17",
@@ -77,7 +93,11 @@
     "realized_pnl_usd": "264.067692",
     "unrealized_pnl_usd": "23.801307",
     "win_rate": "44.8276",
-    "closed_trades": "29"
+    "closed_trades": "29",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-17",
@@ -93,7 +113,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "717.613577",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-17",
@@ -109,7 +133,11 @@
     "realized_pnl_usd": "5926.569296",
     "unrealized_pnl_usd": "1560.988153",
     "win_rate": "47.8261",
-    "closed_trades": "23"
+    "closed_trades": "23",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-17",
@@ -125,7 +153,11 @@
     "realized_pnl_usd": "-1570.42041",
     "unrealized_pnl_usd": "357.243541",
     "win_rate": "31.3725",
-    "closed_trades": "51"
+    "closed_trades": "51",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-18",
@@ -141,7 +173,11 @@
     "realized_pnl_usd": "-968.101367",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "23.4375",
-    "closed_trades": "64"
+    "closed_trades": "64",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-18",
@@ -157,7 +193,11 @@
     "realized_pnl_usd": "-1421.862098",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-18",
@@ -173,7 +213,11 @@
     "realized_pnl_usd": "6643.98016",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "38.2353",
-    "closed_trades": "34"
+    "closed_trades": "34",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-18",
@@ -189,7 +233,11 @@
     "realized_pnl_usd": "56.995256",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "41.1765",
-    "closed_trades": "68"
+    "closed_trades": "68",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-19",
@@ -205,7 +253,11 @@
     "realized_pnl_usd": "-1214.231627",
     "unrealized_pnl_usd": "466.037358",
     "win_rate": "0.0",
-    "closed_trades": "21"
+    "closed_trades": "21",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-19",
@@ -221,7 +273,11 @@
     "realized_pnl_usd": "-2095.2209",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "5"
+    "closed_trades": "5",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-19",
@@ -237,7 +293,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "1240.578261",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-19",
@@ -253,7 +313,11 @@
     "realized_pnl_usd": "2515.609184",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "50.0",
-    "closed_trades": "12"
+    "closed_trades": "12",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-20",
@@ -269,7 +333,11 @@
     "realized_pnl_usd": "-581.03614",
     "unrealized_pnl_usd": "158.11282",
     "win_rate": "21.7391",
-    "closed_trades": "23"
+    "closed_trades": "23",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-20",
@@ -285,7 +353,11 @@
     "realized_pnl_usd": "1006.991673",
     "unrealized_pnl_usd": "554.296184",
     "win_rate": "42.8571",
-    "closed_trades": "21"
+    "closed_trades": "21",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-20",
@@ -301,7 +373,11 @@
     "realized_pnl_usd": "-1522.049359",
     "unrealized_pnl_usd": "1055.41665",
     "win_rate": "0.0",
-    "closed_trades": "6"
+    "closed_trades": "6",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-20",
@@ -317,7 +393,11 @@
     "realized_pnl_usd": "-157.359634",
     "unrealized_pnl_usd": "59.859358",
     "win_rate": "34.6154",
-    "closed_trades": "26"
+    "closed_trades": "26",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-21",
@@ -333,7 +413,11 @@
     "realized_pnl_usd": "678.429215",
     "unrealized_pnl_usd": "10.13777",
     "win_rate": "30.9524",
-    "closed_trades": "42"
+    "closed_trades": "42",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-21",
@@ -349,7 +433,11 @@
     "realized_pnl_usd": "847.290334",
     "unrealized_pnl_usd": "17.557256",
     "win_rate": "41.4634",
-    "closed_trades": "41"
+    "closed_trades": "41",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-21",
@@ -365,7 +453,11 @@
     "realized_pnl_usd": "-3421.306647",
     "unrealized_pnl_usd": "237.164137",
     "win_rate": "16.6667",
-    "closed_trades": "18"
+    "closed_trades": "18",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-21",
@@ -381,7 +473,11 @@
     "realized_pnl_usd": "1349.917539",
     "unrealized_pnl_usd": "54.682955",
     "win_rate": "40.3226",
-    "closed_trades": "62"
+    "closed_trades": "62",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-22",
@@ -397,7 +493,11 @@
     "realized_pnl_usd": "-495.78239",
     "unrealized_pnl_usd": "142.306738",
     "win_rate": "10.0",
-    "closed_trades": "30"
+    "closed_trades": "30",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-22",
@@ -413,7 +513,11 @@
     "realized_pnl_usd": "-128.170669",
     "unrealized_pnl_usd": "323.796058",
     "win_rate": "25.0",
-    "closed_trades": "8"
+    "closed_trades": "8",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-22",
@@ -429,7 +533,11 @@
     "realized_pnl_usd": "-994.808843",
     "unrealized_pnl_usd": "1063.765956",
     "win_rate": "0.0",
-    "closed_trades": "1"
+    "closed_trades": "1",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-22",
@@ -445,7 +553,11 @@
     "realized_pnl_usd": "-311.321062",
     "unrealized_pnl_usd": "-15.433288",
     "win_rate": "23.0769",
-    "closed_trades": "13"
+    "closed_trades": "13",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-23",
@@ -461,7 +573,11 @@
     "realized_pnl_usd": "-495.78239",
     "unrealized_pnl_usd": "142.306738",
     "win_rate": "10.0",
-    "closed_trades": "30"
+    "closed_trades": "30",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-23",
@@ -477,7 +593,11 @@
     "realized_pnl_usd": "-128.170669",
     "unrealized_pnl_usd": "323.796058",
     "win_rate": "25.0",
-    "closed_trades": "8"
+    "closed_trades": "8",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-23",
@@ -493,7 +613,11 @@
     "realized_pnl_usd": "-994.808843",
     "unrealized_pnl_usd": "1063.765956",
     "win_rate": "0.0",
-    "closed_trades": "1"
+    "closed_trades": "1",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-23",
@@ -509,7 +633,11 @@
     "realized_pnl_usd": "-311.321062",
     "unrealized_pnl_usd": "-15.433288",
     "win_rate": "23.0769",
-    "closed_trades": "13"
+    "closed_trades": "13",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-24",
@@ -525,7 +653,11 @@
     "realized_pnl_usd": "-495.78239",
     "unrealized_pnl_usd": "142.306738",
     "win_rate": "10.0",
-    "closed_trades": "30"
+    "closed_trades": "30",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-24",
@@ -541,7 +673,11 @@
     "realized_pnl_usd": "-128.170669",
     "unrealized_pnl_usd": "323.796058",
     "win_rate": "25.0",
-    "closed_trades": "8"
+    "closed_trades": "8",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-24",
@@ -557,7 +693,11 @@
     "realized_pnl_usd": "-994.808843",
     "unrealized_pnl_usd": "1063.765956",
     "win_rate": "0.0",
-    "closed_trades": "1"
+    "closed_trades": "1",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-24",
@@ -573,7 +713,11 @@
     "realized_pnl_usd": "-311.321062",
     "unrealized_pnl_usd": "-15.433288",
     "win_rate": "23.0769",
-    "closed_trades": "13"
+    "closed_trades": "13",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-25",
@@ -589,7 +733,11 @@
     "realized_pnl_usd": "-495.78239",
     "unrealized_pnl_usd": "142.306738",
     "win_rate": "10.0",
-    "closed_trades": "30"
+    "closed_trades": "30",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-25",
@@ -605,7 +753,11 @@
     "realized_pnl_usd": "-128.170669",
     "unrealized_pnl_usd": "323.796058",
     "win_rate": "25.0",
-    "closed_trades": "8"
+    "closed_trades": "8",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-25",
@@ -621,7 +773,11 @@
     "realized_pnl_usd": "-994.808843",
     "unrealized_pnl_usd": "1063.765956",
     "win_rate": "0.0",
-    "closed_trades": "1"
+    "closed_trades": "1",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-25",
@@ -637,7 +793,11 @@
     "realized_pnl_usd": "-311.321062",
     "unrealized_pnl_usd": "-15.433288",
     "win_rate": "23.0769",
-    "closed_trades": "13"
+    "closed_trades": "13",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-26",
@@ -653,7 +813,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-26",
@@ -669,7 +833,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-26",
@@ -685,7 +853,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-26",
@@ -701,7 +873,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-27",
@@ -717,7 +893,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-27",
@@ -733,7 +913,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-27",
@@ -749,7 +933,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-27",
@@ -765,7 +953,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "0.0",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-28",
@@ -781,7 +973,11 @@
     "realized_pnl_usd": "-454.062905",
     "unrealized_pnl_usd": "305.484672",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-28",
@@ -797,7 +993,11 @@
     "realized_pnl_usd": "-163.761417",
     "unrealized_pnl_usd": "1734.021151",
     "win_rate": "0.0",
-    "closed_trades": "2"
+    "closed_trades": "2",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-28",
@@ -813,7 +1013,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "2856.003337",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-28",
@@ -829,7 +1033,11 @@
     "realized_pnl_usd": "-481.708334",
     "unrealized_pnl_usd": "654.1746",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-29",
@@ -845,7 +1053,11 @@
     "realized_pnl_usd": "-454.062905",
     "unrealized_pnl_usd": "3715.786821",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-29",
@@ -861,7 +1073,11 @@
     "realized_pnl_usd": "-163.761417",
     "unrealized_pnl_usd": "-2712.781075",
     "win_rate": "0.0",
-    "closed_trades": "2"
+    "closed_trades": "2",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-29",
@@ -877,7 +1093,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "-2442.244644",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-29",
@@ -893,7 +1113,11 @@
     "realized_pnl_usd": "-481.708334",
     "unrealized_pnl_usd": "2593.308517",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-30",
@@ -909,7 +1133,11 @@
     "realized_pnl_usd": "-454.062905",
     "unrealized_pnl_usd": "-2323.797285",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-30",
@@ -925,7 +1153,11 @@
     "realized_pnl_usd": "-163.761417",
     "unrealized_pnl_usd": "8185.600169",
     "win_rate": "0.0",
-    "closed_trades": "2"
+    "closed_trades": "2",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-30",
@@ -941,7 +1173,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "1113.363569",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-30",
@@ -957,7 +1193,11 @@
     "realized_pnl_usd": "-481.708334",
     "unrealized_pnl_usd": "-2189.16271",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-31",
@@ -973,7 +1213,11 @@
     "realized_pnl_usd": "-454.062905",
     "unrealized_pnl_usd": "-1807.913418",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-31",
@@ -989,7 +1233,11 @@
     "realized_pnl_usd": "-163.761417",
     "unrealized_pnl_usd": "18152.993813",
     "win_rate": "0.0",
-    "closed_trades": "2"
+    "closed_trades": "2",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-31",
@@ -1005,7 +1253,11 @@
     "realized_pnl_usd": "0.0",
     "unrealized_pnl_usd": "4428.552814",
     "win_rate": "0.0",
-    "closed_trades": "0"
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-03-31",
@@ -1021,70 +1273,90 @@
     "realized_pnl_usd": "-481.708334",
     "unrealized_pnl_usd": "-3520.407597",
     "win_rate": "0.0",
-    "closed_trades": "3"
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-04-01",
     "model_id": "A",
-    "bybit_equity_usd": 6586.303566,
-    "bybit_total_pnl_usd": -3413.696434,
-    "bybit_realized_pnl_usd": -454.062905,
-    "bybit_unrealized_pnl_usd": -2959.633529,
-    "bybit_win_rate": 0.0,
-    "bybit_closed_trades": 3,
-    "total_equity_usd": 6586.303566,
-    "total_pnl_usd": -3413.696434,
-    "realized_pnl_usd": -454.062905,
-    "unrealized_pnl_usd": -2959.633529,
-    "win_rate": 0.0,
-    "closed_trades": 3
+    "bybit_equity_usd": "6586.303566",
+    "bybit_total_pnl_usd": "-3413.696434",
+    "bybit_realized_pnl_usd": "-98.894337",
+    "bybit_unrealized_pnl_usd": "-3.883129",
+    "bybit_win_rate": "0.0",
+    "bybit_closed_trades": "3",
+    "total_equity_usd": "6586.303566",
+    "total_pnl_usd": "-3413.696434",
+    "realized_pnl_usd": "-98.894337",
+    "unrealized_pnl_usd": "-3.883129",
+    "win_rate": "0.0",
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-04-01",
     "model_id": "B",
-    "bybit_equity_usd": 60887.314718,
-    "bybit_total_pnl_usd": 50887.314718,
-    "bybit_realized_pnl_usd": -163.761417,
-    "bybit_unrealized_pnl_usd": 51051.076135,
-    "bybit_win_rate": 0.0,
-    "bybit_closed_trades": 2,
-    "total_equity_usd": 60887.314718,
-    "total_pnl_usd": 50887.314718,
-    "realized_pnl_usd": -163.761417,
-    "unrealized_pnl_usd": 51051.076135,
-    "win_rate": 0.0,
-    "closed_trades": 2
+    "bybit_equity_usd": "60887.314718",
+    "bybit_total_pnl_usd": "50887.314718",
+    "bybit_realized_pnl_usd": "-163.761417",
+    "bybit_unrealized_pnl_usd": "51051.076135",
+    "bybit_win_rate": "0.0",
+    "bybit_closed_trades": "2",
+    "total_equity_usd": "60887.314718",
+    "total_pnl_usd": "50887.314718",
+    "realized_pnl_usd": "-163.761417",
+    "unrealized_pnl_usd": "51051.076135",
+    "win_rate": "0.0",
+    "closed_trades": "2",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-04-01",
     "model_id": "C",
-    "bybit_equity_usd": 11257.635308,
-    "bybit_total_pnl_usd": 1257.635308,
-    "bybit_realized_pnl_usd": 0.0,
-    "bybit_unrealized_pnl_usd": 1257.635308,
-    "bybit_win_rate": 0.0,
-    "bybit_closed_trades": 0,
-    "total_equity_usd": 11257.635308,
-    "total_pnl_usd": 1257.635308,
-    "realized_pnl_usd": 0.0,
-    "unrealized_pnl_usd": 1257.635308,
-    "win_rate": 0.0,
-    "closed_trades": 0
+    "bybit_equity_usd": "11257.635308",
+    "bybit_total_pnl_usd": "1257.635308",
+    "bybit_realized_pnl_usd": "0.0",
+    "bybit_unrealized_pnl_usd": "255.374553",
+    "bybit_win_rate": "0.0",
+    "bybit_closed_trades": "0",
+    "total_equity_usd": "11257.635308",
+    "total_pnl_usd": "1257.635308",
+    "realized_pnl_usd": "0.0",
+    "unrealized_pnl_usd": "255.374553",
+    "win_rate": "0.0",
+    "closed_trades": "0",
+    "bybit_rebuild_restart_note_ko": "",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   },
   {
     "date": "2026-04-01",
     "model_id": "D",
-    "bybit_equity_usd": 4622.407593,
-    "bybit_total_pnl_usd": -5377.592407,
-    "bybit_realized_pnl_usd": -481.708334,
-    "bybit_unrealized_pnl_usd": -4895.884073,
-    "bybit_win_rate": 0.0,
-    "bybit_closed_trades": 3,
-    "total_equity_usd": 4622.407593,
-    "total_pnl_usd": -5377.592407,
-    "realized_pnl_usd": -481.708334,
-    "unrealized_pnl_usd": -4895.884073,
-    "win_rate": 0.0,
-    "closed_trades": 3
+    "bybit_equity_usd": "4622.407593",
+    "bybit_total_pnl_usd": "-5377.592407",
+    "bybit_realized_pnl_usd": "-481.708334",
+    "bybit_unrealized_pnl_usd": "-4895.884073",
+    "bybit_win_rate": "0.0",
+    "bybit_closed_trades": "3",
+    "total_equity_usd": "4622.407593",
+    "total_pnl_usd": "-5377.592407",
+    "realized_pnl_usd": "-481.708334",
+    "unrealized_pnl_usd": "-4895.884073",
+    "win_rate": "0.0",
+    "closed_trades": "3",
+    "bybit_rebuild_restart_note_ko": "4월 1일자로 초기화및 재 튜닝 진행",
+    "bybit_rebuild_restart_variant_id": "",
+    "bybit_rebuild_restart_seed_usd": "",
+    "bybit_rebuild_restart_ts": ""
   }
 ]

@@ -77,7 +77,8 @@
       "replay_window": {
         "from": "2026-03-28",
         "to": "2026-04-01"
-      }
+      },
+      "preserved_nonzero_history": true
     },
     {
       "date": "2026-03-30",
@@ -155,7 +156,8 @@
       "replay_window": {
         "from": "2026-03-28",
         "to": "2026-04-01"
-      }
+      },
+      "preserved_nonzero_history": true
     },
     {
       "date": "2026-03-30",
@@ -229,7 +231,8 @@
       "replay_window": {
         "from": "2026-03-28",
         "to": "2026-04-01"
-      }
+      },
+      "preserved_nonzero_history": true
     },
     {
       "date": "2026-03-30",
@@ -307,7 +310,8 @@
       "replay_window": {
         "from": "2026-03-28",
         "to": "2026-04-01"
-      }
+      },
+      "preserved_nonzero_history": true
     }
   ]
 }
