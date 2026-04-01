@@ -103,6 +103,180 @@ def _persist_json(path: Path, payload: dict[str, Any]) -> None:
     tmp_path.replace(path)
 
 
+def _daily_row_key(day_value: Any, model_id: Any) -> tuple[str, str]:
+    return (str(day_value or "").strip(), str(model_id or "").strip().upper())
+
+
+def _daily_total_pnl(row: dict[str, Any]) -> float:
+    return _safe_float(
+        row.get("bybit_total_pnl_usd")
+        if row.get("bybit_total_pnl_usd") not in {None, ""}
+        else row.get("total_pnl_usd"),
+        0.0,
+    )
+
+
+def _is_flat_zero_row(row: dict[str, Any]) -> bool:
+    total = _safe_float(row.get("bybit_total_pnl_usd"), _safe_float(row.get("total_pnl_usd"), 0.0))
+    realized = _safe_float(row.get("bybit_realized_pnl_usd"), _safe_float(row.get("realized_pnl_usd"), 0.0))
+    unrealized = _safe_float(row.get("bybit_unrealized_pnl_usd"), _safe_float(row.get("unrealized_pnl_usd"), 0.0))
+    open_positions = _safe_int(row.get("bybit_open_positions"), 0)
+    closed_trades = _safe_int(row.get("bybit_closed_trades"), _safe_int(row.get("closed_trades"), 0))
+    return bool(
+        abs(total) <= 1e-9
+        and abs(realized) <= 1e-9
+        and abs(unrealized) <= 1e-9
+        and open_positions == 0
+        and closed_trades == 0
+    )
+
+
+def _build_state_daily_index(state_payload: dict[str, Any], *, start_day: date, end_day: date) -> dict[tuple[str, str], dict[str, Any]]:
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in list(state_payload.get("daily_pnl") or []):
+        if not isinstance(row, dict):
+            continue
+        day_text = str(row.get("date") or row.get("day") or "").strip()
+        model_id = str(row.get("model_id") or "").strip().upper()
+        day_parsed = _try_parse_day(day_text)
+        if day_parsed is None or not (start_day <= day_parsed <= end_day):
+            continue
+        if model_id not in MODEL_IDS:
+            continue
+        key = _daily_row_key(day_text, model_id)
+        out[key] = dict(row)
+    return out
+
+
+def _build_docs_daily_index(docs_dir: Path, *, start_day: date, end_day: date) -> dict[tuple[str, str], dict[str, Any]]:
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    if not docs_dir.exists():
+        return out
+    for day_value in _iter_days(start_day, end_day):
+        day_key = _day_key(day_value)
+        path = docs_dir / f"{day_key}.json"
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for row in list(payload.get("models") or []):
+            if not isinstance(row, dict):
+                continue
+            model_id = str(row.get("model_id") or "").strip().upper()
+            if model_id not in MODEL_IDS:
+                continue
+            normalized = dict(row)
+            normalized["date"] = day_key
+            normalized["model_id"] = model_id
+            out[_daily_row_key(day_key, model_id)] = normalized
+    return out
+
+
+def _build_supabase_daily_index(
+    client: SupabaseSyncClient,
+    *,
+    start_day: date,
+    end_day: date,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    if not client.enabled:
+        return out
+    result = client.fetch_rows(
+        "daily_model_pnl",
+        params={
+            "select": "day,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,source_json",
+            "market": "eq.crypto",
+            "day": f"gte.{_day_key(start_day)}",
+            "order": "day.asc,model_id.asc",
+            "limit": "800",
+        },
+    )
+    if not bool(result.get("ok")):
+        return out
+    for row in list(result.get("rows") or []):
+        if not isinstance(row, dict):
+            continue
+        day_text = str(row.get("day") or "").strip()
+        day_parsed = _try_parse_day(day_text)
+        if day_parsed is None or day_parsed > end_day:
+            continue
+        model_id = str(row.get("model_id") or "").strip().upper()
+        if model_id not in MODEL_IDS:
+            continue
+        out[_daily_row_key(day_text, model_id)] = {
+            "date": day_text,
+            "model_id": model_id,
+            "meme_equity_usd": 0.0,
+            "bybit_equity_usd": _safe_float(row.get("equity_usd"), 0.0),
+            "meme_total_pnl_usd": 0.0,
+            "bybit_total_pnl_usd": _safe_float(row.get("total_pnl_usd"), 0.0),
+            "meme_realized_pnl_usd": 0.0,
+            "bybit_realized_pnl_usd": _safe_float(row.get("realized_pnl_usd"), 0.0),
+            "meme_unrealized_pnl_usd": 0.0,
+            "bybit_unrealized_pnl_usd": _safe_float(row.get("unrealized_pnl_usd"), 0.0),
+            "meme_win_rate": 0.0,
+            "bybit_win_rate": _safe_float(row.get("win_rate"), 0.0),
+            "meme_closed_trades": 0,
+            "bybit_closed_trades": _safe_int(row.get("closed_trades"), 0),
+            "meme_open_positions": 0,
+            "bybit_open_positions": 0,
+            "total_equity_usd": _safe_float(row.get("equity_usd"), 0.0),
+            "total_pnl_usd": _safe_float(row.get("total_pnl_usd"), 0.0),
+            "realized_pnl_usd": _safe_float(row.get("realized_pnl_usd"), 0.0),
+            "unrealized_pnl_usd": _safe_float(row.get("unrealized_pnl_usd"), 0.0),
+            "win_rate": _safe_float(row.get("win_rate"), 0.0),
+            "closed_trades": _safe_int(row.get("closed_trades"), 0),
+            "bybit_quote_status": str(((row.get("source_json") or {}) if isinstance(row.get("source_json"), dict) else {}).get("quote_status") or "fresh"),
+            "bybit_quote_stale": False,
+            "bybit_quote_as_of_ts": 0,
+            "bybit_quote_age_seconds": 0,
+            "bybit_quote_stale_after_seconds": 0,
+            "bybit_quote_symbols": [],
+            "bybit_quote_stale_symbols": [],
+            "bybit_quote_guard_symbols": [],
+            "bybit_quote_realtime_sources": [],
+            "bybit_quote_fallback_sources": [],
+            "bybit_quote_sync_attempted_symbols": [],
+            "bybit_quote_sync_synced_symbols": [],
+            "bybit_quote_sync_missing_symbols": [],
+            "bybit_quote_sync_provider_summary": {},
+            "bybit_quote_sync_reason": "supabase_snapshot",
+            "bybit_quote_sync_at_ts": 0,
+            "rebuild_source": str(((row.get("source_json") or {}) if isinstance(row.get("source_json"), dict) else {}).get("rebuild_source") or ""),
+            "eod_price_sources": {},
+            "replay_window": {"from": _day_key(start_day), "to": _day_key(end_day)},
+        }
+    return out
+
+
+def _preserve_nonzero_history_rows(
+    rebuilt_rows: list[dict[str, Any]],
+    *,
+    existing_index: dict[tuple[str, str], dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    out: list[dict[str, Any]] = []
+    preserved_count = 0
+    for row in list(rebuilt_rows or []):
+        current = dict(row or {})
+        key = _daily_row_key(current.get("date"), current.get("model_id"))
+        existing = dict(existing_index.get(key) or {})
+        if existing and _is_flat_zero_row(current) and abs(_daily_total_pnl(existing)) > 1e-9:
+            merged = dict(existing)
+            merged["date"] = str(current.get("date") or merged.get("date") or "")
+            merged["model_id"] = str(current.get("model_id") or merged.get("model_id") or "").upper()
+            merged["rebuild_source"] = str(merged.get("rebuild_source") or "preserved_existing_nonzero")
+            merged["replay_window"] = dict(current.get("replay_window") or merged.get("replay_window") or {})
+            merged["preserved_nonzero_history"] = True
+            out.append(merged)
+            preserved_count += 1
+            continue
+        out.append(current)
+    out.sort(key=lambda r: (str(r.get("date") or ""), str(r.get("model_id") or "")))
+    return out, int(preserved_count)
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -610,7 +784,17 @@ def main() -> int:
         rebuilt_rows.extend(model_rows)
         skipped_days.extend(model_skipped)
 
-    rebuilt_rows.sort(key=lambda row: (str(row.get("date") or ""), str(row.get("model_id") or "")))
+    docs_dir = (
+        Path(args.output_dir).resolve()
+        if str(args.output_dir or "").strip()
+        else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+    )
+    existing_index: dict[tuple[str, str], dict[str, Any]] = {}
+    existing_index.update(_build_supabase_daily_index(client, start_day=start_day, end_day=end_day))
+    existing_index.update(_build_state_daily_index(state_payload, start_day=start_day, end_day=end_day))
+    existing_index.update(_build_docs_daily_index(docs_dir, start_day=start_day, end_day=end_day))
+    rebuilt_rows, preserved_nonzero_rows = _preserve_nonzero_history_rows(rebuilt_rows, existing_index=existing_index)
+
     updated_ts = int(time.time())
 
     state_result: dict[str, Any] = {"ok": False, "updated_rows": 0}
@@ -642,11 +826,7 @@ def main() -> int:
 
     docs_result: dict[str, Any] = {"ok": False, "files": 0}
     if args.write_docs and not args.dry_run:
-        output_dir = (
-            Path(args.output_dir).resolve()
-            if str(args.output_dir or "").strip()
-            else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
-        )
+        output_dir = docs_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Preserve existing history outside the requested range.
@@ -667,6 +847,7 @@ def main() -> int:
         "from": _day_key(start_day),
         "to": _day_key(end_day),
         "rows": len(rebuilt_rows),
+        "preserved_nonzero_rows": int(preserved_nonzero_rows),
         "symbols": len(symbols),
         "dry_run": bool(args.dry_run),
         "skipped_days": skipped_days,
