@@ -2213,6 +2213,7 @@ class TradingEngine:
             "market_cap_rank": int(incoming.get("market_cap_rank") or prev.get("market_cap_rank") or 0),
             "realtime_source": str(incoming.get("realtime_source") or prev.get("realtime_source") or default_source),
             "fallback_source": str(incoming.get("fallback_source") or prev.get("realtime_source") or ""),
+            "quote_as_of_ts": int(incoming.get("quote_as_of_ts") or prev.get("quote_as_of_ts") or 0),
             "forced_symbol_fetch": True,
         }
 
@@ -2461,6 +2462,99 @@ class TradingEngine:
                 )
         return rows
 
+    def _quote_stale_after_seconds(self) -> int:
+        return max(
+            30,
+            min(
+                600,
+                max(
+                    int(getattr(self.settings, "macro_realtime_cache_seconds", 12) or 12) * 4,
+                    int(getattr(self.settings, "scan_interval_seconds", 300) or 300) // 2,
+                ),
+            ),
+        )
+
+    def _crypto_quote_health(self, symbol: str, snapshot_ts: int | None = None) -> dict[str, Any]:
+        symbol_u = str(symbol or "").upper().strip()
+        stale_after = self._quote_stale_after_seconds()
+        quote_meta = dict(self._macro_meta.get(symbol_u) or {})
+        quote_as_of_ts = int(quote_meta.get("quote_as_of_ts") or 0)
+        quote_age_seconds = max(0, int((snapshot_ts or int(time.time())) - quote_as_of_ts)) if quote_as_of_ts > 0 else None
+        price_guard = str(quote_meta.get("price_guard") or "").strip()
+        quote_status = "fresh"
+        if price_guard:
+            quote_status = "guarded"
+        elif quote_age_seconds is None or quote_age_seconds > stale_after:
+            quote_status = "stale"
+        return {
+            "symbol": symbol_u,
+            "quote_as_of_ts": quote_as_of_ts,
+            "quote_age_seconds": quote_age_seconds,
+            "quote_stale_after_seconds": int(stale_after),
+            "quote_status": quote_status,
+            "quote_stale": bool(quote_status != "fresh"),
+            "realtime_source": str(quote_meta.get("realtime_source") or ""),
+            "fallback_source": str(quote_meta.get("fallback_source") or ""),
+            "price_guard": price_guard,
+        }
+
+    def _crypto_run_quote_health(self, run: dict[str, Any], snapshot_ts: int | None = None) -> dict[str, Any]:
+        positions_map = dict((run or {}).get("bybit_positions") or {})
+        symbols = []
+        for pos in positions_map.values():
+            symbol = str((pos or {}).get("symbol") or "").upper().strip()
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
+        if not symbols:
+            return {
+                "quote_status": "fresh",
+                "quote_stale": False,
+                "quote_as_of_ts": 0,
+                "quote_age_seconds": 0,
+                "quote_stale_after_seconds": int(self._quote_stale_after_seconds()),
+                "realtime_sources": [],
+                "fallback_sources": [],
+                "guard_symbols": [],
+                "stale_symbols": [],
+                "symbols": [],
+                "open_positions": int(len(positions_map)),
+            }
+        health_rows = [self._crypto_quote_health(symbol, snapshot_ts) for symbol in symbols]
+        quote_status = "fresh"
+        if any(str(row.get("quote_status") or "") == "guarded" for row in health_rows):
+            quote_status = "guarded"
+        elif any(str(row.get("quote_status") or "") == "stale" for row in health_rows):
+            quote_status = "stale"
+        quote_as_of_ts = min(
+            [int(row.get("quote_as_of_ts") or 0) for row in health_rows if int(row.get("quote_as_of_ts") or 0) > 0] or [0]
+        )
+        quote_age_seconds = max(
+            [int(row.get("quote_age_seconds") or 0) for row in health_rows if row.get("quote_age_seconds") is not None] or [0]
+        )
+        return {
+            "quote_status": quote_status,
+            "quote_stale": bool(quote_status != "fresh"),
+            "quote_as_of_ts": int(quote_as_of_ts),
+            "quote_age_seconds": int(quote_age_seconds),
+            "quote_stale_after_seconds": int(
+                max(int(row.get("quote_stale_after_seconds") or 0) for row in health_rows) if health_rows else self._quote_stale_after_seconds()
+            ),
+            "realtime_sources": sorted(
+                {str(row.get("realtime_source") or "").strip() for row in health_rows if str(row.get("realtime_source") or "").strip()}
+            ),
+            "fallback_sources": sorted(
+                {str(row.get("fallback_source") or "").strip() for row in health_rows if str(row.get("fallback_source") or "").strip()}
+            ),
+            "guard_symbols": sorted(
+                str(row.get("symbol") or "") for row in health_rows if str(row.get("quote_status") or "") == "guarded"
+            ),
+            "stale_symbols": sorted(
+                str(row.get("symbol") or "") for row in health_rows if str(row.get("quote_status") or "") == "stale"
+            ),
+            "symbols": symbols,
+            "open_positions": int(len(positions_map)),
+        }
+
     def _build_supabase_daily_pnl_rows(self, now_ts: int | None = None) -> list[dict[str, Any]]:
         snapshot_ts = int(now_ts or int(time.time()))
         with self._lock:
@@ -2470,6 +2564,8 @@ class TradingEngine:
             model_id = str((row or {}).get("model_id") or "").upper()
             day_key = str((row or {}).get("date") or "").strip()
             if model_id not in CRYPTO_MODEL_IDS or not day_key:
+                continue
+            if bool((row or {}).get("bybit_quote_stale")) and int((row or {}).get("bybit_open_positions") or 0) > 0:
                 continue
             rows.append(
                 {
@@ -2487,6 +2583,16 @@ class TradingEngine:
                         "snapshot_at": self._iso_datetime(snapshot_ts),
                         "total_equity_usd": float((row or {}).get("total_equity_usd") or 0.0),
                         "total_pnl_usd_all": float((row or {}).get("total_pnl_usd") or 0.0),
+                        "quote_status": str((row or {}).get("bybit_quote_status") or ""),
+                        "quote_stale": bool((row or {}).get("bybit_quote_stale")),
+                        "quote_as_of": self._iso_datetime((row or {}).get("bybit_quote_as_of_ts")),
+                        "quote_age_seconds": int((row or {}).get("bybit_quote_age_seconds") or 0),
+                        "quote_stale_after_seconds": int((row or {}).get("bybit_quote_stale_after_seconds") or 0),
+                        "quote_symbols": list((row or {}).get("bybit_quote_symbols") or []),
+                        "quote_stale_symbols": list((row or {}).get("bybit_quote_stale_symbols") or []),
+                        "quote_guard_symbols": list((row or {}).get("bybit_quote_guard_symbols") or []),
+                        "realtime_sources": list((row or {}).get("bybit_quote_realtime_sources") or []),
+                        "fallback_sources": list((row or {}).get("bybit_quote_fallback_sources") or []),
                     },
                 }
             )
@@ -2546,6 +2652,11 @@ class TradingEngine:
                 current = float(self._crypto_current_price(pos))
                 marked = self._mark_crypto_position(pos, current)
                 opened_at = int((pos or {}).get("opened_at") or 0)
+                quote_health = self._crypto_quote_health(symbol, snapshot_ts)
+                quote_as_of_ts = int(quote_health.get("quote_as_of_ts") or 0)
+                quote_age_seconds = quote_health.get("quote_age_seconds")
+                quote_status = str(quote_health.get("quote_status") or "fresh")
+                price_guard = str(quote_health.get("price_guard") or "")
                 rows.append(
                     {
                         "id": self._supabase_position_id(model_id, symbol, opened_at),
@@ -2579,6 +2690,14 @@ class TradingEngine:
                             "setup_state": str((pos or {}).get("setup_state") or ""),
                             "current_price": float(current or 0.0),
                             "price_as_of": self._iso_datetime(snapshot_ts),
+                            "quote_as_of": self._iso_datetime(quote_as_of_ts) if quote_as_of_ts > 0 else None,
+                            "quote_age_seconds": quote_age_seconds,
+                            "quote_stale": bool(quote_status != "fresh"),
+                            "quote_status": quote_status,
+                            "quote_stale_after_seconds": int(quote_health.get("quote_stale_after_seconds") or 0),
+                            "realtime_source": str(quote_health.get("realtime_source") or ""),
+                            "fallback_source": str(quote_health.get("fallback_source") or ""),
+                            "price_guard": price_guard,
                             "pnl_pct": float(marked.get("price_pnl_pct") or 0.0),
                             "position_equity_usd": float(marked.get("position_equity_usd") or 0.0),
                         },
@@ -13029,6 +13148,7 @@ class TradingEngine:
             m = self._model_metrics(model_id, run)
             meme_m = self._model_metrics_market(model_id, meme_run, "meme")
             crypto_m = self._model_metrics_market(model_id, crypto_run, "crypto")
+            crypto_quote_health = self._crypto_run_quote_health(crypto_run, now_ts)
             row = {
                 "date": day_key,
                 "model_id": model_id,
@@ -13044,12 +13164,24 @@ class TradingEngine:
                 "bybit_win_rate": round(float(crypto_m["win_rate"]), 4),
                 "meme_closed_trades": int(meme_m["closed_trades"]),
                 "bybit_closed_trades": int(crypto_m["closed_trades"]),
+                "meme_open_positions": int(meme_m["open_positions"]),
+                "bybit_open_positions": int(crypto_m["open_positions"]),
                 "total_equity_usd": round(float(m["total_equity_usd"]), 6),
                 "total_pnl_usd": round(float(m["total_pnl_usd"]), 6),
                 "realized_pnl_usd": round(float(m["realized_pnl_usd"]), 6),
                 "unrealized_pnl_usd": round(float(m["unrealized_pnl_usd"]), 6),
                 "win_rate": round(float(m["win_rate"]), 4),
                 "closed_trades": int(m["closed_trades"]),
+                "bybit_quote_status": str(crypto_quote_health.get("quote_status") or "fresh"),
+                "bybit_quote_stale": bool(crypto_quote_health.get("quote_stale")),
+                "bybit_quote_as_of_ts": int(crypto_quote_health.get("quote_as_of_ts") or 0),
+                "bybit_quote_age_seconds": int(crypto_quote_health.get("quote_age_seconds") or 0),
+                "bybit_quote_stale_after_seconds": int(crypto_quote_health.get("quote_stale_after_seconds") or 0),
+                "bybit_quote_symbols": list(crypto_quote_health.get("symbols") or []),
+                "bybit_quote_stale_symbols": list(crypto_quote_health.get("stale_symbols") or []),
+                "bybit_quote_guard_symbols": list(crypto_quote_health.get("guard_symbols") or []),
+                "bybit_quote_realtime_sources": list(crypto_quote_health.get("realtime_sources") or []),
+                "bybit_quote_fallback_sources": list(crypto_quote_health.get("fallback_sources") or []),
             }
             idx = None
             for i in range(len(table) - 1, -1, -1):

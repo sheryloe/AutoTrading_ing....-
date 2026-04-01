@@ -1247,6 +1247,10 @@ textarea {
   min-width: 180px;
 }
 
+.position-quote-row {
+  justify-content: flex-end;
+}
+
 .position-secondary {
   color: var(--muted);
   font-size: 0.72rem;
@@ -1325,6 +1329,11 @@ textarea {
   overflow-wrap: anywhere;
   font-size: 0.78rem;
   line-height: 1.4;
+}
+
+.quote-cell {
+  display: grid;
+  gap: 8px;
 }
 
 .table-wrap th {

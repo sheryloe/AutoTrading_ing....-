@@ -2419,13 +2419,19 @@ class MacroMarketClient:
             except Exception:
                 pass
 
+        quote_as_of_ts = int(now)
+        for symbol in list(quotes.keys()):
+            row = dict(meta.get(symbol) or {})
+            row["quote_as_of_ts"] = int(row.get("quote_as_of_ts") or quote_as_of_ts)
+            meta[symbol] = row
+
         if quotes:
             self._rt_cache_quotes = dict(quotes)
             self._rt_cache_meta = dict(meta)
             self._rt_cache_ts = now
             self._rt_cache_key = cache_key
             return quotes, meta
-        if self._rt_cache_quotes:
+        if self._rt_cache_quotes and self._rt_cache_key == cache_key and (now - self._rt_cache_ts) < ttl:
             return dict(self._rt_cache_quotes), dict(self._rt_cache_meta)
         return {}, {}
 
@@ -2456,6 +2462,7 @@ class MacroMarketClient:
         if not sources:
             sources = ["binance", "bybit"]
         key = tuple(sorted(set(sources)))
+        quote_as_of_ts = int(time.time())
 
         quotes: dict[str, float] = {}
         meta: dict[str, dict[str, Any]] = {}
@@ -2480,6 +2487,7 @@ class MacroMarketClient:
                     "api_credentials_configured": bool(
                         str(binance_api_key or "").strip() and str(binance_api_secret or "").strip()
                     ),
+                    "quote_as_of_ts": quote_as_of_ts,
                 }
         if "bybit" in key:
             for symbol in requested:
@@ -2500,6 +2508,7 @@ class MacroMarketClient:
                     "volume_24h": max(float(row.get("volume_24h") or 0.0), float(prev.get("volume_24h") or 0.0)),
                     "realtime_source": "bybit_public_symbol",
                     "fallback_source": str(prev.get("realtime_source") or ""),
+                    "quote_as_of_ts": quote_as_of_ts,
                 }
         return quotes, meta
 
@@ -2546,6 +2555,7 @@ class MacroMarketClient:
         if not isinstance(rows, list):
             return {}, {}
 
+        quote_as_of_ts = int(time.time())
         quotes: dict[str, float] = {}
         meta: dict[str, dict[str, Any]] = {}
         wanted = set(requested_bases)
@@ -2564,6 +2574,7 @@ class MacroMarketClient:
                 "market_cap": float(row.get("market_cap") or 0.0),
                 "market_cap_rank": int(row.get("market_cap_rank") or 0),
                 "realtime_source": "coingecko_symbol",
+                "quote_as_of_ts": quote_as_of_ts,
             }
         return quotes, meta
 

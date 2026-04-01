@@ -92,6 +92,62 @@ function currentPriceLabel(row) {
   return "-";
 }
 
+function quoteMeta(row) {
+  return row?.position_meta && typeof row.position_meta === "object" ? row.position_meta : {};
+}
+
+function quoteSourceLabel(row) {
+  const meta = quoteMeta(row);
+  const source = String(meta.realtime_source || "").toLowerCase();
+  const fallback = String(meta.fallback_source || "").toLowerCase();
+  const guard = String(meta.price_guard || "").toLowerCase();
+  if (guard === "anchor_missing_backfill") return "anchor backfill";
+  if (guard === "anchor_jump_guard") return "anchor jump-guard";
+  if (source === "bybit_public") return "Bybit";
+  if (source === "bybit_public_symbol") return "Bybit(symbol)";
+  if (source === "binance") return "Binance";
+  if (source === "binance_symbol") return "Binance(symbol)";
+  if (source === "coingecko_symbol") return "CoinGecko";
+  if (fallback === "bybit_public") return "Bybit(fallback)";
+  if (fallback === "binance") return "Binance(fallback)";
+  return source || fallback || "-";
+}
+
+function quoteStatusTone(row) {
+  const status = String(quoteMeta(row).quote_status || "").toLowerCase();
+  if (status === "fresh") return "success";
+  if (status === "guarded" || status === "stale") return "warning";
+  return "muted";
+}
+
+function formatAgeCompact(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return "-";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
+}
+
+function quoteStatusLabel(row) {
+  const meta = quoteMeta(row);
+  const status = String(meta.quote_status || "").toLowerCase();
+  const guard = String(meta.price_guard || "").toLowerCase();
+  const ageText = formatAgeCompact(meta.quote_age_seconds);
+  if (status === "guarded") {
+    if (guard === "anchor_missing_backfill") return "stale anchor backfill";
+    if (guard === "anchor_jump_guard") return "jump-guard active";
+    return "guarded";
+  }
+  if (status === "stale") return ageText === "-" ? "stale" : `stale ${ageText}`;
+  if (status === "fresh") return ageText === "-" ? "fresh" : `fresh ${ageText}`;
+  return "-";
+}
+
+function quoteAsOfLabel(row) {
+  const meta = quoteMeta(row);
+  return formatTs(meta.quote_as_of || meta.price_as_of || null);
+}
+
 function openedMeta(row) {
   return row.opened_at ? formatTs(row.opened_at) : "-";
 }
@@ -150,6 +206,14 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
   const activeSetups = useMemo(() => groupedRows.setupByModel[activeModel] || [], [groupedRows.setupByModel, activeModel]);
   const activeAudits = useMemo(() => groupedRows.auditByModel[activeModel] || [], [groupedRows.auditByModel, activeModel]);
   const activeTrades = useMemo(() => groupedRows.tradeByModel[activeModel] || [], [groupedRows.tradeByModel, activeModel]);
+  const activeQuoteSnapshot = useMemo(
+    () => ({
+      staleCount: activePositions.filter((row) => Boolean(quoteMeta(row).quote_stale)).length,
+      guardedCount: activePositions.filter((row) => String(quoteMeta(row).quote_status || "") === "guarded").length,
+      sources: Array.from(new Set(activePositions.map((row) => quoteSourceLabel(row)).filter((value) => value && value !== "-"))),
+    }),
+    [activePositions]
+  );
 
   const latestAuditCycleAt = activeAudits[0]?.cycle_at || null;
   const latestAuditRows = useMemo(
@@ -239,6 +303,19 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
       <section className="content-grid content-grid-two">
         <SectionCard eyebrow="오픈 포지션" title={`${meta.name} 현재 포지션`} meta={`${activePositions.length}건`}>
           {activePositions.length ? (
+            <div className="status-row compact">
+              <StatusBadge tone={activeQuoteSnapshot.staleCount ? "warning" : "success"}>
+                stale 시세 {activeQuoteSnapshot.staleCount}
+              </StatusBadge>
+              <StatusBadge tone={activeQuoteSnapshot.guardedCount ? "warning" : "muted"}>
+                guard {activeQuoteSnapshot.guardedCount}
+              </StatusBadge>
+              <StatusBadge tone="info">
+                소스 {activeQuoteSnapshot.sources.length ? activeQuoteSnapshot.sources.join(", ") : "-"}
+              </StatusBadge>
+            </div>
+          ) : null}
+          {activePositions.length ? (
             <div className="mini-list">
               {activePositions.map((row) => (
                 <article key={row.id} className="mini-card position-card">
@@ -252,9 +329,14 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                   <div className="mini-metrics position-metrics">
                     <span className="position-secondary">진입가 {entryLabel(row)}</span>
                     <span className="position-secondary">현재가 {currentPriceLabel(row)}</span>
+                    <span className="position-secondary">시세 {quoteSourceLabel(row)}</span>
+                    <span className="position-secondary">가격시각 {quoteAsOfLabel(row)}</span>
                     <span className="position-secondary">TP {tpLabel(row)}</span>
                     <span className="position-secondary">SL {slLabel(row)}</span>
                     <span className="position-secondary">레버리지 {leverageLabel(row.leverage)}</span>
+                    <div className="status-row compact position-quote-row">
+                      <StatusBadge tone={quoteStatusTone(row)}>{quoteStatusLabel(row)}</StatusBadge>
+                    </div>
                     <strong className={`position-pnl ${pnlToneClass(row.unrealized_pnl_usd)}`}>
                       {formatMoney(row.unrealized_pnl_usd)}
                     </strong>
@@ -346,6 +428,8 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               <th>진입시간</th>
               <th>진입가</th>
               <th>현재가</th>
+              <th>시세</th>
+              <th>가격시각</th>
               <th>TP</th>
               <th>SL</th>
               <th>레버리지</th>
@@ -361,6 +445,13 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
                   <td>{openedMeta(row)}</td>
                   <td>{entryLabel(row)}</td>
                   <td>{currentPriceLabel(row)}</td>
+                  <td>
+                    <div className="quote-cell">
+                      <span>{quoteSourceLabel(row)}</span>
+                      <StatusBadge tone={quoteStatusTone(row)}>{quoteStatusLabel(row)}</StatusBadge>
+                    </div>
+                  </td>
+                  <td>{quoteAsOfLabel(row)}</td>
                   <td>{tpLabel(row)}</td>
                   <td>{slLabel(row)}</td>
                   <td>{leverageLabel(row.leverage)}</td>
@@ -374,7 +465,7 @@ export default function PositionsTabs({ openPositions, setupRows, signalAuditRow
               ))
             ) : (
               <tr>
-                <td colSpan="9">포지션 데이터가 없습니다.</td>
+                <td colSpan="11">포지션 데이터가 없습니다.</td>
               </tr>
             )}
           </tbody>
