@@ -2259,6 +2259,55 @@ class TradingEngine:
         self._bybit_price_history[symbol_u] = hist
         return True
 
+    def _recent_candle_close_quote(
+        self,
+        symbol: str,
+        *,
+        limit: int = 3,
+        cache_seconds: int = 15,
+    ) -> tuple[float, dict[str, Any]]:
+        symbol_u = str(symbol or "").upper().strip()
+        if not symbol_u:
+            return (0.0, {})
+        fetchers: tuple[tuple[str, Any], ...] = (
+            (
+                "binance_1m_close",
+                lambda: self.macro.fetch_binance_1m_ohlc(
+                    symbol_u,
+                    limit=limit,
+                    cache_seconds=cache_seconds,
+                    binance_api_key=self.settings.binance_api_key,
+                ),
+            ),
+            (
+                "bybit_1m_close",
+                lambda: self.macro.fetch_bybit_1m_ohlc(
+                    symbol_u,
+                    limit=limit,
+                    cache_seconds=cache_seconds,
+                ),
+            ),
+        )
+        for source_name, fetch_rows in fetchers:
+            try:
+                rows = list(fetch_rows() or [])
+            except Exception:
+                rows = []
+            if not rows:
+                continue
+            last_row = dict(rows[-1] or {})
+            px = float(last_row.get("close") or 0.0)
+            if px <= 0.0:
+                continue
+            return (
+                px,
+                {
+                    "realtime_source": str(source_name or "candle_close"),
+                    "quote_as_of_ts": int(last_row.get("close_ts") or last_row.get("open_ts") or int(time.time())),
+                },
+            )
+        return (0.0, {})
+
     def _force_sync_crypto_exit_quotes(
         self,
         symbols: list[str] | tuple[str, ...] | set[str],
@@ -2311,41 +2360,11 @@ class TradingEngine:
 
         missing = [symbol for symbol in requested if float(synced_prices.get(symbol) or 0.0) <= 0.0]
         for symbol in list(missing):
-            rows: list[dict[str, Any]] = []
-            source_name = ""
-            try:
-                rows = self.macro.fetch_binance_1m_ohlc(
-                    symbol,
-                    limit=3,
-                    cache_seconds=15,
-                    binance_api_key=self.settings.binance_api_key,
-                )
-                if rows:
-                    source_name = "binance_1m_close"
-            except Exception:
-                rows = []
-            if not rows:
-                try:
-                    rows = self.macro.fetch_bybit_1m_ohlc(
-                        symbol,
-                        limit=3,
-                        cache_seconds=15,
-                    )
-                    if rows:
-                        source_name = "bybit_1m_close"
-                except Exception:
-                    rows = []
-            if not rows:
-                continue
-            last_row = dict(rows[-1] or {})
-            px = float(last_row.get("close") or 0.0)
+            px, candle_meta = self._recent_candle_close_quote(symbol, limit=3, cache_seconds=15)
             if px <= 0.0:
                 continue
             synced_prices[symbol] = px
-            synced_meta[symbol] = {
-                "realtime_source": str(source_name or "candle_close"),
-                "quote_as_of_ts": int(last_row.get("close_ts") or last_row.get("open_ts") or int(time.time())),
-            }
+            synced_meta[symbol] = dict(candle_meta)
 
         applied_prices: dict[str, float] = {}
         applied_meta: dict[str, dict[str, Any]] = {}
@@ -10936,6 +10955,21 @@ class TradingEngine:
                     cg_row = dict(cg_meta.get(symbol) or {})
                     rt_meta[symbol] = self._merge_realtime_quote_meta(prev, cg_row, "coingecko_symbol")
 
+        missing_force_fetch_symbols = [
+            sym for sym in force_fetch_symbols if sym not in rt_prices and sym not in row_symbols_all
+        ]
+        for symbol in list(missing_force_fetch_symbols):
+            px, candle_meta = self._recent_candle_close_quote(
+                symbol,
+                limit=3,
+                cache_seconds=max(10, min(60, int(self.settings.scan_interval_seconds // 8) or 30)),
+            )
+            if px <= 0.0:
+                continue
+            rt_prices[symbol] = float(px)
+            prev = dict(rt_meta.get(symbol) or {})
+            rt_meta[symbol] = self._merge_realtime_quote_meta(prev, candle_meta, "forced_symbol_candle")
+
         # Price map can include held symbols outside current rank window (mark-to-market stability).
         for row in rows_all:
             base_symbol = str(row.get("symbol") or "").upper().strip()
@@ -11043,6 +11077,14 @@ class TradingEngine:
                     )
                 except Exception:
                     held_prices, held_meta = {}, {}
+            for symbol in list(missing_held_symbols):
+                if float(held_prices.get(symbol) or 0.0) > 0.0:
+                    continue
+                px, candle_meta = self._recent_candle_close_quote(symbol, limit=3, cache_seconds=15)
+                if px <= 0.0:
+                    continue
+                held_prices[symbol] = float(px)
+                held_meta[symbol] = dict(candle_meta)
             for symbol in missing_held_symbols:
                 price = float(held_prices.get(symbol) or 0.0)
                 if price <= 0.0:

@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -158,6 +159,19 @@ class DailyPriceClient:
     def __init__(self, timeout_seconds: int = 15) -> None:
         self.session = requests.Session()
         self.timeout_seconds = max(5, int(timeout_seconds))
+        self.errors: dict[str, list[dict[str, str]]] = {}
+
+    def _record_error(self, symbol: str, source: str, exc: Exception) -> None:
+        sym = _normalize_symbol(symbol)
+        if not sym:
+            return
+        rows = self.errors.setdefault(sym, [])
+        rows.append(
+            {
+                "source": str(source or "").strip() or "unknown",
+                "error": str(exc or "").strip() or exc.__class__.__name__,
+            }
+        )
 
     def _fetch_binance_daily(self, symbol: str, start_day: date, end_day: date) -> dict[str, dict[str, Any]]:
         sym = _normalize_symbol(symbol)
@@ -167,19 +181,23 @@ class DailyPriceClient:
         current_start = _day_start_ts(start_day) * 1000
         final_end = (_day_end_ts(end_day) * 1000)
         while current_start <= final_end:
-            res = self.session.get(
-                "https://api.binance.com/api/v3/klines",
-                params={
-                    "symbol": sym,
-                    "interval": "1d",
-                    "startTime": current_start,
-                    "endTime": final_end,
-                    "limit": 1000,
-                },
-                timeout=self.timeout_seconds,
-            )
-            res.raise_for_status()
-            rows = res.json()
+            try:
+                res = self.session.get(
+                    "https://api.binance.com/api/v3/klines",
+                    params={
+                        "symbol": sym,
+                        "interval": "1d",
+                        "startTime": current_start,
+                        "endTime": final_end,
+                        "limit": 1000,
+                    },
+                    timeout=self.timeout_seconds,
+                )
+                res.raise_for_status()
+                rows = res.json()
+            except Exception as exc:
+                self._record_error(sym, "binance_1d", exc)
+                break
             if not isinstance(rows, list) or not rows:
                 break
             last_open_ms = None
@@ -213,20 +231,24 @@ class DailyPriceClient:
         current_start = _day_start_ts(start_day) * 1000
         final_end = _day_end_ts(end_day) * 1000
         while current_start <= final_end:
-            res = self.session.get(
-                "https://api.bybit.com/v5/market/kline",
-                params={
-                    "category": "linear",
-                    "symbol": sym,
-                    "interval": "D",
-                    "start": current_start,
-                    "end": final_end,
-                    "limit": 1000,
-                },
-                timeout=self.timeout_seconds,
-            )
-            res.raise_for_status()
-            body = res.json()
+            try:
+                res = self.session.get(
+                    "https://api.bybit.com/v5/market/kline",
+                    params={
+                        "category": "linear",
+                        "symbol": sym,
+                        "interval": "D",
+                        "start": current_start,
+                        "end": final_end,
+                        "limit": 1000,
+                    },
+                    timeout=self.timeout_seconds,
+                )
+                res.raise_for_status()
+                body = res.json()
+            except Exception as exc:
+                self._record_error(sym, "bybit_1d", exc)
+                break
             rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
             if not isinstance(rows, list) or not rows:
                 break
@@ -621,6 +643,22 @@ def main() -> int:
     docs_result: dict[str, Any] = {"ok": False, "files": 0}
     if args.write_docs and not args.dry_run:
         output_dir = Path(args.output_dir).resolve() if str(args.output_dir or "").strip() else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cleanup_paths = [
+            output_dir / "summary.csv",
+            output_dir / "summary.json",
+            output_dir / "summary_4col.csv",
+            output_dir / "summary_4col.json",
+        ]
+        for day_value in _iter_days(start_day, end_day):
+            day_key = _day_key(day_value)
+            cleanup_paths.append(output_dir / f"{day_key}.json")
+            cleanup_paths.append(output_dir / f"{day_key}.csv")
+        for path in cleanup_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                pass
         written_files: list[str] = []
         for day_value in _iter_days(start_day, end_day):
             day_rows = [dict(row) for row in rebuilt_rows if str(row.get("date") or "") == _day_key(day_value)]
@@ -637,6 +675,7 @@ def main() -> int:
         "symbols": len(symbols),
         "dry_run": bool(args.dry_run),
         "skipped_days": skipped_days,
+        "price_fetch_errors": dict(price_client.errors),
         "write_state": state_result,
         "write_supabase": supabase_result,
         "write_docs": docs_result,
@@ -646,4 +685,22 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": str(exc or exc.__class__.__name__),
+                    "type": exc.__class__.__name__,
+                    "traceback": traceback.format_exc().splitlines()[-30:],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        raise
