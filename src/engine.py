@@ -10720,6 +10720,68 @@ class TradingEngine:
                     hist = hist[-240:]
                 self._bybit_price_history[symbol] = hist
 
+        # Final rescue pass for held symbols: if they are still missing here, refresh them
+        # directly by symbol before falling back to anchor prices.
+        missing_held_symbols = sorted(sym for sym in held_symbols if sym not in prices)
+        if missing_held_symbols:
+            try:
+                held_prices, held_meta = self.macro.fetch_realtime_quotes_for_symbols(
+                    missing_held_symbols,
+                    sources_csv=self.settings.macro_realtime_sources,
+                    binance_api_key=self.settings.binance_api_key,
+                    binance_api_secret=self.settings.binance_api_secret,
+                )
+            except Exception:
+                held_prices, held_meta = {}, {}
+            if not held_prices and bool(getattr(self.settings, "crypto_use_coingecko_data", True)):
+                try:
+                    held_prices, held_meta = self.macro.fetch_coingecko_quotes_for_symbols(
+                        missing_held_symbols,
+                        api_key=self.settings.coingecko_api_key,
+                    )
+                except Exception:
+                    held_prices, held_meta = {}, {}
+            for symbol in missing_held_symbols:
+                price = float(held_prices.get(symbol) or 0.0)
+                if price <= 0.0:
+                    continue
+                incoming_meta = dict(held_meta.get(symbol) or {})
+                prev_rt_meta = dict(rt_meta.get(symbol) or {})
+                rt_meta[symbol] = self._merge_realtime_quote_meta(prev_rt_meta, incoming_meta, "held_symbol_refresh")
+                rt_row = dict(rt_meta.get(symbol) or {})
+                prev_meta = dict(meta.get(symbol) or {})
+                prev_rank = int(
+                    prev_meta.get("market_cap_rank")
+                    or (self._macro_meta.get(symbol) or {}).get("market_cap_rank")
+                    or 0
+                )
+                prices[symbol] = float(price)
+                meta[symbol] = {
+                    "change_1h": float(prev_meta.get("change_1h") or 0.0),
+                    "change_24h": float(rt_row.get("change_24h") or prev_meta.get("change_24h") or 0.0),
+                    "volume_24h": max(
+                        float(rt_row.get("volume_24h") or 0.0),
+                        float(prev_meta.get("volume_24h") or 0.0),
+                    ),
+                    "market_cap": float(
+                        rt_row.get("market_cap")
+                        or prev_meta.get("market_cap")
+                        or (self._macro_meta.get(symbol) or {}).get("market_cap")
+                        or 0.0
+                    ),
+                    "market_cap_rank": int(rt_row.get("market_cap_rank") or prev_rank),
+                    "source": "held_symbol_refresh",
+                    "realtime_source": str(rt_row.get("realtime_source") or prev_meta.get("realtime_source") or ""),
+                    "fallback_source": str(rt_row.get("fallback_source") or prev_meta.get("fallback_source") or ""),
+                    "quote_as_of_ts": int(rt_row.get("quote_as_of_ts") or prev_meta.get("quote_as_of_ts") or 0),
+                }
+                self._bybit_last_prices[symbol] = float(price)
+                hist = self._bybit_price_history.get(symbol) or []
+                hist.append(float(price))
+                if len(hist) > 240:
+                    hist = hist[-240:]
+                self._bybit_price_history[symbol] = hist
+
         missing_fixed_symbols = sorted(sym for sym in hard_lock_symbols if sym not in prices)
 
         # Guard held symbols from abrupt one-cycle quote jumps (source mismatch/stale feed).
