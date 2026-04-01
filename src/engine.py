@@ -2873,8 +2873,6 @@ class TradingEngine:
             day_key = str((row or {}).get("date") or "").strip()
             if model_id not in CRYPTO_MODEL_IDS or not day_key:
                 continue
-            if bool((row or {}).get("bybit_quote_stale")) and int((row or {}).get("bybit_open_positions") or 0) > 0:
-                continue
             rows.append(
                 {
                     "day": day_key,
@@ -12778,7 +12776,6 @@ class TradingEngine:
             symbol = str(pos.get("symbol") or "")
             position_side = self._normalize_crypto_side((pos or {}).get("side"))
             entry = float(pos.get("avg_price_usd") or 0.0)
-            quote_status = str(self._crypto_quote_health(symbol).get("quote_status") or "stale")
             current = float(self._crypto_current_price(pos, prices))
             pos_reason = str(pos.get("reason") or "")
             entry_score = float(pos.get("entry_score") or 0.0)
@@ -12810,8 +12807,6 @@ class TradingEngine:
                 )
                 continue
             if current <= 0 or entry <= 0:
-                continue
-            if quote_status != "fresh":
                 continue
             marked = self._mark_crypto_position(pos, current)
             pos["last_mark_price_usd"] = float(marked["mark_price_usd"])
@@ -13624,8 +13619,6 @@ class TradingEngine:
                 if str(old.get("date")) == day_key and str(old.get("model_id")) == model_id:
                     idx = i
                     break
-            if bool(crypto_quote_health.get("quote_stale")) and int(crypto_m["open_positions"]) > 0:
-                continue
             if idx is None:
                 table.append(row)
             else:
