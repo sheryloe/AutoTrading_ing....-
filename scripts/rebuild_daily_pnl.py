@@ -642,29 +642,24 @@ def main() -> int:
 
     docs_result: dict[str, Any] = {"ok": False, "files": 0}
     if args.write_docs and not args.dry_run:
-        output_dir = Path(args.output_dir).resolve() if str(args.output_dir or "").strip() else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+        output_dir = (
+            Path(args.output_dir).resolve()
+            if str(args.output_dir or "").strip()
+            else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
-        cleanup_paths = [
-            output_dir / "summary.csv",
-            output_dir / "summary.json",
-            output_dir / "summary_4col.csv",
-            output_dir / "summary_4col.json",
-        ]
+
+        # Preserve existing history outside the requested range.
+        # Only overwrite artifacts for days we successfully rebuilt.
+        written_files: set[str] = set()
         for day_value in _iter_days(start_day, end_day):
             day_key = _day_key(day_value)
-            cleanup_paths.append(output_dir / f"{day_key}.json")
-            cleanup_paths.append(output_dir / f"{day_key}.csv")
-        for path in cleanup_paths:
-            try:
-                path.unlink(missing_ok=True)
-            except Exception:
-                pass
-        written_files: list[str] = []
-        for day_value in _iter_days(start_day, end_day):
-            day_rows = [dict(row) for row in rebuilt_rows if str(row.get("date") or "") == _day_key(day_value)]
+            day_rows = [dict(row) for row in rebuilt_rows if str(row.get("date") or "") == day_key]
             if not day_rows:
                 continue
-            written_files.extend(write_daily_pnl_report(_day_key(day_value), day_rows, str(output_dir)))
+            for path in write_daily_pnl_report(day_key, day_rows, str(output_dir)):
+                written_files.add(str(path))
+
         docs_result = {"ok": True, "files": len(written_files), "output_dir": str(output_dir)}
 
     summary = {

@@ -64,7 +64,7 @@ class EngineState:
     last_wallet_sync_ts: int = 0
     last_bybit_sync_ts: int = 0
     telegram_offset: int = 0
-    demo_seed_usdt: float = 1000.0
+    demo_seed_usdt: float = 0.0
     live_seed_usd: float = 0.0
     live_seed_set_ts: int = 0
     live_perf_anchor_usd: float = 0.0
@@ -145,7 +145,7 @@ def state_from_dict(raw: dict[str, Any], start_cash_usd: float) -> EngineState:
         last_wallet_sync_ts=int(raw.get("last_wallet_sync_ts") or 0),
         last_bybit_sync_ts=int(raw.get("last_bybit_sync_ts") or 0),
         telegram_offset=int(raw.get("telegram_offset") or 0),
-        demo_seed_usdt=float(raw.get("demo_seed_usdt") or 1000.0),
+        demo_seed_usdt=float(raw.get("demo_seed_usdt") or 0.0),
         live_seed_usd=float(raw.get("live_seed_usd") or 0.0),
         live_seed_set_ts=int(raw.get("live_seed_set_ts") or 0),
         live_perf_anchor_usd=float(raw.get("live_perf_anchor_usd") or 0.0),
