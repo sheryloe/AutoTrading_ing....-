@@ -43,6 +43,79 @@
 | runtime profile 저장 | 포지션, 누적 PnL, provider 자격증명 | 없음 |
 | 하드 리셋 | provider 자격증명, runtime profile | 포지션, setup, 일별 PnL, runtime tune, 엔진 상태 |
 
+
+## DB 용량 제어 (단타 우선 정책)
+
+### 즉시 실행: 주기 정리 함수 등록
+
+```sql
+-- 단타 우선(고배/짧은 TP SL) 보존값
+-- model_signal_audit : 7일
+-- model_setups       : 7일
+-- positions(closed)  : 7일
+-- daily_model_pnl     : 30일
+-- model_runtime_tunes : 60일
+
+create or replace function public.prune_automethemoney_history()
+returns void
+language plpgsql
+as $$
+begin
+  if to_regclass('public.model_signal_audit') is not null then
+    delete from public.model_signal_audit
+    where market = 'crypto' and cycle_at < (now() - interval '7 days');
+  end if;
+
+  if to_regclass('public.model_setups') is not null then
+    delete from public.model_setups
+    where market = 'crypto' and cycle_at < (now() - interval '7 days');
+  end if;
+
+  if to_regclass('public.positions') is not null then
+    delete from public.positions
+    where market = 'crypto' and status = 'closed' and closed_at < (now() - interval '7 days');
+  end if;
+
+  if to_regclass('public.daily_model_pnl') is not null then
+    delete from public.daily_model_pnl
+    where updated_at < (now() - interval '30 days');
+  end if;
+
+  if to_regclass('public.model_runtime_tunes') is not null then
+    delete from public.model_runtime_tunes
+    where updated_at < (now() - interval '60 days');
+  end if;
+
+  if to_regclass('public.model_tune_history') is not null then
+    delete from public.model_tune_history
+    where market = 'crypto' and created_at < (now() - interval '30 days');
+  end if;
+end;
+$$;
+
+create extension if not exists pg_cron;
+
+select
+  cron.schedule(
+    'automethemoney_prune',
+    '0 */6 * * *',
+    $$select public.prune_automethemoney_history();$$
+  );
+```
+
+### 수동 정리 (임시 비상)
+
+```sql
+-- 바로 적용 즉시 확인
+select public.prune_automethemoney_history();
+
+-- 이전 버전 에러 회피용: 기존 테이블만 직접 삭제하는 방식
+-- delete from public.model_signal_audit where market='crypto' and cycle_at < now() - interval '7 days';
+-- delete from public.model_setups where market='crypto' and cycle_at < now() - interval '7 days';
+-- delete from public.positions where market='crypto' and status='closed' and closed_at < now() - interval '7 days';
+-- delete from public.daily_model_pnl where updated_at < now() - interval '30 days';
+-- delete from public.model_runtime_tunes where updated_at < now() - interval '60 days';
+```
 ## 하드 리셋 (SQL Editor)
 
 ```sql
@@ -98,3 +171,17 @@ Bybit 키를 저장했다고 바로 live가 켜지는 구조가 아닙니다.
 - 유효한 provider 키
 
 즉 현재는 futures demo 운영 루프를 안정화하는 단계로 보는 것이 맞습니다.
+
+## 실시간 청산 미반영 긴급 진단 (PnL 동기화 체크)
+
+실시간 청산/PNL 동기화가 의심될 때는 아래 3단계로 즉시 확인합니다.
+
+1) 엔진 heartbeat가 최근 1~2분 이내 갱신되는지 확인
+2) `daily_model_pnl`이 모델별로 최근 1~3개 건이 주기적으로 갱신되는지 확인
+3) `recent_crypto_trades`에 `event_kind='close'`가 계속 들어오는지 확인
+
+### 즉시 실행 SQL
+
+- `docs/supabase_pnl_sync_check.sql` 전체를 SQL Editor에 복사해 실행
+- 결과가 비정상이면 `recent_crypto_trades`의 `close` 카운트와
+  `positions` 오픈 수 감소 추이를 우선 확인
