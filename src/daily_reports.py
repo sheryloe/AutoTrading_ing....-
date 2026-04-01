@@ -97,6 +97,10 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
         "unrealized_pnl_usd",
         "win_rate",
         "closed_trades",
+        "bybit_rebuild_restart_note_ko",
+        "bybit_rebuild_restart_variant_id",
+        "bybit_rebuild_restart_seed_usd",
+        "bybit_rebuild_restart_ts",
     ]
     with csv_path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)

@@ -224,6 +224,14 @@
         return "tone-flat";
       };
 
+      const escapeHtml = (value) =>
+        String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll("\"", "&quot;")
+          .replaceAll("'", "&#39;");
+
       function normalizeModelId(value) {
         return String(value || "").trim().toUpperCase();
       }
@@ -241,8 +249,16 @@
           const modelId = normalizeModelId(row.model_id || row.model || row.modelId);
           if (!MODEL_IDS.includes(modelId)) return;
           const raw = row.bybit_total_pnl_usd ?? row.total_pnl_usd ?? row.crypto_total_pnl_usd ?? 0;
-          const entry = bucket.get(day) || { date: day, A: 0, B: 0, C: 0, D: 0 };
+          const entry =
+            bucket.get(day) || { date: day, A: 0, B: 0, C: 0, D: 0, A_note: "", B_note: "", C_note: "", D_note: "" };
           entry[modelId] = parseNumber(raw);
+          const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+          const restartNote = String(
+            sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
+          ).trim();
+          if (restartNote) {
+            entry[`${modelId}_note`] = restartNote;
+          }
           bucket.set(day, entry);
         });
         return Array.from(bucket.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -326,7 +342,7 @@
 
         const { data, error } = await client
           .from("daily_model_pnl")
-          .select("day,model_id,bybit_total_pnl_usd,total_pnl_usd,market")
+          .select("day,model_id,bybit_total_pnl_usd,total_pnl_usd,market,source_json")
           .eq("market", "crypto")
           .order("day", { ascending: true })
           .limit(365);
@@ -356,10 +372,18 @@
             (row) => `
               <tr>
                 <td>${row.date || "-"}</td>
-                <td class="${toneClass(row.A)}">${formatMoney(row.A)}</td>
-                <td class="${toneClass(row.B)}">${formatMoney(row.B)}</td>
-                <td class="${toneClass(row.C)}">${formatMoney(row.C)}</td>
-                <td class="${toneClass(row.D)}">${formatMoney(row.D)}</td>
+                <td class="${toneClass(row.A)}">${formatMoney(row.A)}${
+                  row.A_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.A_note)}</div>` : ""
+                }</td>
+                <td class="${toneClass(row.B)}">${formatMoney(row.B)}${
+                  row.B_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.B_note)}</div>` : ""
+                }</td>
+                <td class="${toneClass(row.C)}">${formatMoney(row.C)}${
+                  row.C_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.C_note)}</div>` : ""
+                }</td>
+                <td class="${toneClass(row.D)}">${formatMoney(row.D)}${
+                  row.D_note ? `<div style="font-size:11px;color:#fcd34d;margin-top:4px;">${escapeHtml(row.D_note)}</div>` : ""
+                }</td>
               </tr>
             `
           )

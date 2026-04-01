@@ -147,6 +147,8 @@ TELEGRAM_POLL_LOCK_STALE_SECONDS = 30
 STATE_PERSIST_MIN_INTERVAL_SECONDS = 12
 LOSS_GUARD_DRAWDOWN_RATIO = 0.50
 LOSS_GUARD_RESTART_COOLDOWN_SECONDS = 6 * 60 * 60
+LOSS_GUARD_REBUILD_SEED_USD = 10_000.0
+LOSS_GUARD_REBUILD_NOTE_KO = "모델 튜닝해서 재시작"
 LIVE_MEME_CLOSE_ALERT_STREAK = 3
 LIVE_MEME_CLOSE_ALERT_COOLDOWN_SECONDS = 300
 LIVE_ACCOUNTING_SCHEMA_VERSION = 5
@@ -2908,6 +2910,10 @@ class TradingEngine:
                         "rebuild_source": str((row or {}).get("rebuild_source") or ""),
                         "eod_price_sources": dict((row or {}).get("eod_price_sources") or {}),
                         "replay_window": dict((row or {}).get("replay_window") or {}),
+                        "rebuild_restart_note_ko": str((row or {}).get("bybit_rebuild_restart_note_ko") or ""),
+                        "rebuild_restart_variant_id": str((row or {}).get("bybit_rebuild_restart_variant_id") or ""),
+                        "rebuild_restart_seed_usd": float((row or {}).get("bybit_rebuild_restart_seed_usd") or 0.0),
+                        "rebuild_restart_ts": int((row or {}).get("bybit_rebuild_restart_ts") or 0),
                     },
                 }
             )
@@ -6749,6 +6755,206 @@ class TradingEngine:
             self.state.model_runs = runs
         return updates
 
+    @staticmethod
+    def _drawdown_rebuild_variant_id(now_ts: int, model_id: str) -> str:
+        stamp = datetime.fromtimestamp(int(now_ts), tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
+        return f"D.ver@{stamp}-{str(model_id or '').upper()}"
+
+    def _apply_drawdown_full_reset_and_retune(self, now_ts: int, triggers: list[dict[str, Any]]) -> dict[str, Any]:
+        now = int(now_ts)
+        day_key = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d")
+        seed_usd = float(LOSS_GUARD_REBUILD_SEED_USD)
+        note_ko = str(LOSS_GUARD_REBUILD_NOTE_KO)
+        soft_updates = self._apply_loss_guard_rewrite(now, triggers)
+        tune_overrides: dict[str, dict[str, float]] = {
+            "A": {"threshold": 0.0640, "tp_mul": 1.14, "sl_mul": 0.97},
+            "B": {"threshold": 0.0710, "tp_mul": 1.24, "sl_mul": 0.94},
+            "C": {"threshold": 0.0760, "tp_mul": 1.36, "sl_mul": 0.92},
+            "D": {"threshold": 0.0620, "tp_mul": 1.22, "sl_mul": 0.95},
+        }
+        restarted: list[dict[str, Any]] = []
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+            self.state.demo_seed_usdt = float(seed_usd)
+            self.state.cash_usd = float(seed_usd)
+            self.state.positions = {}
+            self.state.trades = []
+
+            for model_id in CRYPTO_MODEL_IDS:
+                key = self._market_run_key("crypto", model_id)
+                previous_run = dict(runs.get(key) or {})
+                previous_variant_seq = int(previous_run.get("variant_seq") or 0)
+                fresh_run = self._blank_market_run("crypto", model_id, seed_usd)
+                variant_seq = max(1, previous_variant_seq + 1)
+                variant_id = self._drawdown_rebuild_variant_id(now, model_id)
+                fresh_run["variant_seq"] = int(variant_seq)
+                fresh_run["active_variant_id"] = str(variant_id)
+                tune = self._ensure_model_runtime_tune(fresh_run, model_id, now)
+                clamps = self._model_tune_clamps(model_id)
+                override = dict(tune_overrides.get(model_id) or {})
+                tune["threshold"] = _clamp(
+                    float(override.get("threshold") or tune.get("threshold") or 0.07),
+                    float(clamps["threshold"][0]),
+                    float(clamps["threshold"][1]),
+                )
+                tune["tp_mul"] = _clamp(
+                    float(override.get("tp_mul") or tune.get("tp_mul") or 1.0),
+                    float(clamps["tp_mul"][0]),
+                    float(clamps["tp_mul"][1]),
+                )
+                tune["sl_mul"] = _clamp(
+                    float(override.get("sl_mul") or tune.get("sl_mul") or 1.0),
+                    float(clamps["sl_mul"][0]),
+                    float(clamps["sl_mul"][1]),
+                )
+                tune["last_eval_ts"] = int(now)
+                tune["next_eval_ts"] = int(now + self._autotune_interval_seconds())
+                tune["last_eval_closed"] = 0
+                tune["last_eval_win_rate"] = 0.0
+                tune["last_eval_pnl_usd"] = 0.0
+                tune["last_eval_pf"] = 0.0
+                tune["last_eval_note"] = "drawdown_50pct_rebuild_restart"
+                tune["last_eval_note_ko"] = note_ko
+                tune["active_variant_id"] = str(variant_id)
+                tune["variant_seq"] = int(variant_seq)
+                all_raw = dict(fresh_run.get("model_runtime_tune") or {})
+                all_raw[model_id] = dict(tune)
+                fresh_run["model_runtime_tune"] = all_raw
+                if model_id == "B":
+                    fresh_run["b_runtime_tune"] = dict(tune)
+                history = list(previous_run.get("variant_history") or [])
+                history.append(
+                    {
+                        "ts": int(now),
+                        "variant_id": str(variant_id),
+                        "parent_variant_id": str(previous_run.get("active_variant_id") or f"{model_id}-BASE"),
+                        "note_code": "drawdown_50pct_rebuild_restart",
+                        "note_ko": note_ko,
+                        "threshold_before": float((previous_run.get("model_runtime_tune") or {}).get(model_id, {}).get("threshold") or 0.0),
+                        "threshold_after": float(tune["threshold"]),
+                        "tp_mul_before": float((previous_run.get("model_runtime_tune") or {}).get(model_id, {}).get("tp_mul") or 0.0),
+                        "tp_mul_after": float(tune["tp_mul"]),
+                        "sl_mul_before": float((previous_run.get("model_runtime_tune") or {}).get(model_id, {}).get("sl_mul") or 0.0),
+                        "sl_mul_after": float(tune["sl_mul"]),
+                        "closed_trades": 0,
+                        "win_rate": 0.0,
+                        "pnl_usd": 0.0,
+                        "profit_factor": 0.0,
+                    }
+                )
+                fresh_run["variant_history"] = history[-2000:]
+                fresh_run["loss_guard"] = {
+                    "active": True,
+                    "threshold_boost": 0.014,
+                    "order_mul": 0.50,
+                    "reason": "drawdown_50pct_rebuild_restart",
+                    "trigger_ts": int(now),
+                }
+                fresh_run["bybit_seed_usd"] = float(seed_usd)
+                fresh_run["bybit_cash_usd"] = float(seed_usd)
+                fresh_run["bybit_positions"] = {}
+                fresh_run["trades"] = []
+                fresh_run["latest_crypto_signals"] = []
+                fresh_run["bybit_rebuild_restart_note_ko"] = note_ko
+                fresh_run["bybit_rebuild_restart_ts"] = int(now)
+                fresh_run["bybit_rebuild_restart_seed_usd"] = float(seed_usd)
+                fresh_run["bybit_rebuild_restart_variant_id"] = str(variant_id)
+                runs[key] = fresh_run
+                restarted.append(
+                    {
+                        "model_id": str(model_id),
+                        "variant_id": str(variant_id),
+                        "seed_usd": float(seed_usd),
+                        "note_ko": note_ko,
+                    }
+                )
+
+            table = list(self.state.daily_pnl or [])
+            for row in restarted:
+                model_id = str(row["model_id"])
+                idx = None
+                for i in range(len(table) - 1, -1, -1):
+                    old = dict(table[i] or {})
+                    if str(old.get("date") or "") == day_key and str(old.get("model_id") or "").upper() == model_id:
+                        idx = i
+                        break
+                base = dict(table[idx]) if idx is not None else {}
+                meme_equity = float(base.get("meme_equity_usd") or 0.0)
+                meme_total_pnl = float(base.get("meme_total_pnl_usd") or 0.0)
+                meme_realized = float(base.get("meme_realized_pnl_usd") or 0.0)
+                meme_unrealized = float(base.get("meme_unrealized_pnl_usd") or 0.0)
+                rebuilt_row = {
+                    "date": day_key,
+                    "model_id": model_id,
+                    "meme_equity_usd": float(meme_equity),
+                    "bybit_equity_usd": float(seed_usd),
+                    "meme_total_pnl_usd": float(meme_total_pnl),
+                    "bybit_total_pnl_usd": 0.0,
+                    "meme_realized_pnl_usd": float(meme_realized),
+                    "bybit_realized_pnl_usd": 0.0,
+                    "meme_unrealized_pnl_usd": float(meme_unrealized),
+                    "bybit_unrealized_pnl_usd": 0.0,
+                    "meme_win_rate": float(base.get("meme_win_rate") or 0.0),
+                    "bybit_win_rate": 0.0,
+                    "meme_closed_trades": int(base.get("meme_closed_trades") or 0),
+                    "bybit_closed_trades": 0,
+                    "meme_open_positions": int(base.get("meme_open_positions") or 0),
+                    "bybit_open_positions": 0,
+                    "total_equity_usd": float(meme_equity + seed_usd),
+                    "total_pnl_usd": float(meme_total_pnl),
+                    "realized_pnl_usd": float(meme_realized),
+                    "unrealized_pnl_usd": float(meme_unrealized),
+                    "win_rate": float(base.get("meme_win_rate") or 0.0),
+                    "closed_trades": int(base.get("meme_closed_trades") or 0),
+                    "bybit_quote_status": "drawdown_rebuild_reset",
+                    "bybit_quote_stale": False,
+                    "bybit_quote_as_of_ts": int(now),
+                    "bybit_quote_age_seconds": 0,
+                    "bybit_quote_stale_after_seconds": 0,
+                    "bybit_quote_symbols": [],
+                    "bybit_quote_stale_symbols": [],
+                    "bybit_quote_guard_symbols": [],
+                    "bybit_quote_realtime_sources": [],
+                    "bybit_quote_fallback_sources": [],
+                    "bybit_quote_sync_attempted_symbols": [],
+                    "bybit_quote_sync_synced_symbols": [],
+                    "bybit_quote_sync_missing_symbols": [],
+                    "bybit_quote_sync_provider_summary": {},
+                    "bybit_quote_sync_reason": "drawdown_50pct_rebuild_restart",
+                    "bybit_quote_sync_at_ts": int(now),
+                    "rebuild_source": "drawdown_50pct_rebuild_restart",
+                    "bybit_rebuild_restart_note_ko": note_ko,
+                    "bybit_rebuild_restart_variant_id": str(row["variant_id"]),
+                    "bybit_rebuild_restart_seed_usd": float(seed_usd),
+                    "bybit_rebuild_restart_ts": int(now),
+                }
+                if idx is None:
+                    table.append(rebuilt_row)
+                else:
+                    table[idx] = rebuilt_row
+
+            runs["_system_guard_state"] = {
+                "last_trigger_ts": int(now),
+                "cooldown_seconds": int(LOSS_GUARD_RESTART_COOLDOWN_SECONDS),
+                "drawdown_ratio_threshold": float(LOSS_GUARD_DRAWDOWN_RATIO),
+                "last_triggers": list(triggers),
+                "last_updates": dict(soft_updates),
+                "last_action": "full_seed_reset_rebuild",
+                "last_reset_seed_usd": float(seed_usd),
+                "last_reset_day": str(day_key),
+                "last_reset_models": [dict(item) for item in restarted],
+                "last_reset_note_ko": note_ko,
+            }
+            self.state.model_runs = runs
+            self.state.daily_pnl = table[-1200:]
+        return {
+            "seed_usd": float(seed_usd),
+            "note_ko": note_ko,
+            "day": str(day_key),
+            "models": [dict(item) for item in restarted],
+            "runtime_overrides": dict(soft_updates),
+        }
+
     def _maybe_drawdown_guard_restart(self, now_ts: int) -> None:
         rows = self._scan_drawdown_rows()
         triggers = [
@@ -6782,19 +6988,26 @@ class TradingEngine:
         if last_trigger > 0 and (int(now_ts) - last_trigger) < max(900, cooldown):
             return
 
-        updates = self._apply_loss_guard_rewrite(int(now_ts), triggers)
+        reset_payload = self._apply_drawdown_full_reset_and_retune(int(now_ts), triggers)
         ranked = sorted(triggers, key=lambda r: float(r.get("drawdown_ratio") or 0.0), reverse=True)
         top = ranked[:6]
         lines = [
             f"- {str(r['model_name'])}: seed={float(r['seed_usd']):.2f} equity={float(r['equity_usd']):.2f} dd={float(r['drawdown_ratio']) * 100:.1f}%"
             for r in top
         ]
+        restarted_models = list(reset_payload.get("models") or [])
+        restart_lines = [
+            f"- Model {str(item.get('model_id') or '-')}: {str(item.get('variant_id') or '-')} | seed={float(item.get('seed_usd') or 0.0):.2f}"
+            for item in restarted_models
+        ]
         self._push_alert(
             "warn",
             "손실 50% 가드 발동",
             (
-                "모델 전면 방어 리라이트를 적용했습니다.\n"
-                f"업데이트: {updates}\n"
+                "모델 전면 재구성/재튜닝 후 10000달러로 초기화했습니다.\n"
+                f"일일 PnL 표기: {str(reset_payload.get('note_ko') or LOSS_GUARD_REBUILD_NOTE_KO)}\n"
+                f"초기화 모델:\n{chr(10).join(restart_lines) if restart_lines else '-'}\n"
+                f"업데이트: {dict(reset_payload.get('runtime_overrides') or {})}\n"
                 f"트리거:\n{chr(10).join(lines)}\n"
                 "엔진을 자동 재시작합니다."
             ),
@@ -13635,11 +13848,24 @@ class TradingEngine:
                 "bybit_quote_sync_at_ts": int(crypto_quote_sync.get("at_ts") or 0),
             }
             idx = None
+            previous: dict[str, Any] = {}
             for i in range(len(table) - 1, -1, -1):
                 old = table[i]
                 if str(old.get("date")) == day_key and str(old.get("model_id")) == model_id:
                     idx = i
+                    previous = dict(old or {})
                     break
+            if previous:
+                for key in (
+                    "rebuild_source",
+                    "bybit_rebuild_restart_note_ko",
+                    "bybit_rebuild_restart_variant_id",
+                    "bybit_rebuild_restart_seed_usd",
+                    "bybit_rebuild_restart_ts",
+                ):
+                    value = previous.get(key)
+                    if value not in {None, "", [], {}}:
+                        row[key] = value
             if idx is None:
                 table.append(row)
             else:

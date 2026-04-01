@@ -211,6 +211,15 @@
             return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
         }
 
+        function escapeHtml(value) {
+            return String(value || "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll("\"", "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+
         function dateLabel(value) {
             if (!value) return "-";
             const date = new Date(value);
@@ -355,6 +364,13 @@
                 if (!MODEL_IDS.includes(modelId)) return;
                 const entry = byDay.get(day) || { day, A: 0, B: 0, C: 0, D: 0 };
                 entry[modelId] = Number(row.total_pnl_usd || 0);
+                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+                const restartNote = String(
+                    sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
+                ).trim();
+                if (restartNote) {
+                    entry[`${modelId}_note`] = restartNote;
+                }
                 byDay.set(day, entry);
             });
 
@@ -377,7 +393,11 @@
                     const modelCells = MODEL_IDS.map((modelId) => {
                         const value = Number(entry[modelId] || 0);
                         const cls = value >= 0 ? "pnl-plus" : "pnl-minus";
-                        return `<td class="px-3 py-2 font-mono ${cls}">${formatSignedUsd(value)}</td>`;
+                        const note = String(entry[`${modelId}_note`] || "").trim();
+                        const noteHtml = note
+                            ? `<div class="text-[10px] text-amber-300 mt-1">${escapeHtml(note)}</div>`
+                            : "";
+                        return `<td class="px-3 py-2 font-mono ${cls}">${formatSignedUsd(value)}${noteHtml}</td>`;
                     }).join("");
                     return `<tr class="${rowClass}">${dayCell}${modelCells}</tr>`;
                 })
@@ -392,7 +412,7 @@
             const [dailyRes, positionsRes, heartbeatRes] = await Promise.all([
                 _supabase
                     .from("daily_model_pnl")
-                    .select("day,model_id,total_pnl_usd,realized_pnl_usd")
+                    .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json")
                     .eq("market", "crypto")
                     .order("day", { ascending: false })
                     .limit(DAILY_PNL_ROWS_LIMIT),
