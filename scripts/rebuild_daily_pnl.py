@@ -24,6 +24,8 @@ from src.supabase_sync import SupabaseSyncClient
 
 MODEL_IDS = ("A", "B", "C", "D")
 UTC = timezone.utc
+KST = timezone(timedelta(hours=9))
+MODEL_FIXED_SEED_USD = 10_000.0
 
 
 def _parse_day(value: str) -> date:
@@ -42,11 +44,11 @@ def _day_key(day_value: date) -> str:
 
 
 def _day_start_ts(day_value: date) -> int:
-    return int(datetime(day_value.year, day_value.month, day_value.day, tzinfo=UTC).timestamp())
+    return int(datetime(day_value.year, day_value.month, day_value.day, tzinfo=KST).timestamp())
 
 
 def _day_end_ts(day_value: date) -> int:
-    return int((datetime(day_value.year, day_value.month, day_value.day, tzinfo=UTC) + timedelta(days=1)).timestamp()) - 1
+    return int((datetime(day_value.year, day_value.month, day_value.day, tzinfo=KST) + timedelta(days=1)).timestamp()) - 1
 
 
 def _iter_days(start_day: date, end_day: date) -> list[date]:
@@ -186,7 +188,7 @@ def _build_supabase_daily_index(
     result = client.fetch_rows(
         "daily_model_pnl",
         params={
-            "select": "day,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,source_json",
+            "select": "day,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,source_json,bybit_rebuild_restart_variant_id,bybit_rebuild_restart_note_ko,bybit_rebuild_restart_seed_usd,bybit_rebuild_restart_ts",
             "market": "eq.crypto",
             "day": f"gte.{_day_key(start_day)}",
             "order": "day.asc,model_id.asc",
@@ -194,10 +196,24 @@ def _build_supabase_daily_index(
         },
     )
     if not bool(result.get("ok")):
-        return out
+        result = client.fetch_rows(
+            "daily_model_pnl",
+            params={
+                "select": "day,model_id,equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,source_json",
+                "market": "eq.crypto",
+                "day": f"gte.{_day_key(start_day)}",
+                "order": "day.asc,model_id.asc",
+                "limit": "800",
+            },
+        )
+        if not bool(result.get("ok")):
+            return out
     for row in list(result.get("rows") or []):
         if not isinstance(row, dict):
             continue
+        source_json = row.get("source_json")
+        if not isinstance(source_json, dict):
+            source_json = {}
         day_text = str(row.get("day") or "").strip()
         day_parsed = _try_parse_day(day_text)
         if day_parsed is None or day_parsed > end_day:
@@ -205,13 +221,28 @@ def _build_supabase_daily_index(
         model_id = str(row.get("model_id") or "").strip().upper()
         if model_id not in MODEL_IDS:
             continue
+        cycle_total = _safe_float(
+            (row.get("source_json") or {}).get("cycle_total_pnl_usd")
+            if isinstance(row.get("source_json"), dict)
+            else None,
+            _safe_float(row.get("total_pnl_usd"), 0.0),
+        )
+        anchor_total = _safe_float(
+            (row.get("source_json") or {}).get("total_pnl_anchor_usd")
+            if isinstance(row.get("source_json"), dict)
+            else None,
+            0.0,
+        )
+        display_total = _safe_float(row.get("total_pnl_usd"), cycle_total + anchor_total)
         out[_daily_row_key(day_text, model_id)] = {
             "date": day_text,
             "model_id": model_id,
             "meme_equity_usd": 0.0,
-            "bybit_equity_usd": _safe_float(row.get("equity_usd"), 0.0),
+            "bybit_equity_usd": _safe_float(row.get("equity_usd"), MODEL_FIXED_SEED_USD + display_total),
             "meme_total_pnl_usd": 0.0,
-            "bybit_total_pnl_usd": _safe_float(row.get("total_pnl_usd"), 0.0),
+            "bybit_total_pnl_usd": display_total,
+            "bybit_cycle_total_pnl_usd": cycle_total,
+            "bybit_total_pnl_anchor_usd": anchor_total,
             "meme_realized_pnl_usd": 0.0,
             "bybit_realized_pnl_usd": _safe_float(row.get("realized_pnl_usd"), 0.0),
             "meme_unrealized_pnl_usd": 0.0,
@@ -222,13 +253,13 @@ def _build_supabase_daily_index(
             "bybit_closed_trades": _safe_int(row.get("closed_trades"), 0),
             "meme_open_positions": 0,
             "bybit_open_positions": 0,
-            "total_equity_usd": _safe_float(row.get("equity_usd"), 0.0),
-            "total_pnl_usd": _safe_float(row.get("total_pnl_usd"), 0.0),
+            "total_equity_usd": _safe_float(row.get("equity_usd"), MODEL_FIXED_SEED_USD + display_total),
+            "total_pnl_usd": display_total,
             "realized_pnl_usd": _safe_float(row.get("realized_pnl_usd"), 0.0),
             "unrealized_pnl_usd": _safe_float(row.get("unrealized_pnl_usd"), 0.0),
             "win_rate": _safe_float(row.get("win_rate"), 0.0),
             "closed_trades": _safe_int(row.get("closed_trades"), 0),
-            "bybit_quote_status": str(((row.get("source_json") or {}) if isinstance(row.get("source_json"), dict) else {}).get("quote_status") or "fresh"),
+            "bybit_quote_status": str(source_json.get("quote_status") or "fresh"),
             "bybit_quote_stale": False,
             "bybit_quote_as_of_ts": 0,
             "bybit_quote_age_seconds": 0,
@@ -245,36 +276,164 @@ def _build_supabase_daily_index(
             "bybit_quote_sync_reason": "supabase_snapshot",
             "bybit_quote_sync_at_ts": 0,
             "rebuild_source": str(((row.get("source_json") or {}) if isinstance(row.get("source_json"), dict) else {}).get("rebuild_source") or ""),
+            "bybit_rebuild_restart_note_ko": str(
+                row.get("bybit_rebuild_restart_note_ko")
+                or source_json.get("rebuild_restart_note_ko")
+                or ""
+            ),
+            "bybit_rebuild_restart_variant_id": str(
+                row.get("bybit_rebuild_restart_variant_id")
+                or source_json.get("rebuild_restart_variant_id")
+                or ""
+            ),
+            "bybit_rebuild_restart_seed_usd": _safe_float(
+                row.get("bybit_rebuild_restart_seed_usd") or source_json.get("rebuild_restart_seed_usd"),
+                0.0,
+            ),
+            "bybit_rebuild_restart_ts": _safe_int(
+                row.get("bybit_rebuild_restart_ts") or source_json.get("rebuild_restart_ts"),
+                0,
+            ),
             "eod_price_sources": {},
             "replay_window": {"from": _day_key(start_day), "to": _day_key(end_day)},
         }
     return out
 
 
-def _preserve_nonzero_history_rows(
+def _normalize_existing_row(row: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(row or {})
+    normalized["date"] = str(normalized.get("date") or normalized.get("day") or "").strip()
+    normalized["model_id"] = str(normalized.get("model_id") or "").strip().upper()
+    cycle = _safe_float(
+        normalized.get("bybit_cycle_total_pnl_usd"),
+        _safe_float(normalized.get("bybit_total_pnl_usd"), _safe_float(normalized.get("total_pnl_usd"), 0.0)),
+    )
+    anchor = _safe_float(normalized.get("bybit_total_pnl_anchor_usd"), 0.0)
+    if "bybit_cycle_total_pnl_usd" not in normalized:
+        normalized["bybit_cycle_total_pnl_usd"] = float(cycle)
+    if "bybit_total_pnl_anchor_usd" not in normalized:
+        normalized["bybit_total_pnl_anchor_usd"] = float(anchor)
+    return normalized
+
+
+def _merge_rebuilt_with_existing(
     rebuilt_rows: list[dict[str, Any]],
     *,
     existing_index: dict[tuple[str, str], dict[str, Any]],
-) -> tuple[list[dict[str, Any]], int]:
-    out: list[dict[str, Any]] = []
-    preserved_count = 0
-    for row in list(rebuilt_rows or []):
-        current = dict(row or {})
-        key = _daily_row_key(current.get("date"), current.get("model_id"))
-        existing = dict(existing_index.get(key) or {})
-        if existing and _is_flat_zero_row(current) and abs(_daily_total_pnl(existing)) > 1e-9:
-            merged = dict(existing)
-            merged["date"] = str(current.get("date") or merged.get("date") or "")
-            merged["model_id"] = str(current.get("model_id") or merged.get("model_id") or "").upper()
-            merged["rebuild_source"] = str(merged.get("rebuild_source") or "preserved_existing_nonzero")
-            merged["replay_window"] = dict(current.get("replay_window") or merged.get("replay_window") or {})
-            merged["preserved_nonzero_history"] = True
-            out.append(merged)
-            preserved_count += 1
+    start_day: date,
+    end_day: date,
+) -> tuple[list[dict[str, Any]], int, int]:
+    merged_map: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, row in dict(existing_index or {}).items():
+        current = _normalize_existing_row(dict(row or {}))
+        day_text = str(current.get("date") or "").strip()
+        model_id = str(current.get("model_id") or "").strip().upper()
+        parsed_day = _try_parse_day(day_text)
+        if parsed_day is None or not (start_day <= parsed_day <= end_day):
             continue
-        out.append(current)
+        if model_id not in MODEL_IDS:
+            continue
+        merged_map[_daily_row_key(day_text, model_id)] = current
+    existing_rows_in_window = len(merged_map)
+    preserved_nonzero_rows = 0
+
+    for row in list(rebuilt_rows or []):
+        current = _normalize_existing_row(dict(row or {}))
+        day_text = str(current.get("date") or "").strip()
+        model_id = str(current.get("model_id") or "").strip().upper()
+        parsed_day = _try_parse_day(day_text)
+        if parsed_day is None or not (start_day <= parsed_day <= end_day):
+            continue
+        if model_id not in MODEL_IDS:
+            continue
+        key = _daily_row_key(day_text, model_id)
+        existing = dict(merged_map.get(key) or {})
+        if existing and _is_flat_zero_row(current) and abs(_daily_total_pnl(existing)) > 1e-9:
+            if model_id in {"A", "B", "C"} and _row_has_restart_marker(existing):
+                for marker_key in (
+                    "rebuild_source",
+                    "bybit_rebuild_restart_variant_id",
+                    "bybit_rebuild_restart_note_ko",
+                    "bybit_rebuild_restart_seed_usd",
+                    "bybit_rebuild_restart_ts",
+                ):
+                    marker_value = existing.get(marker_key)
+                    if marker_value is not None and marker_value != "" and marker_value != [] and marker_value != {}:
+                        current[marker_key] = marker_value
+            else:
+                preserved_nonzero_rows += 1
+                continue
+        merged_map[key] = current
+
+    out = sorted(merged_map.values(), key=lambda r: (str(r.get("date") or ""), str(r.get("model_id") or "")))
+    return out, int(existing_rows_in_window), int(preserved_nonzero_rows)
+
+
+def _row_has_restart_marker(row: dict[str, Any]) -> bool:
+    source_json = dict(row.get("source_json") or {})
+    if not isinstance(source_json, dict):
+        source_json = {}
+    variant_id = str(
+        row.get("bybit_rebuild_restart_variant_id")
+        or row.get("rebuild_restart_variant_id")
+        or source_json.get("rebuild_restart_variant_id")
+        or ""
+    ).strip()
+    if variant_id:
+        return True
+    rebuild_source = str(row.get("rebuild_source") or source_json.get("rebuild_source") or "").strip().lower()
+    return rebuild_source == "drawdown_50pct_rebuild_restart"
+
+
+def _row_cycle_total_pnl(row: dict[str, Any]) -> float:
+    return _safe_float(
+        row.get("bybit_cycle_total_pnl_usd"),
+        _safe_float(row.get("bybit_total_pnl_usd"), _safe_float(row.get("total_pnl_usd"), 0.0)),
+    )
+
+
+def _apply_model_anchor_policy(rows: list[dict[str, Any]], *, seed_usd: float) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {model_id: [] for model_id in MODEL_IDS}
+    for row in list(rows or []):
+        model_id = str((row or {}).get("model_id") or "").strip().upper()
+        if model_id not in grouped:
+            continue
+        grouped[model_id].append(dict(row or {}))
+
+    out: list[dict[str, Any]] = []
+    for model_id in MODEL_IDS:
+        model_rows = sorted(
+            grouped.get(model_id) or [],
+            key=lambda r: (str(r.get("date") or ""), str(r.get("model_id") or "")),
+        )
+        anchor = 0.0
+        prev_display_total: float | None = None
+        for row in model_rows:
+            cycle_total = float(_row_cycle_total_pnl(row))
+            has_restart = _row_has_restart_marker(row)
+            if model_id == "D":
+                if has_restart:
+                    anchor = 0.0
+            else:
+                if has_restart and prev_display_total is not None:
+                    anchor = float(prev_display_total - cycle_total)
+            display_total = float(cycle_total + anchor)
+            meme_total = _safe_float(row.get("meme_total_pnl_usd"), 0.0)
+            meme_equity = _safe_float(row.get("meme_equity_usd"), 0.0)
+            bybit_equity = float(seed_usd + display_total)
+
+            row["bybit_cycle_total_pnl_usd"] = round(float(cycle_total), 6)
+            row["bybit_total_pnl_anchor_usd"] = round(float(anchor), 6)
+            row["bybit_total_pnl_usd"] = round(float(display_total), 6)
+            row["total_pnl_usd"] = round(float(meme_total + display_total), 6)
+            row["bybit_equity_usd"] = round(float(bybit_equity), 6)
+            row["total_equity_usd"] = round(float(meme_equity + bybit_equity), 6)
+
+            prev_display_total = float(display_total)
+            out.append(row)
+
     out.sort(key=lambda r: (str(r.get("date") or ""), str(r.get("model_id") or "")))
-    return out, int(preserved_count)
+    return out
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -385,7 +544,7 @@ class DailyPriceClient:
                     continue
                 if close_price <= 0.0:
                     continue
-                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=UTC).strftime("%Y-%m-%d")
+                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=KST).strftime("%Y-%m-%d")
                 out[day_key] = {
                     "price": close_price,
                     "source": "binance_1d",
@@ -442,7 +601,7 @@ class DailyPriceClient:
             if not parsed:
                 break
             for open_ms, close_price in parsed:
-                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=UTC).strftime("%Y-%m-%d")
+                day_key = datetime.fromtimestamp(open_ms / 1000.0, tz=KST).strftime("%Y-%m-%d")
                 out[day_key] = {
                     "price": close_price,
                     "source": "bybit_1d",
@@ -463,6 +622,54 @@ class DailyPriceClient:
                 if day_key in fallback:
                     result[day_key] = dict(fallback[day_key])
         return result
+
+    def _fetch_binance_latest(self, symbol: str) -> dict[str, Any]:
+        sym = _normalize_symbol(symbol)
+        if not sym:
+            return {}
+        try:
+            res = self.session.get(
+                "https://api.binance.com/api/v3/ticker/price",
+                params={"symbol": sym},
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            body = res.json()
+            price = _safe_float((body or {}).get("price"), 0.0)
+            if price <= 0.0:
+                return {}
+            return {"price": float(price), "source": "binance_latest", "as_of_ts": int(time.time())}
+        except Exception as exc:
+            self._record_error(sym, "binance_latest", exc)
+            return {}
+
+    def _fetch_bybit_latest(self, symbol: str) -> dict[str, Any]:
+        sym = _normalize_symbol(symbol)
+        if not sym:
+            return {}
+        try:
+            res = self.session.get(
+                "https://api.bybit.com/v5/market/tickers",
+                params={"category": "linear", "symbol": sym},
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            body = res.json()
+            rows = (((body or {}).get("result") or {}).get("list") or []) if isinstance(body, dict) else []
+            row = rows[0] if isinstance(rows, list) and rows else {}
+            price = _safe_float((row or {}).get("lastPrice"), 0.0)
+            if price <= 0.0:
+                return {}
+            return {"price": float(price), "source": "bybit_latest", "as_of_ts": int(time.time())}
+        except Exception as exc:
+            self._record_error(sym, "bybit_latest", exc)
+            return {}
+
+    def fetch_symbol_latest_price(self, symbol: str) -> dict[str, Any]:
+        latest = self._fetch_binance_latest(symbol)
+        if _safe_float(latest.get("price"), 0.0) > 0.0:
+            return latest
+        return self._fetch_bybit_latest(symbol)
 
 
 def _trade_sort_key(row: dict[str, Any], index: int) -> tuple[int, int]:
@@ -578,11 +785,12 @@ def _rebuild_model_rows(
     end_day: date,
     seed_usdt: float,
     price_map: dict[str, dict[str, dict[str, Any]]],
+    latest_price_map: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     trades = [dict(row or {}) for row in list(run.get("trades") or []) if isinstance(row, dict) and _is_crypto_trade(row)]
     trades.extend(_build_synthetic_open_trades(run, trades))
     events = sorted(enumerate(trades), key=lambda item: _trade_sort_key(item[1], item[0]))
-    cash = float(run.get("bybit_seed_usd") or seed_usdt)
+    cash = float(seed_usdt)
     realized = 0.0
     closed = 0
     wins = 0
@@ -623,6 +831,16 @@ def _rebuild_model_rows(
             day_series = dict(price_map.get(symbol) or {})
             mark_row = dict(day_series.get(_day_key(day_value)) or {})
             price = _safe_float(mark_row.get("price"), 0.0)
+            if day_value == end_day:
+                latest_row = dict((latest_price_map or {}).get(symbol) or {})
+                latest_price = _safe_float(latest_row.get("price"), 0.0)
+                if latest_price > 0.0:
+                    price = latest_price
+                    mark_row = {
+                        "price": float(latest_price),
+                        "source": str(latest_row.get("source") or "latest"),
+                        "as_of_ts": _safe_int(latest_row.get("as_of_ts"), int(time.time())),
+                    }
             if price <= 0.0:
                 missing_symbols.append(symbol)
                 continue
@@ -654,6 +872,8 @@ def _rebuild_model_rows(
                 "bybit_equity_usd": round(equity, 6),
                 "meme_total_pnl_usd": 0.0,
                 "bybit_total_pnl_usd": round(total_pnl, 6),
+                "bybit_cycle_total_pnl_usd": round(total_pnl, 6),
+                "bybit_total_pnl_anchor_usd": 0.0,
                 "meme_realized_pnl_usd": 0.0,
                 "bybit_realized_pnl_usd": round(realized, 6),
                 "meme_unrealized_pnl_usd": 0.0,
@@ -698,11 +918,34 @@ def _build_supabase_daily_rows(rows: list[dict[str, Any]], *, updated_ts: int) -
     payload: list[dict[str, Any]] = []
     snapshot_iso = datetime.fromtimestamp(updated_ts, tz=UTC).isoformat()
     for row in rows:
+        source_json = dict(row.get("source_json") or {})
+        if not isinstance(source_json, dict):
+            source_json = {}
         payload.append(
             {
                 "day": str(row.get("date") or ""),
                 "market": "crypto",
                 "model_id": str(row.get("model_id") or ""),
+                "bybit_rebuild_restart_variant_id": str(
+                    row.get("bybit_rebuild_restart_variant_id")
+                    or source_json.get("rebuild_restart_variant_id")
+                    or ""
+                ),
+                "bybit_rebuild_restart_note_ko": str(
+                    row.get("bybit_rebuild_restart_note_ko")
+                    or source_json.get("rebuild_restart_note_ko")
+                    or ""
+                ),
+                "bybit_rebuild_restart_seed_usd": float(
+                    row.get("bybit_rebuild_restart_seed_usd")
+                    or source_json.get("rebuild_restart_seed_usd")
+                    or 0.0
+                ),
+                "bybit_rebuild_restart_ts": int(
+                    row.get("bybit_rebuild_restart_ts")
+                    or source_json.get("rebuild_restart_ts")
+                    or 0
+                ),
                 "equity_usd": float(row.get("bybit_equity_usd") or 0.0),
                 "total_pnl_usd": float(row.get("bybit_total_pnl_usd") or 0.0),
                 "realized_pnl_usd": float(row.get("bybit_realized_pnl_usd") or 0.0),
@@ -713,6 +956,42 @@ def _build_supabase_daily_rows(rows: list[dict[str, Any]], *, updated_ts: int) -
                 "source_json": {
                     "snapshot_at": snapshot_iso,
                     "rebuild_source": str(row.get("rebuild_source") or "daily_close_replay"),
+                    "rebuild_restart_variant_id": str(
+                        row.get("bybit_rebuild_restart_variant_id")
+                        or source_json.get("rebuild_restart_variant_id")
+                        or ""
+                    ),
+                    "rebuild_restart_note_ko": str(
+                        row.get("bybit_rebuild_restart_note_ko")
+                        or source_json.get("rebuild_restart_note_ko")
+                        or ""
+                    ),
+                    "rebuild_restart_seed_usd": float(
+                        row.get("bybit_rebuild_restart_seed_usd")
+                        or source_json.get("rebuild_restart_seed_usd")
+                        or 0.0
+                    ),
+                    "rebuild_restart_ts": int(
+                        row.get("bybit_rebuild_restart_ts")
+                        or source_json.get("rebuild_restart_ts")
+                        or 0
+                    ),
+                    "cycle_total_pnl_usd": float(
+                        _safe_float(
+                            row.get("bybit_cycle_total_pnl_usd")
+                            if row.get("bybit_cycle_total_pnl_usd") not in {None, ""}
+                            else source_json.get("cycle_total_pnl_usd"),
+                            0.0,
+                        )
+                    ),
+                    "total_pnl_anchor_usd": float(
+                        _safe_float(
+                            row.get("bybit_total_pnl_anchor_usd")
+                            if row.get("bybit_total_pnl_anchor_usd") not in {None, ""}
+                            else source_json.get("total_pnl_anchor_usd"),
+                            0.0,
+                        )
+                    ),
                     "eod_price_sources": dict(row.get("eod_price_sources") or {}),
                     "quote_sync_missing_symbols": list(row.get("bybit_quote_sync_missing_symbols") or []),
                     "quote_sync_provider_summary": dict(row.get("bybit_quote_sync_provider_summary") or {}),
@@ -729,8 +1008,13 @@ def _build_supabase_daily_rows(rows: list[dict[str, Any]], *, updated_ts: int) -
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rebuild crypto daily PnL rows from trade replay and daily closes.")
-    parser.add_argument("--from", dest="from_day", default="2026-03-28", help="UTC start day (YYYY-MM-DD)")
-    parser.add_argument("--to", dest="to_day", default=datetime.now(tz=UTC).strftime("%Y-%m-%d"), help="UTC end day (YYYY-MM-DD)")
+    parser.add_argument("--from", dest="from_day", default="2026-03-28", help="KST start day (YYYY-MM-DD)")
+    parser.add_argument(
+        "--to",
+        dest="to_day",
+        default=datetime.now(tz=KST).strftime("%Y-%m-%d"),
+        help="KST end day (YYYY-MM-DD)",
+    )
     parser.add_argument("--state-file", default="", help="Optional engine state JSON path")
     parser.add_argument("--output-dir", default="", help="Optional daily report output directory")
     parser.add_argument("--write-state", action="store_true", help="Write rebuilt daily_pnl into local state and engine_state blob")
@@ -767,10 +1051,13 @@ def main() -> int:
     price_map: dict[str, dict[str, dict[str, Any]]] = {}
     for symbol in symbols:
         price_map[symbol] = price_client.fetch_symbol_daily_series(symbol, start_day, end_day)
+    latest_price_map: dict[str, dict[str, Any]] = {}
+    for symbol in symbols:
+        latest_price_map[symbol] = price_client.fetch_symbol_latest_price(symbol)
 
     rebuilt_rows: list[dict[str, Any]] = []
     skipped_days: list[dict[str, Any]] = []
-    seed_usdt = _safe_float(state_payload.get("demo_seed_usdt"), 10000.0)
+    seed_usdt = float(MODEL_FIXED_SEED_USD)
     for model_id in MODEL_IDS:
         run = dict(model_runs.get(f"crypto_{model_id}") or {})
         model_rows, model_skipped = _rebuild_model_rows(
@@ -778,8 +1065,9 @@ def main() -> int:
             run,
             start_day=start_day,
             end_day=end_day,
-            seed_usdt=_safe_float(run.get("bybit_seed_usd"), seed_usdt) or seed_usdt,
+            seed_usdt=seed_usdt,
             price_map=price_map,
+            latest_price_map=latest_price_map,
         )
         rebuilt_rows.extend(model_rows)
         skipped_days.extend(model_skipped)
@@ -787,13 +1075,19 @@ def main() -> int:
     docs_dir = (
         Path(args.output_dir).resolve()
         if str(args.output_dir or "").strip()
-        else (ROOT / str(settings.git_daily_reports_path or "docs/data/daily_pnl")).resolve()
+        else (ROOT / "docs/data/daily_pnl").resolve()
     )
     existing_index: dict[tuple[str, str], dict[str, Any]] = {}
     existing_index.update(_build_supabase_daily_index(client, start_day=start_day, end_day=end_day))
     existing_index.update(_build_state_daily_index(state_payload, start_day=start_day, end_day=end_day))
     existing_index.update(_build_docs_daily_index(docs_dir, start_day=start_day, end_day=end_day))
-    rebuilt_rows, preserved_nonzero_rows = _preserve_nonzero_history_rows(rebuilt_rows, existing_index=existing_index)
+    rebuilt_rows, existing_rows_in_window, preserved_nonzero_rows = _merge_rebuilt_with_existing(
+        rebuilt_rows,
+        existing_index=existing_index,
+        start_day=start_day,
+        end_day=end_day,
+    )
+    rebuilt_rows = _apply_model_anchor_policy(rebuilt_rows, seed_usd=seed_usdt)
 
     updated_ts = int(time.time())
 
@@ -804,6 +1098,8 @@ def main() -> int:
         for row in existing_daily:
             parsed_day = _try_parse_day((row or {}).get("date"))
             model_id = str((row or {}).get("model_id") or "").upper()
+            if model_id in MODEL_IDS and parsed_day is not None and parsed_day < start_day:
+                continue
             if parsed_day is not None and start_day <= parsed_day <= end_day and model_id in MODEL_IDS:
                 continue
             filtered_daily.append(row)
@@ -829,6 +1125,23 @@ def main() -> int:
         output_dir = docs_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        for path in (
+            output_dir / "summary.csv",
+            output_dir / "summary.json",
+            output_dir / "summary_4col.csv",
+            output_dir / "summary_4col.json",
+        ):
+            if path.exists():
+                path.unlink()
+        for path in output_dir.glob("20??-??-??.json"):
+            parsed_day = _try_parse_day(path.stem)
+            if parsed_day is not None and parsed_day < start_day:
+                path.unlink()
+        for path in output_dir.glob("20??-??-??.csv"):
+            parsed_day = _try_parse_day(path.stem)
+            if parsed_day is not None and parsed_day < start_day:
+                path.unlink()
+
         # Preserve existing history outside the requested range.
         # Only overwrite artifacts for days we successfully rebuilt.
         written_files: set[str] = set()
@@ -847,6 +1160,7 @@ def main() -> int:
         "from": _day_key(start_day),
         "to": _day_key(end_day),
         "rows": len(rebuilt_rows),
+        "existing_rows_in_window": int(existing_rows_in_window),
         "preserved_nonzero_rows": int(preserved_nonzero_rows),
         "symbols": len(symbols),
         "dry_run": bool(args.dry_run),

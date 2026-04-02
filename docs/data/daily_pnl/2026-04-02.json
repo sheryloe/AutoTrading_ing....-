@@ -1,0 +1,237 @@
+{
+  "date": "2026-04-02",
+  "generated_from": "engine.daily_pnl",
+  "model_count": 4,
+  "totals": {
+    "crypto_equity_usd": 58281.826679,
+    "crypto_total_pnl_usd": 18281.826679,
+    "crypto_realized_pnl_usd": -2166.418406,
+    "crypto_unrealized_pnl_usd": 292.436198
+  },
+  "models": [
+    {
+      "date": "2026-04-02",
+      "model_id": "A",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 7279.097803,
+      "meme_total_pnl_usd": 0.0,
+      "bybit_total_pnl_usd": -2720.902197,
+      "bybit_cycle_total_pnl_usd": -458.925874,
+      "bybit_total_pnl_anchor_usd": -2261.976323,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_realized_pnl_usd": -457.839836,
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": -1.086038,
+      "meme_win_rate": 0.0,
+      "bybit_win_rate": 14.5455,
+      "meme_closed_trades": 0,
+      "bybit_closed_trades": 55,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 2,
+      "total_equity_usd": 7279.097803,
+      "total_pnl_usd": -2720.902197,
+      "realized_pnl_usd": -457.839836,
+      "unrealized_pnl_usd": -1.086038,
+      "win_rate": 14.5455,
+      "closed_trades": 55,
+      "bybit_quote_status": "fresh",
+      "bybit_quote_stale": false,
+      "bybit_quote_as_of_ts": 1775141703,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_symbols": [
+        "BLURUSDT",
+        "KATUSDT"
+      ],
+      "bybit_quote_stale_symbols": [],
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_realtime_sources": [
+        "binance_latest"
+      ],
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_sync_attempted_symbols": [
+        "BLURUSDT",
+        "KATUSDT"
+      ],
+      "bybit_quote_sync_synced_symbols": [
+        "BLURUSDT",
+        "KATUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_latest": 2
+      },
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "bybit_quote_sync_at_ts": 1775141703,
+      "rebuild_source": "daily_close_replay",
+      "eod_price_sources": {
+        "BLURUSDT": "binance_latest",
+        "KATUSDT": "binance_latest"
+      },
+      "replay_window": {
+        "from": "2026-03-28",
+        "to": "2026-04-02"
+      }
+    },
+    {
+      "date": "2026-04-02",
+      "model_id": "B",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 27678.193831,
+      "meme_total_pnl_usd": 0.0,
+      "bybit_total_pnl_usd": 17678.193831,
+      "bybit_cycle_total_pnl_usd": -311.038565,
+      "bybit_total_pnl_anchor_usd": 17989.232396,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_realized_pnl_usd": -311.038565,
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 0.0,
+      "meme_win_rate": 0.0,
+      "bybit_win_rate": 0.0,
+      "meme_closed_trades": 0,
+      "bybit_closed_trades": 2,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 0,
+      "total_equity_usd": 27678.193831,
+      "total_pnl_usd": 17678.193831,
+      "realized_pnl_usd": -311.038565,
+      "unrealized_pnl_usd": 0.0,
+      "win_rate": 0.0,
+      "closed_trades": 2,
+      "bybit_quote_status": "fresh",
+      "bybit_quote_stale": false,
+      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_realtime_sources": [],
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_sync_attempted_symbols": [],
+      "bybit_quote_sync_synced_symbols": [],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {},
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "bybit_quote_sync_at_ts": 1775141999,
+      "rebuild_source": "daily_close_replay",
+      "eod_price_sources": {},
+      "replay_window": {
+        "from": "2026-03-28",
+        "to": "2026-04-02"
+      }
+    },
+    {
+      "date": "2026-04-02",
+      "model_id": "C",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 13324.535045,
+      "meme_total_pnl_usd": 0.0,
+      "bybit_total_pnl_usd": 3324.535045,
+      "bybit_cycle_total_pnl_usd": -1104.017769,
+      "bybit_total_pnl_anchor_usd": 4428.552814,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_realized_pnl_usd": -1397.540005,
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 293.522236,
+      "meme_win_rate": 0.0,
+      "bybit_win_rate": 0.0,
+      "meme_closed_trades": 0,
+      "bybit_closed_trades": 4,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 2,
+      "total_equity_usd": 13324.535045,
+      "total_pnl_usd": 3324.535045,
+      "realized_pnl_usd": -1397.540005,
+      "unrealized_pnl_usd": 293.522236,
+      "win_rate": 0.0,
+      "closed_trades": 4,
+      "bybit_quote_status": "fresh",
+      "bybit_quote_stale": false,
+      "bybit_quote_as_of_ts": 1775141704,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_symbols": [
+        "ENAUSDT",
+        "SOLUSDT"
+      ],
+      "bybit_quote_stale_symbols": [],
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_realtime_sources": [
+        "binance_latest"
+      ],
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_sync_attempted_symbols": [
+        "ENAUSDT",
+        "SOLUSDT"
+      ],
+      "bybit_quote_sync_synced_symbols": [
+        "ENAUSDT",
+        "SOLUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_latest": 2
+      },
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "bybit_quote_sync_at_ts": 1775141704,
+      "rebuild_source": "daily_close_replay",
+      "eod_price_sources": {
+        "SOLUSDT": "binance_latest",
+        "ENAUSDT": "binance_latest"
+      },
+      "replay_window": {
+        "from": "2026-03-28",
+        "to": "2026-04-02"
+      }
+    },
+    {
+      "date": "2026-04-02",
+      "model_id": "D",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 10000.0,
+      "meme_total_pnl_usd": 0.0,
+      "bybit_total_pnl_usd": 0.0,
+      "bybit_cycle_total_pnl_usd": 0.0,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_realized_pnl_usd": 0.0,
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 0.0,
+      "meme_win_rate": 0.0,
+      "bybit_win_rate": 0.0,
+      "meme_closed_trades": 0,
+      "bybit_closed_trades": 0,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 0,
+      "total_equity_usd": 10000.0,
+      "total_pnl_usd": 0.0,
+      "realized_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 0.0,
+      "win_rate": 0.0,
+      "closed_trades": 0,
+      "bybit_quote_status": "fresh",
+      "bybit_quote_stale": false,
+      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_realtime_sources": [],
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_sync_attempted_symbols": [],
+      "bybit_quote_sync_synced_symbols": [],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {},
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "bybit_quote_sync_at_ts": 1775141999,
+      "rebuild_source": "daily_close_replay",
+      "eod_price_sources": {},
+      "replay_window": {
+        "from": "2026-03-28",
+        "to": "2026-04-02"
+      }
+    }
+  ]
+}

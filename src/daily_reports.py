@@ -13,7 +13,7 @@ def _report_sort_key(row: dict[str, Any]) -> tuple[str, str]:
 
 
 def _collect_summary_4col(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[str, dict[str, float]] = {}
+    grouped: dict[str, dict[str, Any]] = {}
     for row in list(rows):
         day = str((row or {}).get("day") or (row or {}).get("date") or "")
         if not day:
@@ -22,14 +22,19 @@ def _collect_summary_4col(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if model_id not in {"A", "B", "C", "D"}:
             continue
         raw_total = (row or {}).get("bybit_total_pnl_usd")
-        if raw_total in {None, ""}:
-            raw_total = (row or {}).get("total_pnl_usd")
         try:
             bybit_total = float(raw_total or 0.0)
         except (TypeError, ValueError):
             bybit_total = 0.0
-        model_data = grouped.setdefault(day, {"A": 0.0, "B": 0.0, "C": 0.0, "D": 0.0})
+        model_data = grouped.setdefault(day, {"A": 0.0, "B": 0.0, "C": 0.0, "D": 0.0, "D_note": "", "D_restart_variant_id": ""})
         model_data[model_id] = bybit_total
+        if model_id == "D":
+            restart_note = str((row or {}).get("bybit_rebuild_restart_note_ko") or "")
+            restart_variant = str((row or {}).get("bybit_rebuild_restart_variant_id") or "")
+            if restart_note:
+                model_data["D_note"] = restart_note
+            if restart_variant:
+                model_data["D_restart_variant_id"] = restart_variant
 
     out: list[dict[str, Any]] = []
     for day in sorted(grouped.keys()):
@@ -41,6 +46,8 @@ def _collect_summary_4col(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "B": round(float(values.get("B", 0.0)), 6),
                 "C": round(float(values.get("C", 0.0)), 6),
                 "D": round(float(values.get("D", 0.0)), 6),
+                "D_note": str(values.get("D_note") or ""),
+                "D_restart_variant_id": str(values.get("D_restart_variant_id") or ""),
             }
         )
     return out
@@ -87,6 +94,8 @@ def write_daily_pnl_report(day_key: str, rows: list[dict[str, Any]], output_dir:
         "model_id",
         "bybit_equity_usd",
         "bybit_total_pnl_usd",
+        "bybit_cycle_total_pnl_usd",
+        "bybit_total_pnl_anchor_usd",
         "bybit_realized_pnl_usd",
         "bybit_unrealized_pnl_usd",
         "bybit_win_rate",

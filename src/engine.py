@@ -6774,6 +6774,16 @@ class TradingEngine:
         seed_usd = float(LOSS_GUARD_REBUILD_SEED_USD)
         note_ko = str(LOSS_GUARD_REBUILD_NOTE_KO)
         soft_updates = self._apply_loss_guard_rewrite(now, triggers)
+        target_models = [
+            model_id
+            for model_id in CRYPTO_MODEL_IDS
+            if any(
+                str((row or {}).get("market") or "").lower().strip() == "crypto"
+                and str((row or {}).get("model_id") or "").upper().strip() == model_id
+                and model_id == "D"
+                for row in list(triggers or [])
+            )
+        ]
         tune_overrides: dict[str, dict[str, float]] = {
             "A": {"threshold": 0.0640, "tp_mul": 1.14, "sl_mul": 0.97},
             "B": {"threshold": 0.0710, "tp_mul": 1.24, "sl_mul": 0.94},
@@ -6783,21 +6793,16 @@ class TradingEngine:
         restarted: list[dict[str, Any]] = []
         with self._lock:
             runs = dict(self.state.model_runs or {})
-            self.state.demo_seed_usdt = float(seed_usd)
-            self.state.cash_usd = float(seed_usd)
-            self.state.positions = {}
-            self.state.trades = []
+            if target_models:
+                self.state.demo_seed_usdt = float(seed_usd)
 
-            for model_id in CRYPTO_MODEL_IDS:
+            for model_id in target_models:
                 key = self._market_run_key("crypto", model_id)
                 previous_run = dict(runs.get(key) or {})
                 previous_variant_seq = int(previous_run.get("variant_seq") or 0)
                 previous_drawdown_seq = int(previous_run.get("drawdown_rebuild_seq") or 0)
-                previous_anchor = float(previous_run.get("bybit_total_pnl_anchor_usd") or 0.0)
-                previous_cycle_metric = self._model_metrics_market(model_id, previous_run, "crypto")
-                previous_cycle_total_pnl = float(previous_cycle_metric.get("total_pnl_usd") or 0.0)
                 fresh_run = self._blank_market_run("crypto", model_id, seed_usd)
-                fresh_run["bybit_total_pnl_anchor_usd"] = float(previous_anchor + previous_cycle_total_pnl)
+                fresh_run["bybit_total_pnl_anchor_usd"] = 0.0
                 variant_seq = max(1, previous_variant_seq + 1)
                 drawdown_rebuild_seq = max(1, previous_drawdown_seq + 1)
                 variant_id = self._drawdown_rebuild_variant_id(now, model_id, drawdown_rebuild_seq)
@@ -6900,10 +6905,10 @@ class TradingEngine:
                 meme_total_pnl = float(base.get("meme_total_pnl_usd") or 0.0)
                 meme_realized = float(base.get("meme_realized_pnl_usd") or 0.0)
                 meme_unrealized = float(base.get("meme_unrealized_pnl_usd") or 0.0)
-                bybit_total_pnl = float(base.get("bybit_total_pnl_usd") or 0.0)
-                bybit_realized = float(base.get("bybit_realized_pnl_usd") or 0.0)
-                bybit_unrealized = float(base.get("bybit_unrealized_pnl_usd") or 0.0)
-                bybit_equity = float(base.get("bybit_equity_usd") or (seed_usd + bybit_total_pnl))
+                bybit_total_pnl = 0.0 if model_id == "D" else float(base.get("bybit_total_pnl_usd") or 0.0)
+                bybit_realized = 0.0 if model_id == "D" else float(base.get("bybit_realized_pnl_usd") or 0.0)
+                bybit_unrealized = 0.0 if model_id == "D" else float(base.get("bybit_unrealized_pnl_usd") or 0.0)
+                bybit_equity = float(seed_usd + bybit_total_pnl)
                 rebuilt_row = dict(base)
                 rebuilt_row.update(
                     {
@@ -6949,8 +6954,8 @@ class TradingEngine:
                     "bybit_rebuild_restart_variant_id": str(row["variant_id"]),
                     "bybit_rebuild_restart_seed_usd": float(seed_usd),
                     "bybit_rebuild_restart_ts": int(now),
-                    "bybit_cycle_total_pnl_usd": 0.0,
-                    "bybit_total_pnl_anchor_usd": float(bybit_total_pnl),
+                    "bybit_cycle_total_pnl_usd": float(bybit_total_pnl),
+                    "bybit_total_pnl_anchor_usd": 0.0 if model_id == "D" else float(bybit_total_pnl),
                     }
                 )
                 if model_id == note_model_id:
@@ -6968,7 +6973,7 @@ class TradingEngine:
                 "drawdown_ratio_threshold": float(LOSS_GUARD_DRAWDOWN_RATIO),
                 "last_triggers": list(triggers),
                 "last_updates": dict(soft_updates),
-                "last_action": "full_seed_reset_rebuild",
+                "last_action": "model_scoped_seed_reset_rebuild",
                 "last_reset_seed_usd": float(seed_usd),
                 "last_reset_day": str(day_key),
                 "last_reset_models": [dict(item) for item in restarted],
@@ -6982,6 +6987,7 @@ class TradingEngine:
             "day": str(day_key),
             "models": [dict(item) for item in restarted],
             "runtime_overrides": dict(soft_updates),
+            "reset_scope": "D_only",
         }
 
     def _maybe_drawdown_guard_restart(self, now_ts: int) -> None:
@@ -6993,6 +6999,12 @@ class TradingEngine:
         ]
         if not triggers:
             return
+        reset_triggers = [
+            row
+            for row in triggers
+            if str((row or {}).get("market") or "").lower().strip() == "crypto"
+            and str((row or {}).get("model_id") or "").upper().strip() == "D"
+        ]
         newly_flagged = self._record_rebuild_required_models(int(now_ts), triggers)
         if newly_flagged:
             lines = [
@@ -7009,6 +7021,8 @@ class TradingEngine:
                 ),
                 send_telegram=True,
             )
+        if not reset_triggers:
+            return
 
         with self._lock:
             guard_state = dict((self.state.model_runs or {}).get("_system_guard_state") or {})
@@ -7017,23 +7031,25 @@ class TradingEngine:
         if last_trigger > 0 and (int(now_ts) - last_trigger) < max(900, cooldown):
             return
 
-        reset_payload = self._apply_drawdown_full_reset_and_retune(int(now_ts), triggers)
-        ranked = sorted(triggers, key=lambda r: float(r.get("drawdown_ratio") or 0.0), reverse=True)
+        reset_payload = self._apply_drawdown_full_reset_and_retune(int(now_ts), reset_triggers)
+        restarted_models = list(reset_payload.get("models") or [])
+        if not restarted_models:
+            return
+        ranked = sorted(reset_triggers, key=lambda r: float(r.get("drawdown_ratio") or 0.0), reverse=True)
         top = ranked[:6]
         lines = [
             f"- {str(r['model_name'])}: seed={float(r['seed_usd']):.2f} equity={float(r['equity_usd']):.2f} dd={float(r['drawdown_ratio']) * 100:.1f}%"
             for r in top
         ]
-        restarted_models = list(reset_payload.get("models") or [])
         restart_lines = [
             f"- Model {str(item.get('model_id') or '-')}: {str(item.get('variant_id') or '-')} | seed={float(item.get('seed_usd') or 0.0):.2f}"
             for item in restarted_models
         ]
         self._push_alert(
             "warn",
-            "손실 50% 가드 발동",
+            "손실 50% 가드 발동 (D 모델)",
             (
-                "모델 전면 재구성/재튜닝 후 10000달러로 초기화했습니다.\n"
+                "모델 D 재구성/재튜닝 후 10000달러로 초기화했습니다.\n"
                 f"일일 PnL 표기: {str(reset_payload.get('note_ko') or LOSS_GUARD_REBUILD_NOTE_KO)}\n"
                 f"초기화 모델:\n{chr(10).join(restart_lines) if restart_lines else '-'}\n"
                 f"업데이트: {dict(reset_payload.get('runtime_overrides') or {})}\n"
@@ -7116,7 +7132,7 @@ class TradingEngine:
                 break
 
         return {
-            "triggered": str(guard_state.get("last_action") or "") == "full_seed_reset_rebuild",
+            "triggered": str(guard_state.get("last_action") or "") in {"full_seed_reset_rebuild", "model_scoped_seed_reset_rebuild"},
             "trigger_day_utc": str(guard_state.get("last_reset_day") or day_key),
             "reset_models": [dict(item) for item in reset_models],
             "model_d_cell_value_preserved": float(day_row.get("bybit_total_pnl_usd") or 0.0),

@@ -78,7 +78,9 @@
         "from": "2026-03-28",
         "to": "2026-04-01"
       },
-      "preserved_nonzero_history": true
+      "preserved_nonzero_history": true,
+      "bybit_cycle_total_pnl_usd": -2777.86019,
+      "bybit_total_pnl_anchor_usd": 0.0
     },
     {
       "date": "2026-03-30",
@@ -157,7 +159,9 @@
         "from": "2026-03-28",
         "to": "2026-04-01"
       },
-      "preserved_nonzero_history": true
+      "preserved_nonzero_history": true,
+      "bybit_cycle_total_pnl_usd": 8021.838752,
+      "bybit_total_pnl_anchor_usd": 0.0
     },
     {
       "date": "2026-03-30",
@@ -232,7 +236,9 @@
         "from": "2026-03-28",
         "to": "2026-04-01"
       },
-      "preserved_nonzero_history": true
+      "preserved_nonzero_history": true,
+      "bybit_cycle_total_pnl_usd": 1113.363569,
+      "bybit_total_pnl_anchor_usd": 0.0
     },
     {
       "date": "2026-03-30",
@@ -311,7 +317,9 @@
         "from": "2026-03-28",
         "to": "2026-04-01"
       },
-      "preserved_nonzero_history": true
+      "preserved_nonzero_history": true,
+      "bybit_cycle_total_pnl_usd": -2670.871044,
+      "bybit_total_pnl_anchor_usd": 0.0
     }
   ]
 }
