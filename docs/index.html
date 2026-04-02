@@ -90,7 +90,7 @@
                         <p class="text-xs opacity-60 text-left">전일 변동폭 기반 당일 돌파 전략.</p>
                     </div>
                     <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left">
-                        <h3 class="font-bold text-cyan-400 mb-2 text-left">MODEL D: Deep Learning</h3>
+                        <h3 id="guide-model-d-title" class="font-bold text-cyan-400 mb-2 text-left">MODEL D: Deep Learning</h3>
                         <p class="text-xs opacity-60 text-left">LSTM 신경망 기반 가격 방향성 예측.</p>
                     </div>
                 </div>
@@ -139,10 +139,14 @@
                 <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-2 text-left">
                     <div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Daily PNL Log</div>
-                        <h3 class="text-lg font-black text-white">일자별 누적 손익 로그</h3>
+                        <h3 class="text-lg font-black text-white">일자별 손익 로그</h3>
                     </div>
-                    <p class="text-xs opacity-60">일자별 누적 PnL을 모델 A-D 4열로 정리합니다.</p>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-daily-mode-cumulative" class="btn btn-xs bg-slate-900 text-slate-300 border border-white/10" onclick="setDailyTableMode('cumulative')">누적</button>
+                        <button id="btn-daily-mode-delta" class="btn btn-xs bg-cyan-500 text-white border-0" onclick="setDailyTableMode('delta')">증분</button>
+                    </div>
                 </div>
+                <p id="daily-pnl-mode-note" class="mt-2 text-xs opacity-60">현재: 일별 증분 (전일 대비 변화, 리셋일은 당일 total 반영)</p>
                 <div class="mt-4 overflow-x-auto">
                     <table class="w-full text-sm border border-white/10 rounded-xl overflow-hidden">
                         <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
@@ -151,7 +155,7 @@
                                 <th class="px-3 py-2 text-left font-bold">Model A</th>
                                 <th class="px-3 py-2 text-left font-bold">Model B</th>
                                 <th class="px-3 py-2 text-left font-bold">Model C</th>
-                                <th class="px-3 py-2 text-left font-bold">Model D</th>
+                                <th id="daily-model-d-header" class="px-3 py-2 text-left font-bold">Model D</th>
                             </tr>
                         </thead>
                         <tbody id="daily-pnl-table-body" class="divide-y divide-white/10 bg-slate-900/40">
@@ -171,7 +175,8 @@
         const S_URL = "{{SUPABASE_URL}}";
         const S_KEY = "{{SUPABASE_ANON_KEY}}";
         const MODEL_IDS = ["A", "B", "C", "D"];
-        const MODEL_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D" };
+        const MODEL_BASE_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D" };
+        let MODEL_LABELS = { ...MODEL_BASE_LABELS };
         const MODEL_TARGETS = { A: "stat-model-a", B: "stat-model-b", C: "stat-model-c", D: "stat-model-d" };
         const EQUITY_BASE = 10000;
         const DAILY_PNL_HISTORY_DAYS = 60;
@@ -179,6 +184,8 @@
 
         let _supabase;
         let _chart;
+        let _lastDisplaySeries = null;
+        let DAILY_TABLE_MODE = "delta";
 
         if (S_URL.startsWith("http") && S_KEY && !S_URL.includes("{{") && !S_KEY.includes("{{")) {
             _supabase = supabase.createClient(S_URL, S_KEY, {
@@ -204,6 +211,53 @@
         function formatSignedUsd(value) {
             const num = Number(value || 0);
             return `${num >= 0 ? "+" : "-"}${formatUsd(Math.abs(num))}`;
+        }
+
+        function parseRevFromVariant(variantId) {
+            const raw = String(variantId || "").trim();
+            if (!raw) {
+                return "";
+            }
+            const match = raw.match(/rev\.(\d+)/i);
+            if (!match) {
+                return "";
+            }
+            return `rev.${String(match[1]).padStart(2, "0")}`;
+        }
+
+        function resolveModelDLabel(dailyRows) {
+            const candidates = [];
+            for (const row of dailyRows || []) {
+                if (String(row.model_id || "").toUpperCase() !== "D") {
+                    continue;
+                }
+                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+                const variantRaw = String(row.bybit_rebuild_restart_variant_id || sourceJson.rebuild_restart_variant_id || "").trim();
+                const rev = parseRevFromVariant(variantRaw);
+                if (!rev) {
+                    continue;
+                }
+                const dayText = String(row.day || row.date || "").slice(0, 10).trim() || "0000-00-00";
+                candidates.push({ day: dayText, rev });
+            }
+            if (!candidates.length) {
+                return MODEL_BASE_LABELS.D;
+            }
+            candidates.sort((a, b) => String(b.day).localeCompare(String(a.day)));
+            return `${MODEL_BASE_LABELS.D}(${candidates[0].rev})`;
+        }
+
+        function applyModelDLabelOverrides(dailyRows) {
+            const modelDLabel = resolveModelDLabel(dailyRows);
+            MODEL_LABELS = { ...MODEL_BASE_LABELS, D: modelDLabel };
+            const header = document.getElementById("daily-model-d-header");
+            if (header) {
+                header.textContent = modelDLabel;
+            }
+            const guide = document.getElementById("guide-model-d-title");
+            if (guide) {
+                guide.textContent = `${String(modelDLabel).toUpperCase()}: Deep Learning`;
+            }
         }
 
         function formatPct(value) {
@@ -232,30 +286,72 @@
             }).format(date);
         }
 
-        function modelReturnPct(totalPnlUsd) {
-            return (Number(totalPnlUsd || 0) / EQUITY_BASE) * 100;
+        function parseRestartSeedFromRow(row) {
+            const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+            const candidates = [
+                row?.seed_usd,
+                row?.bybit_rebuild_restart_seed_usd,
+                sourceJson.bybit_rebuild_restart_seed_usd,
+                sourceJson.rebuild_restart_seed_usd,
+                sourceJson.seed_usd,
+                sourceJson.bybit_seed_usd,
+                sourceJson.rebuild_seed_usd,
+            ];
+            for (const value of candidates) {
+                const num = Number(value);
+                if (Number.isFinite(num) && num > 0) {
+                    return num;
+                }
+            }
+            return Number(EQUITY_BASE);
+        }
+
+        function modelReturnPct(totalPnlUsd, baseUsd) {
+            const base = Number(baseUsd);
+            const safeBase = Number.isFinite(base) && base > 0 ? base : Number(EQUITY_BASE);
+            return (Number(totalPnlUsd || 0) / safeBase) * 100;
         }
 
         function buildDisplayDailySeries(dailyRows) {
             const rawLookup = {};
             const rebuildLookup = {};
             const noteLookup = {};
+            const seedLookup = {};
             MODEL_IDS.forEach((modelId) => {
                 rawLookup[modelId] = {};
                 rebuildLookup[modelId] = {};
                 noteLookup[modelId] = {};
+                seedLookup[modelId] = {};
             });
+            const activeSeedByModel = {
+                A: Number(EQUITY_BASE),
+                B: Number(EQUITY_BASE),
+                C: Number(EQUITY_BASE),
+                D: Number(EQUITY_BASE),
+            };
 
-            dailyRows.forEach((row) => {
+            const orderedInputRows = [...dailyRows].sort((left, right) =>
+                String(left?.day || "").slice(0, 10).localeCompare(String(right?.day || "").slice(0, 10))
+            );
+            orderedInputRows.forEach((row) => {
                 const modelId = String(row.model_id || "").toUpperCase();
                 const day = String(row.day || "").slice(0, 10);
                 if (!MODEL_IDS.includes(modelId) || !day) return;
                 rawLookup[modelId][day] = Number(row.total_pnl_usd || 0);
                 const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
-                const rebuildSource = String(sourceJson.rebuild_source || "").trim();
+                const rebuildSource = String(
+                    row.rebuild_source ||
+                        sourceJson.rebuild_source ||
+                        sourceJson.rebuild_reason ||
+                        ""
+                ).trim();
                 if (rebuildSource) {
                     rebuildLookup[modelId][day] = rebuildSource;
                 }
+                if (rebuildSource === "drawdown_50pct_rebuild_restart") {
+                    activeSeedByModel[modelId] = parseRestartSeedFromRow(row);
+                }
+                seedLookup[modelId][day] = Number(activeSeedByModel[modelId]);
                 const restartNote = String(
                     sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
                 ).trim();
@@ -264,30 +360,38 @@
                 }
             });
 
-            const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "").slice(0, 10)))]
+            const orderedDays = [...new Set(orderedInputRows.map((row) => String(row.day || "").slice(0, 10)))]
                 .filter(Boolean)
                 .sort((a, b) => a.localeCompare(b));
             const latestByModel = new Map();
+            const latestBaseByModel = new Map();
             const entries = [];
-            const offsets = { A: 0, B: 0, C: 0, D: 0 };
+            const prevTotalsByModel = { A: null, B: null, C: null, D: null };
 
             orderedDays.forEach((day) => {
-                const entry = { day, A: 0, B: 0, C: 0, D: 0, D_note: "" };
+                const entry = { day, A: 0, B: 0, C: 0, D: 0, D_note: "", base: {}, delta: {} };
                 MODEL_IDS.forEach((modelId) => {
                     const raw = Number(rawLookup[modelId][day] ?? 0);
-                    const displayTotal = raw + Number(offsets[modelId] || 0);
-                    entry[modelId] = Number(displayTotal.toFixed(6));
+                    const effectiveSeed = Number(seedLookup[modelId][day] || activeSeedByModel[modelId] || EQUITY_BASE);
+                    const rebuildSource = String(rebuildLookup[modelId][day] || "");
+                    entry[modelId] = Number(raw.toFixed(6));
+                    entry.base[modelId] = Number(effectiveSeed);
+                    const previousTotal = prevTotalsByModel[modelId];
+                    const deltaValue =
+                        rebuildSource === "drawdown_50pct_rebuild_restart" || previousTotal === null
+                            ? entry[modelId]
+                            : entry[modelId] - Number(previousTotal);
+                    entry.delta[modelId] = Number(deltaValue.toFixed(6));
+                    prevTotalsByModel[modelId] = entry[modelId];
                     if (modelId === "D" && noteLookup.D[day]) {
                         entry.D_note = String(noteLookup.D[day]);
                     }
-                    latestByModel.set(modelId, Number(displayTotal.toFixed(6)));
-                    if (rebuildLookup[modelId][day] === "drawdown_50pct_rebuild_restart") {
-                        offsets[modelId] = Number(displayTotal.toFixed(6));
-                    }
+                    latestByModel.set(modelId, Number(raw.toFixed(6)));
+                    latestBaseByModel.set(modelId, Number(effectiveSeed));
                 });
                 entries.push(entry);
             });
-            return { orderedDays, entries, latestByModel };
+            return { orderedDays, entries, latestByModel, latestBaseByModel };
         }
 
         function buildOpenPositionsByModel(positions) {
@@ -311,12 +415,13 @@
             target.innerText = `3월 20일부터 계속 동작중 · 최근 동기화 ${dateLabel(heartbeat.last_seen_at)} · OPEN ${positions.length}건`;
         }
 
-        function renderSummaryCards(latestByModel) {
+        function renderSummaryCards(latestByModel, latestBaseByModel) {
             MODEL_IDS.forEach((modelId) => {
                 const latestTotalPnl = Number(latestByModel.get(modelId) || 0);
                 const el = document.getElementById(MODEL_TARGETS[modelId]);
                 if (!el) return;
-                const pct = modelReturnPct(latestTotalPnl);
+                const base = Number(latestBaseByModel?.get(modelId) || EQUITY_BASE);
+                const pct = modelReturnPct(latestTotalPnl, base);
                 el.innerText = formatPct(pct);
                 el.classList.toggle("pnl-plus", pct >= 0);
                 el.classList.toggle("pnl-minus", pct < 0);
@@ -347,7 +452,8 @@
                 const day = String(entry.day || "");
                 if (!day) return;
                 MODEL_IDS.forEach((modelId) => {
-                    lookup[modelId][day] = Number(modelReturnPct(entry[modelId]).toFixed(2));
+                    const base = Number(entry.base?.[modelId] || EQUITY_BASE);
+                    lookup[modelId][day] = Number(modelReturnPct(entry[modelId], base).toFixed(2));
                 });
             });
 
@@ -387,6 +493,32 @@
             _chart.render();
         }
 
+        function setDailyTableMode(mode) {
+            DAILY_TABLE_MODE = mode === "delta" ? "delta" : "cumulative";
+            const btnCumulative = document.getElementById("btn-daily-mode-cumulative");
+            const btnDelta = document.getElementById("btn-daily-mode-delta");
+            const modeNote = document.getElementById("daily-pnl-mode-note");
+            if (btnCumulative) {
+                btnCumulative.className =
+                    DAILY_TABLE_MODE === "cumulative"
+                        ? "btn btn-xs bg-cyan-500 text-white border-0"
+                        : "btn btn-xs bg-slate-900 text-slate-300 border border-white/10";
+            }
+            if (btnDelta) {
+                btnDelta.className =
+                    DAILY_TABLE_MODE === "delta"
+                        ? "btn btn-xs bg-cyan-500 text-white border-0"
+                        : "btn btn-xs bg-slate-900 text-slate-300 border border-white/10";
+            }
+            if (modeNote) {
+                modeNote.textContent =
+                    DAILY_TABLE_MODE === "delta"
+                        ? "현재: 일별 증분 (전일 대비 변화, 리셋일은 당일 total 반영)"
+                        : "현재: 누적 PnL (일자 기준 total)";
+            }
+            renderDailyPnlTable(_lastDisplaySeries);
+        }
+
         function todayKstDay() {
             return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
         }
@@ -412,7 +544,10 @@
                     const rowClass = isToday ? "bg-cyan-500/10" : "";
                     const dayCell = `<td class="px-3 py-2 font-bold text-white">${entry.day}</td>`;
                     const modelCells = MODEL_IDS.map((modelId) => {
-                        const value = Number(entry[modelId] || 0);
+                        const value =
+                            DAILY_TABLE_MODE === "delta"
+                                ? Number(entry?.delta?.[modelId] || 0)
+                                : Number(entry[modelId] || 0);
                         const cls = value >= 0 ? "pnl-plus" : "pnl-minus";
                         const note = modelId === "D" ? String(entry.D_note || "").trim() : "";
                         const text =
@@ -426,18 +561,34 @@
                 .join("");
         }
 
+        async function loadDailyModelPnlRows() {
+            const withVariant = _supabase
+                .from("daily_model_pnl")
+                .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json,bybit_rebuild_restart_variant_id,bybit_rebuild_restart_seed_usd")
+                .eq("market", "crypto")
+                .order("day", { ascending: false })
+                .limit(DAILY_PNL_ROWS_LIMIT);
+            const withoutVariant = _supabase
+                .from("daily_model_pnl")
+                .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json")
+                .eq("market", "crypto")
+                .order("day", { ascending: false })
+                .limit(DAILY_PNL_ROWS_LIMIT);
+            const primary = await withVariant;
+            if (!primary.error) {
+                return primary;
+            }
+            console.warn("daily_model_pnl variant_id 컬럼 미존재, 폴백 조회 사용:", primary.error?.message || primary.error);
+            return await withoutVariant;
+        }
+
         async function fetchTradingData() {
             if (!_supabase) {
                 return;
             }
 
             const [dailyRes, positionsRes, heartbeatRes] = await Promise.all([
-                _supabase
-                    .from("daily_model_pnl")
-                    .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json")
-                    .eq("market", "crypto")
-                    .order("day", { ascending: false })
-                    .limit(DAILY_PNL_ROWS_LIMIT),
+                loadDailyModelPnlRows(),
                 _supabase
                     .from("positions")
                     .select("model_id,unrealized_pnl_usd")
@@ -464,10 +615,12 @@
             const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
             const heartbeat = heartbeatRes.data?.[0] || null;
             const positionsByModel = buildOpenPositionsByModel(positions);
+            applyModelDLabelOverrides(dailyRows);
             const displaySeries = buildDisplayDailySeries(dailyRows);
+            _lastDisplaySeries = displaySeries;
 
             setHeadline(heartbeat, positions);
-            renderSummaryCards(displaySeries.latestByModel);
+            renderSummaryCards(displaySeries.latestByModel, displaySeries.latestBaseByModel);
             renderChart(displaySeries);
             renderDailyPnlTable(displaySeries);
         }
