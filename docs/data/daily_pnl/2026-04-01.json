@@ -3,8 +3,8 @@
   "generated_from": "engine.daily_pnl",
   "model_count": 4,
   "totals": {
-    "crypto_equity_usd": 54778.21648,
-    "crypto_total_pnl_usd": 14778.21648,
+    "crypto_equity_usd": 60155.808887,
+    "crypto_total_pnl_usd": 20155.808887,
     "crypto_realized_pnl_usd": 0.0,
     "crypto_unrealized_pnl_usd": 0.0
   },
@@ -54,7 +54,7 @@
       "eod_price_sources": {},
       "replay_window": {
         "from": "2026-03-28",
-        "to": "2026-04-02"
+        "to": "2026-04-03"
       },
       "bybit_rebuild_restart_variant_id": "D.ver@20260401-164130-A",
       "bybit_rebuild_restart_seed_usd": 10000.0,
@@ -105,7 +105,7 @@
       "eod_price_sources": {},
       "replay_window": {
         "from": "2026-03-28",
-        "to": "2026-04-02"
+        "to": "2026-04-03"
       },
       "bybit_rebuild_restart_variant_id": "D.ver@20260401-164130-B",
       "bybit_rebuild_restart_seed_usd": 10000.0,
@@ -156,7 +156,7 @@
       "eod_price_sources": {},
       "replay_window": {
         "from": "2026-03-28",
-        "to": "2026-04-02"
+        "to": "2026-04-03"
       },
       "bybit_rebuild_restart_variant_id": "D.ver@20260401-164130-C",
       "bybit_rebuild_restart_seed_usd": 10000.0,
@@ -165,49 +165,50 @@
     {
       "date": "2026-04-01",
       "model_id": "D",
-      "win_rate": 0.0,
-      "closed_trades": 0,
-      "meme_win_rate": 0.0,
-      "total_pnl_usd": -5377.592407,
-      "bybit_win_rate": 0.0,
-      "rebuild_source": "drawdown_50pct_rebuild_restart",
       "meme_equity_usd": 0.0,
-      "bybit_equity_usd": 4622.407593,
-      "realized_pnl_usd": 0.0,
-      "total_equity_usd": 4622.407593,
-      "bybit_quote_stale": false,
-      "bybit_quote_status": "fresh",
-      "meme_closed_trades": 0,
+      "bybit_equity_usd": 10000.0,
       "meme_total_pnl_usd": 0.0,
-      "unrealized_pnl_usd": 0.0,
+      "bybit_total_pnl_usd": 0.0,
+      "bybit_cycle_total_pnl_usd": 0.0,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_realized_pnl_usd": 0.0,
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 0.0,
+      "meme_win_rate": 0.0,
+      "bybit_win_rate": 0.0,
+      "meme_closed_trades": 0,
       "bybit_closed_trades": 0,
-      "bybit_quote_symbols": [],
-      "bybit_total_pnl_usd": -5377.592407,
       "meme_open_positions": 0,
       "bybit_open_positions": 0,
-      "bybit_quote_as_of_ts": 0,
-      "meme_realized_pnl_usd": 0.0,
-      "bybit_quote_sync_at_ts": 1775087960,
-      "bybit_realized_pnl_usd": 0.0,
+      "total_equity_usd": 10000.0,
+      "total_pnl_usd": 0.0,
+      "realized_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 0.0,
+      "win_rate": 0.0,
+      "closed_trades": 0,
+      "bybit_quote_status": "fresh",
+      "bybit_quote_stale": false,
+      "bybit_quote_as_of_ts": 1775055599,
       "bybit_quote_age_seconds": 0,
-      "bybit_quote_sync_reason": "exit_eval_C",
-      "meme_unrealized_pnl_usd": 0.0,
-      "bybit_rebuild_restart_ts": 1775061690,
-      "bybit_unrealized_pnl_usd": 0.0,
-      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_symbols": [],
       "bybit_quote_stale_symbols": [],
-      "bybit_quote_fallback_sources": [],
+      "bybit_quote_guard_symbols": [],
       "bybit_quote_realtime_sources": [],
-      "bybit_rebuild_restart_note_ko": "4월 1일자로 초기화및 재 튜닝 진행",
-      "bybit_rebuild_restart_seed_usd": 10000.0,
-      "bybit_quote_stale_after_seconds": 300,
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_sync_attempted_symbols": [],
       "bybit_quote_sync_synced_symbols": [],
       "bybit_quote_sync_missing_symbols": [],
-      "bybit_rebuild_restart_variant_id": "D.ver@20260401-164130-D",
       "bybit_quote_sync_provider_summary": {},
-      "bybit_quote_sync_attempted_symbols": [],
-      "bybit_cycle_total_pnl_usd": -5377.592407,
-      "bybit_total_pnl_anchor_usd": 0.0
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "bybit_quote_sync_at_ts": 1775055599,
+      "rebuild_source": "daily_close_replay",
+      "eod_price_sources": {},
+      "replay_window": {
+        "from": "2026-03-28",
+        "to": "2026-04-03"
+      }
     }
   ]
 }

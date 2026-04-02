@@ -360,6 +360,20 @@ def _merge_rebuilt_with_existing(
                     marker_value = existing.get(marker_key)
                     if marker_value is not None and marker_value != "" and marker_value != [] and marker_value != {}:
                         current[marker_key] = marker_value
+            elif model_id == "D" and _row_has_restart_marker(existing):
+                # D is segmented at restart markers. When rebuilt row starts flat,
+                # keep the new-segment baseline (seed=10000) instead of preserving
+                # pre-restart legacy totals.
+                for marker_key in (
+                    "rebuild_source",
+                    "bybit_rebuild_restart_variant_id",
+                    "bybit_rebuild_restart_note_ko",
+                    "bybit_rebuild_restart_seed_usd",
+                    "bybit_rebuild_restart_ts",
+                ):
+                    marker_value = existing.get(marker_key)
+                    if marker_value is not None and marker_value != "" and marker_value != [] and marker_value != {}:
+                        current[marker_key] = marker_value
             else:
                 preserved_nonzero_rows += 1
                 continue

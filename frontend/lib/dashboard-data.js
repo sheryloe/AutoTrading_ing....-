@@ -82,8 +82,18 @@ function buildDailyRowsWithDelta(rows = []) {
     for (const row of orderedAsc) {
       const realized = toNumber(row.realized_pnl_usd);
       const total = toNumber(row.total_pnl_usd);
-      const dailyRealizedDelta = prevRealized === null ? realized : realized - prevRealized;
-      const dailyTotalDelta = prevTotal === null ? total : total - prevTotal;
+      const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+      const rebuildSource = String(row?.rebuild_source || sourceJson?.rebuild_source || "").trim();
+      const restartVariant = String(
+        row?.bybit_rebuild_restart_variant_id ||
+          sourceJson?.bybit_rebuild_restart_variant_id ||
+          sourceJson?.rebuild_restart_variant_id ||
+          ""
+      ).trim();
+      const hasRestartMarker = rebuildSource === "drawdown_50pct_rebuild_restart" || Boolean(restartVariant);
+      const isDResetBoundary = modelId === "D" && hasRestartMarker;
+      const dailyRealizedDelta = prevRealized === null || isDResetBoundary ? realized : realized - prevRealized;
+      const dailyTotalDelta = prevTotal === null || isDResetBoundary ? total : total - prevTotal;
       withDelta.push({
         ...row,
         daily_realized_delta: dailyRealizedDelta,

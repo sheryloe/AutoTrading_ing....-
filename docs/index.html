@@ -297,11 +297,13 @@
         function buildDisplayDailySeries(dailyRows) {
             const rawLookup = {};
             const rebuildLookup = {};
+            const restartVariantLookup = {};
             const noteLookup = {};
             const seedLookup = {};
             MODEL_IDS.forEach((modelId) => {
                 rawLookup[modelId] = {};
                 rebuildLookup[modelId] = {};
+                restartVariantLookup[modelId] = {};
                 noteLookup[modelId] = {};
                 seedLookup[modelId] = {};
             });
@@ -330,7 +332,17 @@
                 if (rebuildSource) {
                     rebuildLookup[modelId][day] = rebuildSource;
                 }
-                if (rebuildSource === "drawdown_50pct_rebuild_restart") {
+                const restartVariant = String(
+                    row?.bybit_rebuild_restart_variant_id ||
+                        sourceJson.bybit_rebuild_restart_variant_id ||
+                        sourceJson.rebuild_restart_variant_id ||
+                        ""
+                ).trim();
+                if (restartVariant) {
+                    restartVariantLookup[modelId][day] = restartVariant;
+                }
+                const hasRestartMarker = rebuildSource === "drawdown_50pct_rebuild_restart" || Boolean(restartVariant);
+                if (modelId === "D" && hasRestartMarker) {
                     activeSeedByModel[modelId] = parseRestartSeedFromRow(row);
                 }
                 seedLookup[modelId][day] = Number(activeSeedByModel[modelId]);
@@ -356,11 +368,13 @@
                     const raw = Number(rawLookup[modelId][day] ?? 0);
                     const effectiveSeed = Number(seedLookup[modelId][day] || activeSeedByModel[modelId] || EQUITY_BASE);
                     const rebuildSource = String(rebuildLookup[modelId][day] || "");
+                    const restartVariant = String(restartVariantLookup[modelId][day] || "");
+                    const hasRestartMarker = rebuildSource === "drawdown_50pct_rebuild_restart" || Boolean(restartVariant);
                     entry[modelId] = Number(raw.toFixed(6));
                     entry.base[modelId] = Number(effectiveSeed);
                     const previousTotal = prevTotalsByModel[modelId];
                     const deltaValue =
-                        rebuildSource === "drawdown_50pct_rebuild_restart" || previousTotal === null
+                        previousTotal === null || (modelId === "D" && hasRestartMarker)
                             ? entry[modelId]
                             : entry[modelId] - Number(previousTotal);
                     entry.delta[modelId] = Number(deltaValue.toFixed(6));
