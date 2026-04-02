@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -90,6 +91,7 @@ class SupabaseSyncClient:
         row = {
             "blob_key": str(blob_key or "").strip(),
             "payload_json": dict(payload or {}),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         if not row["blob_key"]:
             return {"ok": False, "error": "blob_key_required"}

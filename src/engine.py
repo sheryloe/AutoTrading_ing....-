@@ -619,6 +619,7 @@ class TradingEngine:
         self._free_tier_capacity_report: dict[str, Any] = {}
         self._last_supabase_prune_ts = 0
         self._last_supabase_sync_errors: dict[str, Any] = {}
+        self._last_exit_watch_log_ts: dict[str, int] = {}
         self._git_daily_report_kv_key = "git_daily_pnl_report_state"
 
         self._ensure_model_runs()
@@ -2586,6 +2587,7 @@ class TradingEngine:
 
     def _build_supabase_heartbeat_row(self, now_ts: int) -> dict[str, Any]:
         held_sync = self._held_quote_sync_meta()
+        position_watch = self._build_crypto_position_watch_snapshot(now_ts)
         return {
             "engine_name": "ai_auto_core",
             "market": "crypto",
@@ -2608,6 +2610,7 @@ class TradingEngine:
                 "held_quote_provider_summary": dict(held_sync.get("provider_summary") or {}),
                 "held_quote_sync_reason": str(held_sync.get("reason") or ""),
                 "held_quote_sync_at": self._iso_datetime(held_sync.get("at_ts")),
+                "position_watch": position_watch,
             },
         }
 
@@ -2864,6 +2867,151 @@ class TradingEngine:
             "symbols": symbols,
             "open_positions": int(len(positions_map)),
         }
+
+    def _crypto_position_watch_row(self, model_id: str, run: dict[str, Any], snapshot_ts: int) -> dict[str, Any]:
+        model = str(model_id or "").upper()
+        positions_map = dict((run or {}).get("bybit_positions") or {})
+        symbols = sorted(
+            {
+                str((pos or {}).get("symbol") or "").upper().strip()
+                for pos in positions_map.values()
+                if str((pos or {}).get("symbol") or "").strip()
+            }
+        )
+        quote_health = self._crypto_run_quote_health(run, snapshot_ts=snapshot_ts)
+        hard_roe_cut = float(self._crypto_model_risk_profile(model).get("hard_roe_cut") or -0.30)
+
+        liquidation_risk_positions = 0
+        hard_roe_breach_positions = 0
+        for pos in list(positions_map.values()):
+            current = float(self._crypto_current_price(pos))
+            if current <= 0.0:
+                continue
+            marked = self._mark_crypto_position(pos, current)
+            if float(marked.get("margin_usd") or 0.0) > 0.0 and float(marked.get("position_equity_usd") or 0.0) <= 0.0:
+                liquidation_risk_positions += 1
+            if float(marked.get("roe_pct") or 0.0) <= hard_roe_cut:
+                hard_roe_breach_positions += 1
+
+        last_trade_ts = 0
+        last_close_ts = 0
+        last_close_symbol = ""
+        last_close_reason = ""
+        for tr in reversed(list((run or {}).get("trades") or [])):
+            row = dict(tr or {})
+            if str(row.get("source") or "").strip().lower() != "crypto_demo":
+                continue
+            ts = int(row.get("ts") or 0)
+            if ts > last_trade_ts:
+                last_trade_ts = ts
+            if last_close_ts <= 0 and self._crypto_demo_trade_is_close(row):
+                last_close_ts = ts
+                last_close_symbol = str(row.get("symbol") or "").upper().strip()
+                last_close_reason = str(row.get("reason") or "").strip()
+            if last_trade_ts > 0 and last_close_ts > 0:
+                break
+
+        return {
+            "model_id": model,
+            "open_positions": int(len(positions_map)),
+            "symbols": symbols,
+            "quote_status": str(quote_health.get("quote_status") or "fresh"),
+            "quote_age_seconds": int(quote_health.get("quote_age_seconds") or 0),
+            "quote_stale_after_seconds": int(quote_health.get("quote_stale_after_seconds") or 0),
+            "guard_symbols": list(quote_health.get("guard_symbols") or []),
+            "stale_symbols": list(quote_health.get("stale_symbols") or []),
+            "liquidation_risk_positions": int(liquidation_risk_positions),
+            "hard_roe_breach_positions": int(hard_roe_breach_positions),
+            "last_trade_at": self._iso_datetime(last_trade_ts),
+            "last_close_at": self._iso_datetime(last_close_ts),
+            "last_close_symbol": last_close_symbol,
+            "last_close_reason": last_close_reason,
+        }
+
+    def _build_crypto_position_watch_snapshot(self, now_ts: int) -> dict[str, Any]:
+        snapshot_ts = int(now_ts or int(time.time()))
+        with self._lock:
+            runs = dict(self.state.model_runs or {})
+        models: dict[str, dict[str, Any]] = {}
+        total_open = 0
+        stale_models: list[str] = []
+        guard_models: list[str] = []
+        liquidation_models: list[str] = []
+        for model_id in CRYPTO_MODEL_IDS:
+            run = self._get_market_run(runs, "crypto", model_id)
+            row = self._crypto_position_watch_row(model_id, run, snapshot_ts)
+            model = str(row.get("model_id") or model_id).upper()
+            models[model] = row
+            total_open += int(row.get("open_positions") or 0)
+            if str(row.get("quote_status") or "") == "stale":
+                stale_models.append(model)
+            if str(row.get("quote_status") or "") == "guarded":
+                guard_models.append(model)
+            if int(row.get("liquidation_risk_positions") or 0) > 0:
+                liquidation_models.append(model)
+        return {
+            "captured_at": self._iso_datetime(snapshot_ts),
+            "total_open_positions": int(total_open),
+            "models_with_stale_quotes": sorted(stale_models),
+            "models_with_guarded_quotes": sorted(guard_models),
+            "models_with_liquidation_risk": sorted(liquidation_models),
+            "models": models,
+        }
+
+    def _append_exit_watch_event(
+        self,
+        model_id: str,
+        run: dict[str, Any],
+        refresh_symbols: list[str] | None = None,
+        now_ts: int | None = None,
+    ) -> None:
+        model = str(model_id or "").upper()
+        positions = list((run.get("bybit_positions") or {}).values())
+        if not positions:
+            return
+        ts = int(now_ts or int(time.time()))
+        min_interval = max(30, int(getattr(self.settings, "scan_interval_seconds", 300) or 300))
+        last_logged_at = int(self._last_exit_watch_log_ts.get(model) or 0)
+        if (ts - last_logged_at) < min_interval:
+            return
+        quote_health = self._crypto_run_quote_health(run, snapshot_ts=ts)
+        quote_status = str(quote_health.get("quote_status") or "fresh")
+        level = "warn" if quote_status != "fresh" else "info"
+        meta = {
+            "model_id": model,
+            "open_positions": int(len(positions)),
+            "symbols": sorted(
+                {
+                    str((pos or {}).get("symbol") or "").upper().strip()
+                    for pos in positions
+                    if str((pos or {}).get("symbol") or "").strip()
+                }
+            ),
+            "refresh_symbols": sorted(
+                {
+                    str(symbol or "").upper().strip()
+                    for symbol in list(refresh_symbols or [])
+                    if str(symbol or "").strip()
+                }
+            ),
+            "quote_status": quote_status,
+            "quote_age_seconds": int(quote_health.get("quote_age_seconds") or 0),
+            "stale_symbols": list(quote_health.get("stale_symbols") or []),
+            "guard_symbols": list(quote_health.get("guard_symbols") or []),
+        }
+        try:
+            self.runtime_feedback.append_event(
+                source=f"crypto:exit_watch:{model}",
+                level=level,
+                status="check",
+                action="evaluate_exits",
+                detail=f"{model} open={len(positions)} quote_status={quote_status}",
+                meta=meta,
+                now_ts=ts,
+            )
+            self._last_exit_watch_log_ts[model] = ts
+        except Exception:
+            pass
 
     def _build_supabase_daily_pnl_rows(self, now_ts: int | None = None) -> list[dict[str, Any]]:
         snapshot_ts = int(now_ts or int(time.time()))
@@ -13117,6 +13265,7 @@ class TradingEngine:
                 refresh_symbols.append(symbol)
         if refresh_symbols:
             self._force_sync_crypto_exit_quotes(refresh_symbols, prices=prices, reason=f"exit_eval_{model_id}")
+        self._append_exit_watch_event(model_id, run, refresh_symbols=refresh_symbols)
         for pos in list((run.get("bybit_positions") or {}).values()):
             symbol = str(pos.get("symbol") or "")
             position_side = self._normalize_crypto_side((pos or {}).get("side"))
@@ -13253,6 +13402,32 @@ class TradingEngine:
         reason_u = str(reason or "").upper()
         if reason_u.startswith("HARD-ROE") or reason_u.startswith("SL ") or reason_u.startswith("LIQ"):
             self._set_crypto_reentry_cooldown(run, model_id, symbol, reason, now_ts)
+        close_level = "warn" if reason_u.startswith("LIQ") or reason_u.startswith("HARD-ROE") else "info"
+        try:
+            self.runtime_feedback.append_event(
+                source=f"crypto:position_close:{str(model_id or '').upper()}",
+                level=close_level,
+                status="closed",
+                action="close_position",
+                detail=f"{symbol} {position_side} reason={reason}",
+                meta={
+                    "model_id": str(model_id or "").upper(),
+                    "symbol": symbol,
+                    "position_side": position_side,
+                    "close_side": close_side,
+                    "price_usd": float(price_usd),
+                    "pnl_usd": float(pnl_usd),
+                    "pnl_pct": float(pnl_pct),
+                    "leverage": float(leverage),
+                    "margin_usd": float(margin_usd),
+                    "notional_usd": float(notional),
+                    "close_mode": str(close_mode or ("intrabar" if "INTRABAR" in reason_u else "spot")),
+                    "reason": str(reason or ""),
+                },
+                now_ts=now_ts,
+            )
+        except Exception:
+            pass
         self._prune_run_trades(run, now_ts)
         return True
 
