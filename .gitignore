@@ -24,6 +24,13 @@ node_modules/
 .npm-cache/
 .next/
 out/
+output/
+.playwright-cli/
+.pytest_cache/
+frontend/.env.local
+frontend/.next/
+frontend/node_modules/
+**/__pycache__/
 
 # Logs
 *.log
