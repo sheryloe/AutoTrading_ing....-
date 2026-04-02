@@ -118,7 +118,7 @@
       "eod_price_sources": {},
       "replay_window": {
         "from": "2026-03-28",
-        "to": "2026-04-03"
+        "to": "2026-04-02"
       }
     },
     {
@@ -230,7 +230,7 @@
       "eod_price_sources": {},
       "replay_window": {
         "from": "2026-03-28",
-        "to": "2026-04-03"
+        "to": "2026-04-02"
       }
     }
   ]
