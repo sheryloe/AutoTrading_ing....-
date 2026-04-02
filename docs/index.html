@@ -232,18 +232,62 @@
             }).format(date);
         }
 
-        function modelReturnPct(row) {
-            return (Number(row?.total_pnl_usd || 0) / EQUITY_BASE) * 100;
+        function modelReturnPct(totalPnlUsd) {
+            return (Number(totalPnlUsd || 0) / EQUITY_BASE) * 100;
         }
 
-        function buildLatestByModel(dailyRows) {
-            const latestByModel = new Map();
-            for (const row of dailyRows) {
+        function buildDisplayDailySeries(dailyRows) {
+            const rawLookup = {};
+            const rebuildLookup = {};
+            const noteLookup = {};
+            MODEL_IDS.forEach((modelId) => {
+                rawLookup[modelId] = {};
+                rebuildLookup[modelId] = {};
+                noteLookup[modelId] = {};
+            });
+
+            dailyRows.forEach((row) => {
                 const modelId = String(row.model_id || "").toUpperCase();
-                if (!modelId || latestByModel.has(modelId)) continue;
-                latestByModel.set(modelId, row);
-            }
-            return latestByModel;
+                const day = String(row.day || "").slice(0, 10);
+                if (!MODEL_IDS.includes(modelId) || !day) return;
+                rawLookup[modelId][day] = Number(row.total_pnl_usd || 0);
+                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+                const rebuildSource = String(sourceJson.rebuild_source || "").trim();
+                if (rebuildSource) {
+                    rebuildLookup[modelId][day] = rebuildSource;
+                }
+                const restartNote = String(
+                    sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
+                ).trim();
+                if (restartNote && modelId === "D") {
+                    noteLookup[modelId][day] = restartNote;
+                }
+            });
+
+            const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "").slice(0, 10)))]
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+            const latestByModel = new Map();
+            const entries = [];
+            const offsets = { A: 0, B: 0, C: 0, D: 0 };
+
+            orderedDays.forEach((day) => {
+                const entry = { day, A: 0, B: 0, C: 0, D: 0, D_note: "" };
+                MODEL_IDS.forEach((modelId) => {
+                    const raw = Number(rawLookup[modelId][day] ?? 0);
+                    const displayTotal = raw + Number(offsets[modelId] || 0);
+                    entry[modelId] = Number(displayTotal.toFixed(6));
+                    if (modelId === "D" && noteLookup.D[day]) {
+                        entry.D_note = String(noteLookup.D[day]);
+                    }
+                    latestByModel.set(modelId, Number(displayTotal.toFixed(6)));
+                    if (rebuildLookup[modelId][day] === "drawdown_50pct_rebuild_restart") {
+                        offsets[modelId] = Number(displayTotal.toFixed(6));
+                    }
+                });
+                entries.push(entry);
+            });
+            return { orderedDays, entries, latestByModel };
         }
 
         function buildOpenPositionsByModel(positions) {
@@ -267,29 +311,23 @@
             target.innerText = `3월 20일부터 계속 동작중 · 최근 동기화 ${dateLabel(heartbeat.last_seen_at)} · OPEN ${positions.length}건`;
         }
 
-        function renderSummaryCards(latestByModel, positionsByModel) {
+        function renderSummaryCards(latestByModel) {
             MODEL_IDS.forEach((modelId) => {
-                const latest = latestByModel.get(modelId);
+                const latestTotalPnl = Number(latestByModel.get(modelId) || 0);
                 const el = document.getElementById(MODEL_TARGETS[modelId]);
                 if (!el) return;
-                if (!latest) {
-                    el.innerText = "0.00%";
-                    el.classList.remove("pnl-plus", "pnl-minus");
-                    return;
-                }
-                const pct = modelReturnPct(latest);
+                const pct = modelReturnPct(latestTotalPnl);
                 el.innerText = formatPct(pct);
                 el.classList.toggle("pnl-plus", pct >= 0);
                 el.classList.toggle("pnl-minus", pct < 0);
             });
         }
 
-        function renderChart(dailyRows, positionsByModel, latestByModel) {
+        function renderChart(displaySeries) {
             const mount = document.querySelector("#multi-model-chart");
             if (!mount) return;
-            const orderedDays = [...new Set(dailyRows.map((row) => String(row.day || "")))]
-                .filter(Boolean)
-                .sort((a, b) => a.localeCompare(b));
+            const orderedDays = Array.isArray(displaySeries?.orderedDays) ? displaySeries.orderedDays : [];
+            const entries = Array.isArray(displaySeries?.entries) ? displaySeries.entries : [];
 
             if (!orderedDays.length) {
                 if (_chart) {
@@ -305,11 +343,12 @@
                 lookup[modelId] = {};
             });
 
-            dailyRows.forEach((row) => {
-                const modelId = String(row.model_id || "").toUpperCase();
-                const day = String(row.day || "");
-                if (!lookup[modelId] || !day) return;
-                lookup[modelId][day] = Number(modelReturnPct(row).toFixed(2));
+            entries.forEach((entry) => {
+                const day = String(entry.day || "");
+                if (!day) return;
+                MODEL_IDS.forEach((modelId) => {
+                    lookup[modelId][day] = Number(modelReturnPct(entry[modelId]).toFixed(2));
+                });
             });
 
             const options = {
@@ -352,29 +391,11 @@
             return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
         }
 
-        function renderDailyPnlTable(dailyRows) {
+        function renderDailyPnlTable(displaySeries) {
             const mount = document.getElementById("daily-pnl-table-body");
             if (!mount) return;
-
-            const byDay = new Map();
-            dailyRows.forEach((row) => {
-                const day = String(row.day || "").slice(0, 10);
-                if (!day) return;
-                const modelId = String(row.model_id || "").toUpperCase();
-                if (!MODEL_IDS.includes(modelId)) return;
-                const entry = byDay.get(day) || { day, A: 0, B: 0, C: 0, D: 0 };
-                entry[modelId] = Number(row.total_pnl_usd || 0);
-                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
-                const restartNote = String(
-                    sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
-                ).trim();
-                if (restartNote && modelId === "D") {
-                    entry[`${modelId}_note`] = restartNote;
-                }
-                byDay.set(day, entry);
-            });
-
-            const ordered = [...byDay.values()]
+            const entries = Array.isArray(displaySeries?.entries) ? displaySeries.entries : [];
+            const ordered = [...entries]
                 .sort((a, b) => b.day.localeCompare(a.day))
                 .slice(0, 45);
 
@@ -393,7 +414,7 @@
                     const modelCells = MODEL_IDS.map((modelId) => {
                         const value = Number(entry[modelId] || 0);
                         const cls = value >= 0 ? "pnl-plus" : "pnl-minus";
-                        const note = String(entry[`${modelId}_note`] || "").trim();
+                        const note = modelId === "D" ? String(entry.D_note || "").trim() : "";
                         const text =
                             modelId === "D" && note
                                 ? `${formatSignedUsd(value)}(${escapeHtml(note)})`
@@ -442,13 +463,13 @@
             const dailyRows = Array.isArray(dailyRes.data) ? dailyRes.data : [];
             const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
             const heartbeat = heartbeatRes.data?.[0] || null;
-            const latestByModel = buildLatestByModel(dailyRows);
             const positionsByModel = buildOpenPositionsByModel(positions);
+            const displaySeries = buildDisplayDailySeries(dailyRows);
 
             setHeadline(heartbeat, positions);
-            renderSummaryCards(latestByModel, positionsByModel);
-            renderChart(dailyRows, positionsByModel, latestByModel);
-            renderDailyPnlTable(dailyRows);
+            renderSummaryCards(displaySeries.latestByModel);
+            renderChart(displaySeries);
+            renderDailyPnlTable(displaySeries);
         }
 
         function subscribeRealtime() {

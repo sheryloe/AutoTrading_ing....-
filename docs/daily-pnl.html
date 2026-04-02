@@ -242,26 +242,54 @@
       }
 
       function pivotRows(rows) {
-        const bucket = new Map();
+        const rawLookup = {};
+        const rebuildLookup = {};
+        const noteLookup = {};
+        MODEL_IDS.forEach((modelId) => {
+          rawLookup[modelId] = {};
+          rebuildLookup[modelId] = {};
+          noteLookup[modelId] = {};
+        });
         (Array.isArray(rows) ? rows : []).forEach((row) => {
           const day = String(row.date || row.day || "").trim();
           if (!day) return;
           const modelId = normalizeModelId(row.model_id || row.model || row.modelId);
           if (!MODEL_IDS.includes(modelId)) return;
           const raw = row.bybit_total_pnl_usd ?? row.total_pnl_usd ?? row.crypto_total_pnl_usd ?? 0;
-          const entry =
-            bucket.get(day) || { date: day, A: 0, B: 0, C: 0, D: 0, A_note: "", B_note: "", C_note: "", D_note: "" };
-          entry[modelId] = parseNumber(raw);
+          rawLookup[modelId][day] = parseNumber(raw);
           const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
+          const rebuildSource = String(sourceJson.rebuild_source || row.rebuild_source || "").trim();
+          if (rebuildSource) {
+            rebuildLookup[modelId][day] = rebuildSource;
+          }
           const restartNote = String(
             sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
           ).trim();
           if (restartNote && modelId === "D") {
-            entry[`${modelId}_note`] = restartNote;
+            noteLookup[modelId][day] = restartNote;
           }
-          bucket.set(day, entry);
         });
-        return Array.from(bucket.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const orderedDays = [...new Set((Array.isArray(rows) ? rows : []).map((row) => String(row.date || row.day || "").trim()))]
+          .filter(Boolean)
+          .sort((a, b) => String(a).localeCompare(String(b)));
+        const offsets = { A: 0, B: 0, C: 0, D: 0 };
+        const out = [];
+        orderedDays.forEach((day) => {
+          const entry = { date: day, A: 0, B: 0, C: 0, D: 0, D_note: "" };
+          MODEL_IDS.forEach((modelId) => {
+            const raw = Number(rawLookup[modelId][day] ?? 0);
+            const displayTotal = raw + Number(offsets[modelId] || 0);
+            entry[modelId] = Number(displayTotal.toFixed(6));
+            if (modelId === "D" && noteLookup.D[day]) {
+              entry.D_note = String(noteLookup.D[day]);
+            }
+            if (rebuildLookup[modelId][day] === "drawdown_50pct_rebuild_restart") {
+              offsets[modelId] = Number(displayTotal.toFixed(6));
+            }
+          });
+          out.push(entry);
+        });
+        return out;
       }
 
       function parseCsv(text) {
