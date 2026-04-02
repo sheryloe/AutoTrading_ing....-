@@ -222,15 +222,15 @@ def _build_supabase_daily_index(
         if model_id not in MODEL_IDS:
             continue
         cycle_total = _safe_float(
-            (row.get("source_json") or {}).get("cycle_total_pnl_usd")
-            if isinstance(row.get("source_json"), dict)
-            else None,
+            source_json.get("bybit_cycle_total_pnl_usd")
+            if source_json.get("bybit_cycle_total_pnl_usd") not in {None, ""}
+            else source_json.get("cycle_total_pnl_usd"),
             _safe_float(row.get("total_pnl_usd"), 0.0),
         )
         anchor_total = _safe_float(
-            (row.get("source_json") or {}).get("total_pnl_anchor_usd")
-            if isinstance(row.get("source_json"), dict)
-            else None,
+            source_json.get("bybit_total_pnl_anchor_usd")
+            if source_json.get("bybit_total_pnl_anchor_usd") not in {None, ""}
+            else source_json.get("total_pnl_anchor_usd"),
             0.0,
         )
         display_total = _safe_float(row.get("total_pnl_usd"), cycle_total + anchor_total)
@@ -992,6 +992,22 @@ def _build_supabase_daily_rows(rows: list[dict[str, Any]], *, updated_ts: int) -
                             0.0,
                         )
                     ),
+                    "bybit_cycle_total_pnl_usd": float(
+                        _safe_float(
+                            row.get("bybit_cycle_total_pnl_usd")
+                            if row.get("bybit_cycle_total_pnl_usd") not in {None, ""}
+                            else source_json.get("bybit_cycle_total_pnl_usd"),
+                            0.0,
+                        )
+                    ),
+                    "bybit_total_pnl_anchor_usd": float(
+                        _safe_float(
+                            row.get("bybit_total_pnl_anchor_usd")
+                            if row.get("bybit_total_pnl_anchor_usd") not in {None, ""}
+                            else source_json.get("bybit_total_pnl_anchor_usd"),
+                            0.0,
+                        )
+                    ),
                     "eod_price_sources": dict(row.get("eod_price_sources") or {}),
                     "quote_sync_missing_symbols": list(row.get("bybit_quote_sync_missing_symbols") or []),
                     "quote_sync_provider_summary": dict(row.get("bybit_quote_sync_provider_summary") or {}),
@@ -1119,6 +1135,22 @@ def main() -> int:
             raise RuntimeError("supabase_client_disabled")
         supabase_rows = _build_supabase_daily_rows(rebuilt_rows, updated_ts=updated_ts)
         supabase_result = client.upsert_rows("daily_model_pnl", supabase_rows, on_conflict="day,market,model_id")
+        if not bool(supabase_result.get("ok")):
+            error_text = str(supabase_result.get("error") or "")
+            if "Could not find" in error_text and "daily_model_pnl" in error_text:
+                legacy_rows: list[dict[str, Any]] = []
+                for row in list(supabase_rows or []):
+                    item = dict(row or {})
+                    item.pop("bybit_rebuild_restart_variant_id", None)
+                    item.pop("bybit_rebuild_restart_note_ko", None)
+                    item.pop("bybit_rebuild_restart_seed_usd", None)
+                    item.pop("bybit_rebuild_restart_ts", None)
+                    legacy_rows.append(item)
+                fallback_result = client.upsert_rows("daily_model_pnl", legacy_rows, on_conflict="day,market,model_id")
+                if bool(fallback_result.get("ok")):
+                    fallback_result = dict(fallback_result)
+                    fallback_result["schema_fallback"] = "dropped_bybit_rebuild_restart_columns"
+                supabase_result = fallback_result
 
     docs_result: dict[str, Any] = {"ok": False, "files": 0}
     if args.write_docs and not args.dry_run:

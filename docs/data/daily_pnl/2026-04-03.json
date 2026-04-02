@@ -1,42 +1,42 @@
 {
-  "date": "2026-04-02",
+  "date": "2026-04-03",
   "generated_from": "engine.daily_pnl",
   "model_count": 4,
   "totals": {
-    "crypto_equity_usd": 58331.655215,
-    "crypto_total_pnl_usd": 18331.655215,
+    "crypto_equity_usd": 58330.922839,
+    "crypto_total_pnl_usd": 18330.922839,
     "crypto_realized_pnl_usd": -2166.418406,
-    "crypto_unrealized_pnl_usd": 342.264735
+    "crypto_unrealized_pnl_usd": 341.532359
   },
   "models": [
     {
-      "date": "2026-04-02",
+      "date": "2026-04-03",
       "model_id": "A",
       "meme_equity_usd": 0.0,
-      "bybit_equity_usd": 7259.389263,
+      "bybit_equity_usd": 7255.763867,
       "meme_total_pnl_usd": 0.0,
-      "bybit_total_pnl_usd": -2740.610737,
-      "bybit_cycle_total_pnl_usd": -478.634414,
+      "bybit_total_pnl_usd": -2744.236133,
+      "bybit_cycle_total_pnl_usd": -482.25981,
       "bybit_total_pnl_anchor_usd": -2261.976323,
       "meme_realized_pnl_usd": 0.0,
       "bybit_realized_pnl_usd": -457.839836,
       "meme_unrealized_pnl_usd": 0.0,
-      "bybit_unrealized_pnl_usd": -20.794578,
+      "bybit_unrealized_pnl_usd": -24.419974,
       "meme_win_rate": 0.0,
       "bybit_win_rate": 14.5455,
       "meme_closed_trades": 0,
       "bybit_closed_trades": 55,
       "meme_open_positions": 0,
       "bybit_open_positions": 2,
-      "total_equity_usd": 7259.389263,
-      "total_pnl_usd": -2740.610737,
+      "total_equity_usd": 7255.763867,
+      "total_pnl_usd": -2744.236133,
       "realized_pnl_usd": -457.839836,
-      "unrealized_pnl_usd": -20.794578,
+      "unrealized_pnl_usd": -24.419974,
       "win_rate": 14.5455,
       "closed_trades": 55,
       "bybit_quote_status": "fresh",
       "bybit_quote_stale": false,
-      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_as_of_ts": 1775143207,
       "bybit_quote_age_seconds": 0,
       "bybit_quote_stale_after_seconds": 0,
       "bybit_quote_symbols": [
@@ -46,7 +46,7 @@
       "bybit_quote_stale_symbols": [],
       "bybit_quote_guard_symbols": [],
       "bybit_quote_realtime_sources": [
-        "binance_1d"
+        "binance_latest"
       ],
       "bybit_quote_fallback_sources": [],
       "bybit_quote_sync_attempted_symbols": [
@@ -59,14 +59,14 @@
       ],
       "bybit_quote_sync_missing_symbols": [],
       "bybit_quote_sync_provider_summary": {
-        "binance_1d": 2
+        "binance_latest": 2
       },
       "bybit_quote_sync_reason": "daily_close_replay",
-      "bybit_quote_sync_at_ts": 1775141999,
+      "bybit_quote_sync_at_ts": 1775143207,
       "rebuild_source": "daily_close_replay",
       "eod_price_sources": {
-        "BLURUSDT": "binance_1d",
-        "KATUSDT": "binance_1d"
+        "BLURUSDT": "binance_latest",
+        "KATUSDT": "binance_latest"
       },
       "replay_window": {
         "from": "2026-03-28",
@@ -74,7 +74,7 @@
       }
     },
     {
-      "date": "2026-04-02",
+      "date": "2026-04-03",
       "model_id": "B",
       "meme_equity_usd": 0.0,
       "bybit_equity_usd": 27678.193831,
@@ -100,7 +100,7 @@
       "closed_trades": 2,
       "bybit_quote_status": "fresh",
       "bybit_quote_stale": false,
-      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_as_of_ts": 1775228399,
       "bybit_quote_age_seconds": 0,
       "bybit_quote_stale_after_seconds": 0,
       "bybit_quote_symbols": [],
@@ -113,7 +113,7 @@
       "bybit_quote_sync_missing_symbols": [],
       "bybit_quote_sync_provider_summary": {},
       "bybit_quote_sync_reason": "daily_close_replay",
-      "bybit_quote_sync_at_ts": 1775141999,
+      "bybit_quote_sync_at_ts": 1775228399,
       "rebuild_source": "daily_close_replay",
       "eod_price_sources": {},
       "replay_window": {
@@ -122,33 +122,33 @@
       }
     },
     {
-      "date": "2026-04-02",
+      "date": "2026-04-03",
       "model_id": "C",
       "meme_equity_usd": 0.0,
-      "bybit_equity_usd": 13394.072121,
+      "bybit_equity_usd": 13396.965141,
       "meme_total_pnl_usd": 0.0,
-      "bybit_total_pnl_usd": 3394.072121,
-      "bybit_cycle_total_pnl_usd": -1034.480693,
+      "bybit_total_pnl_usd": 3396.965141,
+      "bybit_cycle_total_pnl_usd": -1031.587673,
       "bybit_total_pnl_anchor_usd": 4428.552814,
       "meme_realized_pnl_usd": 0.0,
       "bybit_realized_pnl_usd": -1397.540005,
       "meme_unrealized_pnl_usd": 0.0,
-      "bybit_unrealized_pnl_usd": 363.059313,
+      "bybit_unrealized_pnl_usd": 365.952333,
       "meme_win_rate": 0.0,
       "bybit_win_rate": 0.0,
       "meme_closed_trades": 0,
       "bybit_closed_trades": 4,
       "meme_open_positions": 0,
       "bybit_open_positions": 2,
-      "total_equity_usd": 13394.072121,
-      "total_pnl_usd": 3394.072121,
+      "total_equity_usd": 13396.965141,
+      "total_pnl_usd": 3396.965141,
       "realized_pnl_usd": -1397.540005,
-      "unrealized_pnl_usd": 363.059313,
+      "unrealized_pnl_usd": 365.952333,
       "win_rate": 0.0,
       "closed_trades": 4,
       "bybit_quote_status": "fresh",
       "bybit_quote_stale": false,
-      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_as_of_ts": 1775143207,
       "bybit_quote_age_seconds": 0,
       "bybit_quote_stale_after_seconds": 0,
       "bybit_quote_symbols": [
@@ -158,7 +158,7 @@
       "bybit_quote_stale_symbols": [],
       "bybit_quote_guard_symbols": [],
       "bybit_quote_realtime_sources": [
-        "binance_1d"
+        "binance_latest"
       ],
       "bybit_quote_fallback_sources": [],
       "bybit_quote_sync_attempted_symbols": [
@@ -171,14 +171,14 @@
       ],
       "bybit_quote_sync_missing_symbols": [],
       "bybit_quote_sync_provider_summary": {
-        "binance_1d": 2
+        "binance_latest": 2
       },
       "bybit_quote_sync_reason": "daily_close_replay",
-      "bybit_quote_sync_at_ts": 1775141999,
+      "bybit_quote_sync_at_ts": 1775143207,
       "rebuild_source": "daily_close_replay",
       "eod_price_sources": {
-        "SOLUSDT": "binance_1d",
-        "ENAUSDT": "binance_1d"
+        "SOLUSDT": "binance_latest",
+        "ENAUSDT": "binance_latest"
       },
       "replay_window": {
         "from": "2026-03-28",
@@ -186,7 +186,7 @@
       }
     },
     {
-      "date": "2026-04-02",
+      "date": "2026-04-03",
       "model_id": "D",
       "meme_equity_usd": 0.0,
       "bybit_equity_usd": 10000.0,
@@ -212,7 +212,7 @@
       "closed_trades": 0,
       "bybit_quote_status": "fresh",
       "bybit_quote_stale": false,
-      "bybit_quote_as_of_ts": 1775141999,
+      "bybit_quote_as_of_ts": 1775228399,
       "bybit_quote_age_seconds": 0,
       "bybit_quote_stale_after_seconds": 0,
       "bybit_quote_symbols": [],
@@ -225,7 +225,7 @@
       "bybit_quote_sync_missing_symbols": [],
       "bybit_quote_sync_provider_summary": {},
       "bybit_quote_sync_reason": "daily_close_replay",
-      "bybit_quote_sync_at_ts": 1775141999,
+      "bybit_quote_sync_at_ts": 1775228399,
       "rebuild_source": "daily_close_replay",
       "eod_price_sources": {},
       "replay_window": {

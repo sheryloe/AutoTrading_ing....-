@@ -13920,7 +13920,8 @@ class TradingEngine:
         }
 
     def _record_daily_pnl(self, now_ts: int) -> None:
-        day_key = datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        kst = timezone(timedelta(hours=9))
+        day_key = datetime.fromtimestamp(now_ts, tz=kst).strftime("%Y-%m-%d")
         with self._lock:
             table = list(self.state.daily_pnl or [])
             runs = dict(self.state.model_runs or {})
@@ -13931,16 +13932,59 @@ class TradingEngine:
             m = self._model_metrics(model_id, run)
             meme_m = self._model_metrics_market(model_id, meme_run, "meme")
             crypto_m = self._model_metrics_market(model_id, crypto_run, "crypto")
+            idx = None
+            previous: dict[str, Any] = {}
+            for i in range(len(table) - 1, -1, -1):
+                old = table[i]
+                if str(old.get("date")) == day_key and str(old.get("model_id")) == model_id:
+                    idx = i
+                    previous = dict(old or {})
+                    break
             bybit_cycle_total_pnl = float(crypto_m["total_pnl_usd"])
             bybit_total_anchor = float(crypto_run.get("bybit_total_pnl_anchor_usd") or 0.0)
+            if model_id in {"A", "B", "C"} and abs(bybit_total_anchor) <= 1e-9:
+                candidate_rows: list[dict[str, Any]] = []
+                if previous:
+                    candidate_rows.append(previous)
+                for old in range(len(table) - 1, -1, -1):
+                    item = dict(table[old] or {})
+                    if str(item.get("model_id") or "").upper() != model_id:
+                        continue
+                    old_day = str(item.get("date") or "")
+                    if not old_day or old_day >= day_key:
+                        continue
+                    candidate_rows.append(item)
+                    break
+                for candidate in candidate_rows:
+                    anchor_raw = candidate.get("bybit_total_pnl_anchor_usd")
+                    if anchor_raw in {None, ""}:
+                        total_raw = candidate.get("bybit_total_pnl_usd")
+                        if total_raw in {None, ""}:
+                            total_raw = candidate.get("total_pnl_usd")
+                        cycle_raw = candidate.get("bybit_cycle_total_pnl_usd")
+                        if cycle_raw in {None, ""}:
+                            cycle_raw = total_raw
+                        try:
+                            anchor_raw = float(total_raw or 0.0) - float(cycle_raw or 0.0)
+                        except Exception:
+                            anchor_raw = 0.0
+                    try:
+                        inferred_anchor = float(anchor_raw or 0.0)
+                    except Exception:
+                        inferred_anchor = 0.0
+                    if abs(inferred_anchor) > 1e-9:
+                        bybit_total_anchor = float(inferred_anchor)
+                        break
             bybit_total_pnl = float(bybit_total_anchor + bybit_cycle_total_pnl)
+            bybit_seed_usd = float(crypto_m.get("seed_usd") or self.state.demo_seed_usdt or 0.0)
+            bybit_equity_display = float(bybit_seed_usd + bybit_total_pnl)
             crypto_quote_health = self._crypto_run_quote_health(crypto_run, now_ts)
             crypto_quote_sync = self._held_quote_sync_meta(crypto_quote_health.get("symbols") or [])
             row = {
                 "date": day_key,
                 "model_id": model_id,
                 "meme_equity_usd": round(float(m["meme_equity_usd"]), 6),
-                "bybit_equity_usd": round(float(m["bybit_equity_usd"]), 6),
+                "bybit_equity_usd": round(float(bybit_equity_display), 6),
                 "meme_total_pnl_usd": round(float(meme_m["total_pnl_usd"]), 6),
                 "bybit_total_pnl_usd": round(float(bybit_total_pnl), 6),
                 "bybit_cycle_total_pnl_usd": round(float(bybit_cycle_total_pnl), 6),
@@ -13955,7 +13999,7 @@ class TradingEngine:
                 "bybit_closed_trades": int(crypto_m["closed_trades"]),
                 "meme_open_positions": int(meme_m["open_positions"]),
                 "bybit_open_positions": int(crypto_m["open_positions"]),
-                "total_equity_usd": round(float(m["total_equity_usd"]), 6),
+                "total_equity_usd": round(float(m["meme_equity_usd"] + bybit_equity_display), 6),
                 "total_pnl_usd": round(float(meme_m["total_pnl_usd"] + bybit_total_pnl), 6),
                 "realized_pnl_usd": round(float(m["realized_pnl_usd"]), 6),
                 "unrealized_pnl_usd": round(float(m["unrealized_pnl_usd"]), 6),
@@ -13978,14 +14022,6 @@ class TradingEngine:
                 "bybit_quote_sync_reason": str(crypto_quote_sync.get("reason") or ""),
                 "bybit_quote_sync_at_ts": int(crypto_quote_sync.get("at_ts") or 0),
             }
-            idx = None
-            previous: dict[str, Any] = {}
-            for i in range(len(table) - 1, -1, -1):
-                old = table[i]
-                if str(old.get("date")) == day_key and str(old.get("model_id")) == model_id:
-                    idx = i
-                    previous = dict(old or {})
-                    break
             if previous:
                 for key in (
                     "rebuild_source",
