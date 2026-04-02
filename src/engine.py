@@ -2891,6 +2891,8 @@ class TradingEngine:
                         "snapshot_at": self._iso_datetime(snapshot_ts),
                         "total_equity_usd": float((row or {}).get("total_equity_usd") or 0.0),
                         "total_pnl_usd_all": float((row or {}).get("total_pnl_usd") or 0.0),
+                        "bybit_cycle_total_pnl_usd": float((row or {}).get("bybit_cycle_total_pnl_usd") or 0.0),
+                        "bybit_total_pnl_anchor_usd": float((row or {}).get("bybit_total_pnl_anchor_usd") or 0.0),
                         "quote_status": str((row or {}).get("bybit_quote_status") or ""),
                         "quote_stale": bool((row or {}).get("bybit_quote_stale")),
                         "quote_as_of": self._iso_datetime((row or {}).get("bybit_quote_as_of_ts")),
@@ -3467,6 +3469,7 @@ class TradingEngine:
         run.setdefault("started_at", int(time.time()))
         run.setdefault("last_entry_alloc", {})
         run.setdefault("variant_seq", 0)
+        run.setdefault("drawdown_rebuild_seq", 0)
         run.setdefault("active_variant_id", f"{model_id}-BASE")
         run.setdefault("variant_history", [])
 
@@ -3488,6 +3491,7 @@ class TradingEngine:
             run.setdefault("bybit_seed_usd", bybit_seed)
             run.setdefault("bybit_cash_usd", bybit_seed)
             run.setdefault("bybit_positions", {})
+            run.setdefault("bybit_total_pnl_anchor_usd", 0.0)
             run.setdefault("latest_crypto_signals", [])
             run.setdefault("crypto_reentry_cooldowns", {})
             run["meme_seed_usd"] = 0.0
@@ -3542,6 +3546,7 @@ class TradingEngine:
             row["bybit_seed_usd"] = float(legacy.get("bybit_seed_usd") or (seed_usdt if self.settings.demo_enable_macro else 0.0))
             row["bybit_cash_usd"] = float(legacy.get("bybit_cash_usd") or row["bybit_seed_usd"])
             row["bybit_positions"] = dict(legacy.get("bybit_positions") or {})
+            row["bybit_total_pnl_anchor_usd"] = float(legacy.get("bybit_total_pnl_anchor_usd") or 0.0)
             row["latest_crypto_signals"] = list(legacy.get("latest_crypto_signals") or [])
             last_entry = dict(legacy.get("last_entry_alloc") or {})
             row["last_entry_alloc"] = {"crypto": dict(last_entry.get("crypto") or {})}
@@ -3709,6 +3714,7 @@ class TradingEngine:
             "last_eval_note_ko": self._autotune_note_ko(str(raw.get("last_eval_note") or "")),
             "active_variant_id": str(run.get("active_variant_id") or f"{model_id}-BASE"),
             "variant_seq": int(run.get("variant_seq") or 0),
+            "drawdown_rebuild_seq": int(run.get("drawdown_rebuild_seq") or 0),
         }
         return payload
 
@@ -6756,9 +6762,11 @@ class TradingEngine:
         return updates
 
     @staticmethod
-    def _drawdown_rebuild_variant_id(now_ts: int, model_id: str) -> str:
+    def _drawdown_rebuild_variant_id(now_ts: int, model_id: str, rev: int) -> str:
+        model = str(model_id or "").upper() or "D"
         stamp = datetime.fromtimestamp(int(now_ts), tz=timezone.utc).strftime("%Y%m%d-%H%M%S")
-        return f"D.ver@{stamp}-{str(model_id or '').upper()}"
+        rev_seq = max(1, int(rev or 0))
+        return f"{model}.ver@{stamp}-{model}(rev.{rev_seq:02d})"
 
     def _apply_drawdown_full_reset_and_retune(self, now_ts: int, triggers: list[dict[str, Any]]) -> dict[str, Any]:
         now = int(now_ts)
@@ -6784,11 +6792,18 @@ class TradingEngine:
                 key = self._market_run_key("crypto", model_id)
                 previous_run = dict(runs.get(key) or {})
                 previous_variant_seq = int(previous_run.get("variant_seq") or 0)
+                previous_drawdown_seq = int(previous_run.get("drawdown_rebuild_seq") or 0)
+                previous_anchor = float(previous_run.get("bybit_total_pnl_anchor_usd") or 0.0)
+                previous_cycle_metric = self._model_metrics_market(model_id, previous_run, "crypto")
+                previous_cycle_total_pnl = float(previous_cycle_metric.get("total_pnl_usd") or 0.0)
                 fresh_run = self._blank_market_run("crypto", model_id, seed_usd)
+                fresh_run["bybit_total_pnl_anchor_usd"] = float(previous_anchor + previous_cycle_total_pnl)
                 variant_seq = max(1, previous_variant_seq + 1)
-                variant_id = self._drawdown_rebuild_variant_id(now, model_id)
+                drawdown_rebuild_seq = max(1, previous_drawdown_seq + 1)
+                variant_id = self._drawdown_rebuild_variant_id(now, model_id, drawdown_rebuild_seq)
                 fresh_run["variant_seq"] = int(variant_seq)
                 fresh_run["active_variant_id"] = str(variant_id)
+                fresh_run["drawdown_rebuild_seq"] = int(drawdown_rebuild_seq)
                 tune = self._ensure_model_runtime_tune(fresh_run, model_id, now)
                 clamps = self._model_tune_clamps(model_id)
                 override = dict(tune_overrides.get(model_id) or {})
@@ -6817,6 +6832,7 @@ class TradingEngine:
                 tune["last_eval_note_ko"] = note_ko
                 tune["active_variant_id"] = str(variant_id)
                 tune["variant_seq"] = int(variant_seq)
+                tune["drawdown_rebuild_seq"] = int(drawdown_rebuild_seq)
                 all_raw = dict(fresh_run.get("model_runtime_tune") or {})
                 all_raw[model_id] = dict(tune)
                 fresh_run["model_runtime_tune"] = all_raw
@@ -6933,6 +6949,8 @@ class TradingEngine:
                     "bybit_rebuild_restart_variant_id": str(row["variant_id"]),
                     "bybit_rebuild_restart_seed_usd": float(seed_usd),
                     "bybit_rebuild_restart_ts": int(now),
+                    "bybit_cycle_total_pnl_usd": 0.0,
+                    "bybit_total_pnl_anchor_usd": float(bybit_total_pnl),
                     }
                 )
                 if model_id == note_model_id:
@@ -13897,6 +13915,9 @@ class TradingEngine:
             m = self._model_metrics(model_id, run)
             meme_m = self._model_metrics_market(model_id, meme_run, "meme")
             crypto_m = self._model_metrics_market(model_id, crypto_run, "crypto")
+            bybit_cycle_total_pnl = float(crypto_m["total_pnl_usd"])
+            bybit_total_anchor = float(crypto_run.get("bybit_total_pnl_anchor_usd") or 0.0)
+            bybit_total_pnl = float(bybit_total_anchor + bybit_cycle_total_pnl)
             crypto_quote_health = self._crypto_run_quote_health(crypto_run, now_ts)
             crypto_quote_sync = self._held_quote_sync_meta(crypto_quote_health.get("symbols") or [])
             row = {
@@ -13905,7 +13926,9 @@ class TradingEngine:
                 "meme_equity_usd": round(float(m["meme_equity_usd"]), 6),
                 "bybit_equity_usd": round(float(m["bybit_equity_usd"]), 6),
                 "meme_total_pnl_usd": round(float(meme_m["total_pnl_usd"]), 6),
-                "bybit_total_pnl_usd": round(float(crypto_m["total_pnl_usd"]), 6),
+                "bybit_total_pnl_usd": round(float(bybit_total_pnl), 6),
+                "bybit_cycle_total_pnl_usd": round(float(bybit_cycle_total_pnl), 6),
+                "bybit_total_pnl_anchor_usd": round(float(bybit_total_anchor), 6),
                 "meme_realized_pnl_usd": round(float(meme_m["realized_pnl_usd"]), 6),
                 "bybit_realized_pnl_usd": round(float(crypto_m["realized_pnl_usd"]), 6),
                 "meme_unrealized_pnl_usd": round(float(meme_m["unrealized_pnl_usd"]), 6),
@@ -13917,7 +13940,7 @@ class TradingEngine:
                 "meme_open_positions": int(meme_m["open_positions"]),
                 "bybit_open_positions": int(crypto_m["open_positions"]),
                 "total_equity_usd": round(float(m["total_equity_usd"]), 6),
-                "total_pnl_usd": round(float(m["total_pnl_usd"]), 6),
+                "total_pnl_usd": round(float(meme_m["total_pnl_usd"] + bybit_total_pnl), 6),
                 "realized_pnl_usd": round(float(m["realized_pnl_usd"]), 6),
                 "unrealized_pnl_usd": round(float(m["unrealized_pnl_usd"]), 6),
                 "win_rate": round(float(m["win_rate"]), 4),
@@ -13958,24 +13981,6 @@ class TradingEngine:
                     value = previous.get(key)
                     if value is not None and value != "" and value != [] and value != {}:
                         row[key] = value
-            if str(previous.get("rebuild_source") or "") == "drawdown_50pct_rebuild_restart":
-                for key in (
-                    "bybit_equity_usd",
-                    "bybit_total_pnl_usd",
-                    "bybit_realized_pnl_usd",
-                    "bybit_unrealized_pnl_usd",
-                    "bybit_win_rate",
-                    "bybit_closed_trades",
-                    "bybit_open_positions",
-                    "total_equity_usd",
-                    "total_pnl_usd",
-                    "realized_pnl_usd",
-                    "unrealized_pnl_usd",
-                    "win_rate",
-                    "closed_trades",
-                ):
-                    if key in previous:
-                        row[key] = previous.get(key)
             if idx is None:
                 table.append(row)
             else:

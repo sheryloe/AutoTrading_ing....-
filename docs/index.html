@@ -51,7 +51,7 @@
                     <div class="text-2xl font-black text-white text-left" id="stat-model-c">0.00%</div>
                 </div>
                 <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model D PnL</div>
+                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model D PnL Rev.01</div>
                     <div class="text-2xl font-black text-white text-left" id="stat-model-d">0.00%</div>
                 </div>
             </div>
@@ -90,7 +90,7 @@
                         <p class="text-xs opacity-60 text-left">전일 변동폭 기반 당일 돌파 전략.</p>
                     </div>
                     <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left">
-                        <h3 id="guide-model-d-title" class="font-bold text-cyan-400 mb-2 text-left">MODEL D: Deep Learning</h3>
+                        <h3 id="guide-model-d-title" class="font-bold text-cyan-400 mb-2 text-left">MODEL D REV.01: Deep Learning</h3>
                         <p class="text-xs opacity-60 text-left">LSTM 신경망 기반 가격 방향성 예측.</p>
                     </div>
                 </div>
@@ -155,7 +155,7 @@
                                 <th class="px-3 py-2 text-left font-bold">Model A</th>
                                 <th class="px-3 py-2 text-left font-bold">Model B</th>
                                 <th class="px-3 py-2 text-left font-bold">Model C</th>
-                                <th id="daily-model-d-header" class="px-3 py-2 text-left font-bold">Model D</th>
+                                <th id="daily-model-d-header" class="px-3 py-2 text-left font-bold">Model D Rev.01</th>
                             </tr>
                         </thead>
                         <tbody id="daily-pnl-table-body" class="divide-y divide-white/10 bg-slate-900/40">
@@ -175,7 +175,7 @@
         const S_URL = "{{SUPABASE_URL}}";
         const S_KEY = "{{SUPABASE_ANON_KEY}}";
         const MODEL_IDS = ["A", "B", "C", "D"];
-        const MODEL_BASE_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D" };
+        const MODEL_BASE_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D Rev.01" };
         let MODEL_LABELS = { ...MODEL_BASE_LABELS };
         const MODEL_TARGETS = { A: "stat-model-a", B: "stat-model-b", C: "stat-model-c", D: "stat-model-d" };
         const EQUITY_BASE = 10000;
@@ -226,25 +226,7 @@
         }
 
         function resolveModelDLabel(dailyRows) {
-            const candidates = [];
-            for (const row of dailyRows || []) {
-                if (String(row.model_id || "").toUpperCase() !== "D") {
-                    continue;
-                }
-                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
-                const variantRaw = String(row.bybit_rebuild_restart_variant_id || sourceJson.rebuild_restart_variant_id || "").trim();
-                const rev = parseRevFromVariant(variantRaw);
-                if (!rev) {
-                    continue;
-                }
-                const dayText = String(row.day || row.date || "").slice(0, 10).trim() || "0000-00-00";
-                candidates.push({ day: dayText, rev });
-            }
-            if (!candidates.length) {
-                return MODEL_BASE_LABELS.D;
-            }
-            candidates.sort((a, b) => String(b.day).localeCompare(String(a.day)));
-            return `${MODEL_BASE_LABELS.D}(${candidates[0].rev})`;
+            return MODEL_BASE_LABELS.D;
         }
 
         function applyModelDLabelOverrides(dailyRows) {
