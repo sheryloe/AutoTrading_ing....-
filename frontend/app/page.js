@@ -130,6 +130,18 @@ export default async function HomePage() {
   const snapshot = data.snapshot;
   const boards = buildBoards(data.dailyRows, data.recentSetups, data.openPositions);
   const recentPositions = data.openPositions.slice(0, 3);
+  const heartbeatMeta = snapshot?.heartbeat?.meta_json || {};
+  const tradeMode = String(heartbeatMeta.trade_mode || "").toLowerCase();
+  const bybitReadonlySync = Boolean(heartbeatMeta.bybit_readonly_sync);
+  const bybitSyncAt = heartbeatMeta.last_bybit_sync_at || null;
+  const bybitSyncTs = Number(heartbeatMeta.last_bybit_sync_ts || 0);
+  const bybitSyncModeLabel = !snapshot?.heartbeat
+    ? "-"
+    : tradeMode === "live"
+      ? "실거래"
+      : bybitReadonlySync
+        ? "읽기 전용"
+        : "OFF";
 
   return (
     <>
@@ -180,6 +192,14 @@ export default async function HomePage() {
               <span>최신 신호 수</span>
               <strong>{formatNumber(snapshot?.latestSignalCount || 0)}</strong>
               <small>{snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "사이클 없음"}</small>
+            </div>
+            <div className="hero-metric">
+              <span>Bybit ??? ??(?? ??/???)</span>
+              <strong>{bybitSyncModeLabel}</strong>
+              <small>
+                {bybitSyncAt ? formatTs(bybitSyncAt) : "-"}
+                {bybitSyncTs ? ` (ts ${bybitSyncTs})` : ""}
+              </small>
             </div>
           </div>
 
@@ -247,7 +267,7 @@ export default async function HomePage() {
             <span className="section-eyebrow">모델별 상태</span>
             <h3 className="section-title">A/B/C/D 핵심 지표</h3>
           </div>
-          <p className="section-meta">최근 사이클, 신호, 누적 실현 PnL, 오픈 포지션, 종료 거래를 모델별로 분리 표시합니다.</p>
+          <p className="section-meta">최근 사이클, 신호, 데모 누적 실현 PnL, 오픈 포지션, 종료 거래를 모델별로 분리 표시합니다.</p>
         </div>
 
         <div className="model-pulse-grid">
@@ -274,7 +294,7 @@ export default async function HomePage() {
                   <strong>{formatNumber(board.latestSignalCount)}</strong>
                 </div>
                 <div>
-                  <label>누적 실현 PnL</label>
+                  <label>데모 누적 실현 PnL</label>
                   <strong>{formatMoney(board.realizedPnlUsd)}</strong>
                 </div>
                 <div>

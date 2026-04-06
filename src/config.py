@@ -154,6 +154,7 @@ class Settings:
     enable_meme_market: bool
     live_enable_meme: bool
     live_enable_crypto: bool
+    bybit_readonly_sync: bool
     scan_interval_seconds: int
     max_signals_per_cycle: int
     signal_cooldown_minutes: int
@@ -356,6 +357,7 @@ class Settings:
             enable_meme_market=_to_bool(data.get("ENABLE_MEME_MARKET"), False),
             live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
             live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
+            bybit_readonly_sync=_to_bool(data.get("BYBIT_READONLY_SYNC"), True),
             scan_interval_seconds=max(60, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 60)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),

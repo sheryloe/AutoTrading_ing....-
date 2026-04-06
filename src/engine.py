@@ -2600,6 +2600,9 @@ class TradingEngine:
             "host_name": os.environ.get("HOSTNAME", "") or os.environ.get("COMPUTERNAME", ""),
             "meta_json": {
                 "trade_mode": str(self.settings.trade_mode or ""),
+                "bybit_readonly_sync": bool(getattr(self.settings, "bybit_readonly_sync", False)),
+                "last_bybit_sync_ts": int(self.state.last_bybit_sync_ts or 0),
+                "last_bybit_sync_at": self._iso_datetime(self.state.last_bybit_sync_ts),
                 "demo_enable_macro": bool(self.settings.demo_enable_macro),
                 "configured_symbols": list(self._configured_crypto_symbols()),
                 "crypto_universe_mode": str(self._crypto_universe_mode()),
@@ -3498,12 +3501,16 @@ class TradingEngine:
         return self._is_live_model_enabled(market, model_id)
 
     def _should_sync_bybit_account(self) -> bool:
-        return bool(
-            self.bybit.enabled
-            and str(self.settings.trade_mode or "paper").lower() == "live"
-            and bool(self.settings.enable_live_execution)
-            and bool(self.settings.live_enable_crypto)
-        )
+        if not bool(self.bybit.enabled):
+            return False
+        trade_mode = str(self.settings.trade_mode or "paper").lower()
+        if trade_mode == "live":
+            if not bool(self.settings.live_enable_crypto):
+                return False
+            return bool(self.settings.enable_live_execution)
+        if trade_mode == "paper":
+            return bool(getattr(self.settings, "bybit_readonly_sync", False))
+        return False
 
     def _is_market_autotrade_enabled(self, market: str) -> bool:
         # Keep demo strategy evaluation running for both markets.
@@ -15223,15 +15230,28 @@ class TradingEngine:
     def dashboard_payload(self) -> dict[str, Any]:
         now_wall = float(time.time())
         now_ts = int(now_wall)
-        if str(self.settings.trade_mode or "").lower() == "live":
+        trade_mode = str(self.settings.trade_mode or "").lower()
+        bybit_readonly_sync = bool(getattr(self.settings, "bybit_readonly_sync", False))
+        if trade_mode == "live":
             self._sync_wallet(now_ts, force=False)
             self._sync_bybit(now_ts, force=False)
         else:
-            with self._lock:
-                # bybit_error/memecoin_error are live sync artifacts. In paper mode,
-                # showing an old live-sync failure is misleading, so clear them.
-                self.state.bybit_error = ""
-                self.state.memecoin_error = ""
+            if bybit_readonly_sync:
+                cache_ready = False
+                cache_age = 0.0
+                cache_bybit_ok = False
+                with self._lock:
+                    cache_ready = bool(self._dashboard_cache)
+                    cache_age = now_wall - float(self._dashboard_cache_ts or 0.0)
+                    cache_bybit_ok = int(self.state.last_bybit_sync_ts or 0) == int(self._dashboard_cache_bybit_ts or 0)
+                if (not cache_ready) or (cache_age > float(self._dashboard_cache_ttl_seconds)) or (not cache_bybit_ok):
+                    self._sync_bybit(now_ts, force=False)
+            else:
+                with self._lock:
+                    # bybit_error/memecoin_error are live sync artifacts. In paper mode,
+                    # showing an old live-sync failure is misleading, so clear them.
+                    self.state.bybit_error = ""
+                    self.state.memecoin_error = ""
         with self._lock:
             cache_ready = bool(self._dashboard_cache)
             if cache_ready:
