@@ -142,36 +142,66 @@ class BybitV5Client:
             raise RuntimeError("bybit_disabled")
         params = dict(params or {})
         self._sync_server_time(force=False)
-        timestamp = str(self._timestamp_ms())
-
         method_upper = method.upper()
-        if method_upper == "GET":
-            payload = urlencode(sorted(params.items()), doseq=True)
-            sign = self._sign(timestamp, payload)
-            headers = self._headers(timestamp, sign)
-            url = f"{self.base_url}{path}"
-            res = self.session.get(url, params=params, headers=headers, timeout=self.timeout_seconds)
-        else:
-            payload = json.dumps(params, separators=(",", ":"), ensure_ascii=True)
-            sign = self._sign(timestamp, payload)
-            headers = self._headers(timestamp, sign)
-            url = f"{self.base_url}{path}"
-            res = self.session.post(url, data=payload, headers=headers, timeout=self.timeout_seconds)
+        last_http_error: requests.HTTPError | None = None
+        last_request_error: requests.RequestException | None = None
+        for candidate_base_url in self._candidate_base_urls():
+            timestamp = str(self._timestamp_ms())
+            if method_upper == "GET":
+                payload = urlencode(sorted(params.items()), doseq=True)
+                sign = self._sign(timestamp, payload)
+                headers = self._headers(timestamp, sign)
+                url = f"{candidate_base_url}{path}"
+                try:
+                    res = self.session.get(url, params=params, headers=headers, timeout=self.timeout_seconds)
+                    res.raise_for_status()
+                except requests.HTTPError as exc:
+                    status_code = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+                    last_http_error = exc
+                    if status_code in {403, 451}:
+                        continue
+                    raise
+                except requests.RequestException as exc:
+                    last_request_error = exc
+                    continue
+            else:
+                payload = json.dumps(params, separators=(",", ":"), ensure_ascii=True)
+                sign = self._sign(timestamp, payload)
+                headers = self._headers(timestamp, sign)
+                url = f"{candidate_base_url}{path}"
+                try:
+                    res = self.session.post(url, data=payload, headers=headers, timeout=self.timeout_seconds)
+                    res.raise_for_status()
+                except requests.HTTPError as exc:
+                    status_code = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+                    last_http_error = exc
+                    if status_code in {403, 451}:
+                        continue
+                    raise
+                except requests.RequestException as exc:
+                    last_request_error = exc
+                    continue
 
-        res.raise_for_status()
-        body = res.json()
-        ret_code_raw = body.get("retCode")
-        ret_code = -1 if ret_code_raw is None else int(ret_code_raw)
-        if ret_code != 0:
-            if retry_on_time_error and self._is_time_window_error(body):
-                self._sync_server_time(force=True)
-                return self._request(method, path, params, retry_on_time_error=False)
-            raise RuntimeError(
-                f'Bybit error {body.get("retCode")}: {body.get("retMsg")} '
-                f"(path={path}, params={params})"
-            )
-        result = body.get("result")
-        return result if isinstance(result, dict) else {}
+            body = res.json()
+            ret_code_raw = body.get("retCode")
+            ret_code = -1 if ret_code_raw is None else int(ret_code_raw)
+            if ret_code != 0:
+                if retry_on_time_error and self._is_time_window_error(body):
+                    self._sync_server_time(force=True)
+                    return self._request(method, path, params, retry_on_time_error=False)
+                raise RuntimeError(
+                    f'Bybit error {body.get("retCode")}: {body.get("retMsg")} '
+                    f"(path={path}, params={params})"
+                )
+            self.base_url = str(candidate_base_url).rstrip("/")
+            result = body.get("result")
+            return result if isinstance(result, dict) else {}
+
+        if last_http_error is not None:
+            raise last_http_error
+        if last_request_error is not None:
+            raise last_request_error
+        raise RuntimeError(f"bybit_request_failed(path={path})")
 
     def get_wallet_assets(self, account_type: str = "UNIFIED") -> list[dict[str, Any]]:
         result = self._request(
