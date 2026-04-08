@@ -59,6 +59,16 @@ class BybitV5Client:
     def _timestamp_ms(self) -> int:
         return int(self._local_time_ms() + int(self._time_offset_ms or 0))
 
+    def _candidate_base_urls(self) -> list[str]:
+        primary = str(self.base_url or "").rstrip("/")
+        candidates: list[str] = []
+        if primary:
+            candidates.append(primary)
+        for alt in ("https://api.bytick.com", "https://api.bybit.com"):
+            if alt not in candidates:
+                candidates.append(alt)
+        return candidates
+
     def _extract_server_time_ms(self, body: dict[str, Any]) -> int:
         result = body.get("result")
         if isinstance(result, dict):
@@ -81,20 +91,37 @@ class BybitV5Client:
             now_ms = self._local_time_ms()
             if not force and self._last_time_sync_ms > 0 and (now_ms - self._last_time_sync_ms) < 300_000:
                 return
-            started_ms = self._local_time_ms()
-            res = self.session.get(
-                f"{self.base_url}/v5/market/time",
-                timeout=self.timeout_seconds,
-            )
-            res.raise_for_status()
-            body = res.json()
-            server_ms = self._extract_server_time_ms(body)
-            finished_ms = self._local_time_ms()
-            if server_ms <= 0:
-                raise RuntimeError("bybit_server_time_unavailable")
-            local_mid_ms = int((started_ms + finished_ms) / 2)
-            self._time_offset_ms = int(server_ms - local_mid_ms)
-            self._last_time_sync_ms = finished_ms
+            last_error: Exception | None = None
+            for candidate_base_url in self._candidate_base_urls():
+                started_ms = self._local_time_ms()
+                try:
+                    res = self.session.get(
+                        f"{candidate_base_url}/v5/market/time",
+                        timeout=self.timeout_seconds,
+                    )
+                    res.raise_for_status()
+                    body = res.json()
+                    server_ms = self._extract_server_time_ms(body)
+                    finished_ms = self._local_time_ms()
+                    if server_ms <= 0:
+                        raise RuntimeError("bybit_server_time_unavailable")
+                    local_mid_ms = int((started_ms + finished_ms) / 2)
+                    self._time_offset_ms = int(server_ms - local_mid_ms)
+                    self._last_time_sync_ms = finished_ms
+                    self.base_url = str(candidate_base_url).rstrip("/")
+                    return
+                except requests.HTTPError as exc:
+                    status_code = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+                    last_error = exc
+                    if status_code in {401, 403, 451}:
+                        continue
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    continue
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("bybit_server_time_unavailable")
 
     @staticmethod
     def _is_time_window_error(body: dict[str, Any]) -> bool:

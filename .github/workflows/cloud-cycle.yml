@@ -47,6 +47,7 @@ jobs:
           LIVE_ENABLE_CRYPTO: "false"
           LIVE_EXECUTION_ARMED: "false"
           BYBIT_READONLY_SYNC: "true"
+          BYBIT_BASE_URL: https://api.bytick.com
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
           
