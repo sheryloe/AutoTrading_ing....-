@@ -91,7 +91,6 @@ class BybitV5Client:
             now_ms = self._local_time_ms()
             if not force and self._last_time_sync_ms > 0 and (now_ms - self._last_time_sync_ms) < 300_000:
                 return
-            last_error: Exception | None = None
             for candidate_base_url in self._candidate_base_urls():
                 started_ms = self._local_time_ms()
                 try:
@@ -112,16 +111,15 @@ class BybitV5Client:
                     return
                 except requests.HTTPError as exc:
                     status_code = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
-                    last_error = exc
                     if status_code in {401, 403, 451}:
                         continue
-                    raise
-                except Exception as exc:  # noqa: BLE001
-                    last_error = exc
                     continue
-            if last_error is not None:
-                raise last_error
-            raise RuntimeError("bybit_server_time_unavailable")
+                except Exception:  # noqa: BLE001
+                    continue
+            # Do not hard-fail on time endpoint errors. Proceed with local timestamp,
+            # then let signed API response determine the final auth/network failure.
+            self._time_offset_ms = 0
+            self._last_time_sync_ms = self._local_time_ms()
 
     @staticmethod
     def _is_time_window_error(body: dict[str, Any]) -> bool:

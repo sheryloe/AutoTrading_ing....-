@@ -69,6 +69,13 @@ CRYPTO_UNIVERSE_MODE_VALUES = {"rank_lock", "fixed_symbols", "dynamic"}
 MACRO_UNIVERSE_SOURCE_DEFAULT = "coingecko"
 
 
+def _normalize_bybit_secret_source(value: Any) -> str:
+    source = _to_str(value, "supabase").lower()
+    if source in {"github", "supabase"}:
+        return source
+    return "supabase"
+
+
 def _normalize_macro_universe_source(raw: Any, flags: dict[str, bool]) -> str:
     requested = _to_str(raw, "").lower()
     if requested in {"coinmarketcap", "cmc"}:
@@ -155,6 +162,7 @@ class Settings:
     live_enable_meme: bool
     live_enable_crypto: bool
     bybit_readonly_sync: bool
+    bybit_secret_source: str
     scan_interval_seconds: int
     max_signals_per_cycle: int
     signal_cooldown_minutes: int
@@ -358,6 +366,7 @@ class Settings:
             live_enable_meme=_to_bool(data.get("LIVE_ENABLE_MEME"), True),
             live_enable_crypto=_to_bool(data.get("LIVE_ENABLE_CRYPTO"), True),
             bybit_readonly_sync=_to_bool(data.get("BYBIT_READONLY_SYNC"), True),
+            bybit_secret_source=_normalize_bybit_secret_source(data.get("BYBIT_SECRET_SOURCE")),
             scan_interval_seconds=max(60, _to_int(data.get("SCAN_INTERVAL_SECONDS"), 60)),
             max_signals_per_cycle=max(1, min(10, _to_int(data.get("MAX_SIGNALS_PER_CYCLE"), 3))),
             signal_cooldown_minutes=max(1, _to_int(data.get("SIGNAL_COOLDOWN_MINUTES"), 10)),
