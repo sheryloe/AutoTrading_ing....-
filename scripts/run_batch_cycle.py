@@ -178,6 +178,15 @@ def _record_bybit_preflight(engine: TradingEngine, preflight: dict[str, object],
         pass
 
 
+def _should_run_bybit_preflight(engine: TradingEngine) -> bool:
+    trade_mode = str(getattr(engine.settings, "trade_mode", "paper") or "paper").lower()
+    if trade_mode == "live":
+        return bool(getattr(engine.settings, "enable_live_execution", False) and getattr(engine.settings, "live_enable_crypto", False))
+    if trade_mode == "paper":
+        return bool(getattr(engine.settings, "bybit_readonly_sync", False))
+    return False
+
+
 def _build_heartbeat_row(
     engine: TradingEngine,
     *,
@@ -245,8 +254,16 @@ def main() -> int:
     strict_sync = _env_flag("SUPABASE_SYNC_STRICT", default=False)
     _hydrate_runtime_from_supabase()
     engine = TradingEngine(load_settings())
-    preflight = _run_bybit_preflight(engine)
-    _record_bybit_preflight(engine, preflight, now_ts=started)
+    if _should_run_bybit_preflight(engine):
+        preflight = _run_bybit_preflight(engine)
+        _record_bybit_preflight(engine, preflight, now_ts=started)
+    else:
+        preflight = {
+            "bybit_preflight_ok": True,
+            "bybit_preflight_public_status": 0,
+            "bybit_preflight_auth_status": 0,
+            "bybit_preflight_error": "skipped_not_required",
+        }
     if strict_sync and not bool(getattr(getattr(engine, "supabase_sync", None), "enabled", False)):
         print(json.dumps({"ok": False, "error": "supabase_sync_disabled"}, ensure_ascii=True), file=sys.stderr)
         return 1
