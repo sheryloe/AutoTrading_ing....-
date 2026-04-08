@@ -194,7 +194,7 @@ export default async function HomePage() {
               <small>{snapshot?.latestCycleAt ? formatTs(snapshot.latestCycleAt) : "사이클 없음"}</small>
             </div>
             <div className="hero-metric">
-              <span>Bybit ??? ??(?? ??/???)</span>
+              <span>Bybit 동기화 상태(읽기 전용/실거래)</span>
               <strong>{bybitSyncModeLabel}</strong>
               <small>
                 {bybitSyncAt ? formatTs(bybitSyncAt) : "-"}
