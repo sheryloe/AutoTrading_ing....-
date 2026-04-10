@@ -49,3 +49,7 @@ Thumbs.db
 .idea/
 .vscode/
 tmp_page.html
+
+# Codex optimization gate (2026-04-10)
+logs/
+tmp/
