@@ -46,7 +46,7 @@ jobs:
           LIVE_ENABLE_MEME: "false"
           LIVE_ENABLE_CRYPTO: "false"
           LIVE_EXECUTION_ARMED: "false"
-          BYBIT_READONLY_SYNC: "false"
+          BYBIT_READONLY_SYNC: "true"
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
           
@@ -56,16 +56,16 @@ jobs:
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
           
           # [핵심 수정] 20개 코인 리스트 및 최대 포지션 상향
-          BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,TRXUSDT
+          BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,ENAUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,TRXUSDT
           BYBIT_MAX_POSITIONS: "8"
           MACRO_TREND_POOL_SIZE: "8"
           
           # [핵심 수정] Universe 모드 변경 (시총조회 API 의존성 제거)
           CRYPTO_UNIVERSE_MODE: fixed_symbols
-          CRYPTO_DATA_SOURCE_ORDER: binance,bybit
+          CRYPTO_DATA_SOURCE_ORDER: binance,bybit,coingecko
           CRYPTO_USE_BINANCE_DATA: "true"
           CRYPTO_USE_BYBIT_DATA: "true"
-          CRYPTO_USE_COINGECKO_DATA: "false"
+          CRYPTO_USE_COINGECKO_DATA: "true"
           CRYPTO_DERIV_DATA_ENABLED: "false"
           MACRO_UNIVERSE_SOURCE: exchange
           
