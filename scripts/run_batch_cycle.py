@@ -192,7 +192,7 @@ def _resolve_runner_identity() -> str:
     if explicit:
         return explicit
     runner_environment = str(os.environ.get("RUNNER_ENVIRONMENT") or "").strip().lower()
-    if runner_environment in {"self-hosted", "github-hosted"}:
+    if runner_environment:
         return runner_environment
     if str(os.environ.get("GITHUB_ACTIONS") or "").strip().lower() == "true":
         return "github-actions"

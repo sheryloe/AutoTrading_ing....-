@@ -12,7 +12,7 @@ Set-StrictMode -Version Latest
 
 function Write-Step {
   param([string]$Message)
-  Write-Host "[run-once] $Message" -ForegroundColor Cyan
+  Write-Host "[run-once-hosted] $Message" -ForegroundColor Cyan
 }
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {

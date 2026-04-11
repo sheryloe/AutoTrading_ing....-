@@ -2,7 +2,8 @@
 param(
   [string]$EnvFile = ".\.env",
   [int]$LookbackHours = 1,
-  [switch]$RequireBybitSync
+  [switch]$RequireBybitSync,
+  [string]$ExpectedRunner = "github-hosted"
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,6 +83,9 @@ if ($hbRecent -lt 1) { $failures.Add("engine_heartbeat recent count is 0") }
 if ($setupsRecent -lt 1) { $failures.Add("model_setups recent count is 0") }
 if ($auditRecent -lt 1) { $failures.Add("model_signal_audit recent count is 0") }
 if ($RequireBybitSync -and $bybitTs -le 0) { $failures.Add("last_bybit_sync_ts <= 0") }
+if (-not [string]::IsNullOrWhiteSpace($ExpectedRunner) -and $runner -ne $ExpectedRunner) {
+  $failures.Add("runner mismatch: expected '$ExpectedRunner', got '$runner'")
+}
 
 if ($failures.Count -gt 0) {
   $msg = ($failures -join "; ")

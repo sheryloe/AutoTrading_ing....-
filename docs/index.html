@@ -1,108 +1,156 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Automethemoney | 운영문서 + 상태허브</title>
+    <title>Automethemoney | Trading Service Hub</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
-    <main class="hub-shell">
-      <header class="hub-header card">
-        <p class="eyebrow">Operations Hub</p>
-        <h1>Self-hosted Runner + Supabase + Vercel</h1>
-        <p class="muted">
-          본 페이지는 운영 기준 문서와 실시간 상태 요약을 한 화면에서 제공합니다.
-          실행은 self-hosted runner, 상태 저장은 Supabase, UI/API는 Vercel 기준으로 고정합니다.
+    <main class="page-shell">
+      <header class="hero card">
+        <p class="eyebrow">Automethemoney Hub</p>
+        <h1>Paper trading service on GitHub-hosted Actions + Supabase + Vercel</h1>
+        <p class="lede">
+          This hub explains how the service runs, what each model does, and how to deploy and verify the stack.
+          Runtime execution is fixed to GitHub hosted runners, with state persisted in Supabase and operator UI on Vercel.
         </p>
-        <div class="inline-links">
-          <a href="./daily-pnl.html">Daily PnL</a>
-          <a href="https://github.com/sheryloe/Automethemoney">Repository</a>
-          <a href="https://github.com/sheryloe/Automethemoney/wiki">Wiki</a>
+        <div class="hero-links">
+          <a href="https://github.com/sheryloe/Automethemoney" target="_blank" rel="noreferrer">Repository</a>
+          <a href="https://github.com/sheryloe/Automethemoney/wiki" target="_blank" rel="noreferrer">Wiki</a>
+          <a href="https://automethemoney.vercel.app" target="_blank" rel="noreferrer">Vercel Console</a>
         </div>
       </header>
 
       <section class="status-grid">
-        <article class="card stat-card">
+        <article class="card stat">
           <span>Heartbeat (KST)</span>
           <strong id="hb-time">-</strong>
           <small id="hb-engine">-</small>
         </article>
-        <article class="card stat-card">
-          <span>Runner / Mode</span>
+        <article class="card stat">
+          <span>Runner</span>
           <strong id="hb-runner">-</strong>
           <small id="hb-mode">-</small>
         </article>
-        <article class="card stat-card">
-          <span>Open Positions</span>
-          <strong id="open-positions">0</strong>
-          <small>table: positions(status=open)</small>
-        </article>
-        <article class="card stat-card">
+        <article class="card stat">
           <span>Latest Signals</span>
           <strong id="latest-signals">0</strong>
           <small id="latest-cycle">cycle -</small>
         </article>
-        <article class="card stat-card">
-          <span>Bybit Readonly Sync</span>
+        <article class="card stat">
+          <span>Open Positions</span>
+          <strong id="open-positions">0</strong>
+          <small>positions(status=open)</small>
+        </article>
+        <article class="card stat">
+          <span>Bybit Sync</span>
           <strong id="bybit-sync">-</strong>
           <small id="bybit-sync-ts">ts 0</small>
         </article>
-        <article class="card stat-card">
+        <article class="card stat">
           <span>Latest Realized PnL</span>
           <strong id="latest-realized">$0.00</strong>
           <small id="latest-pnl-day">day -</small>
         </article>
       </section>
 
-      <section class="card split-card">
-        <div>
-          <p class="eyebrow">Bybit Preflight</p>
-          <h2>연결/권한 상태</h2>
-          <table class="compact-table">
-            <tbody>
-              <tr><th>public_status</th><td id="preflight-public">-</td></tr>
-              <tr><th>auth_status</th><td id="preflight-auth">-</td></tr>
-              <tr><th>error</th><td id="preflight-error">-</td></tr>
-            </tbody>
-          </table>
+      <section class="card section">
+        <div class="section-head">
+          <p class="eyebrow">Model lineup</p>
+          <h2>A/B/C/D strategy overview</h2>
         </div>
-        <div>
-          <p class="eyebrow">운영 체크</p>
-          <h2>즉시 점검 순서</h2>
-          <ol class="check-list">
-            <li>Heartbeat가 최근 2분 내 갱신되는지 확인</li>
-            <li>`model_setups`/`model_signal_audit` 최신 cycle 증가 확인</li>
-            <li>`last_bybit_sync_ts`와 preflight 상태 확인</li>
-            <li>오류 시 self-hosted runner 서비스 상태 확인</li>
-          </ol>
+        <div class="model-grid">
+          <article>
+            <h3>Model A</h3>
+            <p>Trend-following profile. Prioritizes directional continuation after structural confirmation.</p>
+          </article>
+          <article>
+            <h3>Model B</h3>
+            <p>Mean-reversion profile. Focuses on pullback recovery zones and volatility normalization.</p>
+          </article>
+          <article>
+            <h3>Model C</h3>
+            <p>Breakout profile. Uses range expansion and momentum acceleration for entry timing.</p>
+          </article>
+          <article>
+            <h3>Model D</h3>
+            <p>Adaptive profile. Uses runtime tuning with stricter drawdown controls and fast reconfiguration.</p>
+          </article>
         </div>
       </section>
 
-      <section class="card docs-card">
-        <p class="eyebrow">구축 방법</p>
-        <h2>PowerShell 기준 배포/운영 명령</h2>
-        <pre><code># runner 설치/등록 (관리자 PowerShell)
-.\ops\setup-self-hosted-runner.ps1 -Repo "sheryloe/Automethemoney" -ReplaceExisting
+      <section class="card section">
+        <div class="section-head">
+          <p class="eyebrow">Service flow</p>
+          <h2>How the service is delivered</h2>
+        </div>
+        <ol class="flow-list">
+          <li>Market data and context are collected from exchange/public sources.</li>
+          <li>Models A/B/C/D generate setups and signal audit records per cycle.</li>
+          <li>Paper positions and PnL are updated and written to Supabase.</li>
+          <li>Vercel console and this hub read the latest state for operators.</li>
+        </ol>
+      </section>
 
-# cloud-cycle 수동 1회 실행
+      <section class="card section split">
+        <div>
+          <div class="section-head">
+            <p class="eyebrow">Hosted setup</p>
+            <h2>Build and operate (PowerShell)</h2>
+          </div>
+<pre><code>python -m pip install --upgrade pip
+pip install -r .\requirements.txt
+
+# Run one hosted cycle
 .\ops\run-once-cloud-cycle.ps1 -Repo "sheryloe/Automethemoney" -Workflow "cloud-cycle.yml" -Ref "main"
 
-# Supabase 반영 검증
-.\ops\verify-stack.ps1 -EnvFile ".\\.env" -LookbackHours 1
-</code></pre>
+# Verify state writes
+.\ops\verify-stack.ps1 -EnvFile ".\.env" -LookbackHours 1 -ExpectedRunner "github-hosted"</code></pre>
+        </div>
+        <div>
+          <div class="section-head">
+            <p class="eyebrow">Required secrets</p>
+            <h2>Minimum configuration</h2>
+          </div>
+          <ul class="bullet-list">
+            <li>GitHub Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SERVICE_MASTER_KEY`, `BYBIT_API_KEY`, `BYBIT_API_SECRET`</li>
+            <li>Vercel Env: Supabase URL/keys + `SERVICE_MASTER_KEY` + `SERVICE_ADMIN_TOKEN`</li>
+            <li>Runtime policy: `TRADE_MODE=paper`, live execution flags disabled, readonly Bybit sync enabled</li>
+          </ul>
+        </div>
       </section>
 
-      <section class="card docs-card">
-        <p class="eyebrow">아키텍처</p>
-        <h2>서비스 구성</h2>
-        <ul class="bullet-list">
-          <li>Self-hosted runner: 스케줄 배치 실행 (`cloud-cycle`)</li>
-          <li>Supabase: 상태 원장 (`engine_heartbeat`, `model_setups`, `positions`, `daily_model_pnl`)</li>
-          <li>Vercel: 운영 콘솔/설정 API</li>
-          <li>GitHub Pages: 운영문서 + 상태허브</li>
-        </ul>
+      <section class="card section">
+        <div class="section-head">
+          <p class="eyebrow">Console samples</p>
+          <h2>Current UI snapshots</h2>
+        </div>
+        <div class="gallery-grid">
+          <figure>
+            <img src="assets/screenshots/auto-trading-cover.png" alt="Cover preview" />
+            <figcaption>Service cover</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/auto-trading-dashboard.png" alt="Dashboard preview" />
+            <figcaption>Dashboard sample</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="card section">
+        <div class="section-head">
+          <p class="eyebrow">Bybit preflight</p>
+          <h2>Network and auth diagnostics</h2>
+        </div>
+        <table class="diag-table">
+          <tbody>
+            <tr><th>public_status</th><td id="preflight-public">-</td></tr>
+            <tr><th>auth_status</th><td id="preflight-auth">-</td></tr>
+            <tr><th>error</th><td id="preflight-error">-</td></tr>
+          </tbody>
+        </table>
       </section>
     </main>
 
@@ -111,8 +159,7 @@
       const SUPABASE_ANON_KEY = "{{SUPABASE_ANON_KEY}}";
 
       const $ = (id) => document.getElementById(id);
-
-      const formatInt = (v) => new Intl.NumberFormat("ko-KR").format(Number(v || 0));
+      const formatInt = (v) => new Intl.NumberFormat("en-US").format(Number(v || 0));
       const formatMoney = (v) => new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: "USD",
@@ -158,7 +205,6 @@
         }
 
         const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         const [hbRes, posRes, setupHeadRes, dailyRes] = await Promise.all([
           client.from("engine_heartbeat").select("*").order("updated_at", { ascending: false }).limit(1),
           client.from("positions").select("id", { count: "exact", head: true }).eq("status", "open"),
@@ -183,9 +229,7 @@
               .from("model_setups")
               .select("id", { count: "exact", head: true })
               .eq("cycle_at", latestCycleAt);
-            if (!setupCountRes.error) {
-              latestSignalCount = Number(setupCountRes.count || 0);
-            }
+            if (!setupCountRes.error) latestSignalCount = Number(setupCountRes.count || 0);
           }
         }
 

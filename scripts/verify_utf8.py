@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 DEFAULT_PATHS = [
-    "docs/daily-pnl.html",
+    "docs/index.html",
     "templates/index.html",
     "static/app.js",
     "web_app.py",

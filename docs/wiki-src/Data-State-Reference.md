@@ -33,10 +33,10 @@ flowchart LR
   UI --> DP
 ```
 
-## GitHub Pages 리포트
+## GitHub Pages hub data
 
-- `docs/data/daily_pnl/summary_4col.json`을 기본으로 읽음
-- `docs/daily-pnl.html`에서 일자 + A/B/C/D 누적 손익 표시
+- `docs/data/daily_pnl/summary_4col.json` is the daily aggregate artifact.
+- `docs/index.html` reads Supabase live first and uses artifacts for presentation support.
 
 ## 테이블별 핵심 컬럼
 

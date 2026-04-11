@@ -19,7 +19,6 @@ on:
       - "src/engine.py"
       - "src/data_sources.py"
       - "src/daily_reports.py"
-      - "docs/daily-pnl.html"
       - ".github/workflows/rebuild-daily-pnl.yml"
 
 permissions:

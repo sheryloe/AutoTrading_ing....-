@@ -14,11 +14,7 @@ concurrency:
 
 jobs:
   run-cycle:
-    runs-on:
-      - self-hosted
-      - windows
-      - x64
-      - automethemoney
+    runs-on: ubuntu-latest
     timeout-minutes: 7
 
     steps:
@@ -41,7 +37,7 @@ jobs:
 
       - name: Run one batch cycle
         env:
-          RUNNER_ROLE: self-hosted
+          RUNNER_ROLE: github-hosted
 
           EXECUTION_TARGET: paper
           TRADE_MODE: paper

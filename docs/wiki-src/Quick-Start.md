@@ -1,19 +1,19 @@
-# 빠른 시작
+# Quick Start
 
 > [Prev: Home](https://github.com/sheryloe/Automethemoney/wiki) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: System Architecture](https://github.com/sheryloe/Automethemoney/wiki/System-Architecture)
 
 ---
 
-이 페이지는 self-hosted runner 기준 최소 연결 순서만 제공합니다.
+This page is the minimum setup order for the hosted runtime.
 
-## 0) 사전 준비
+## 0) Prerequisites
 
-- Supabase 프로젝트 생성 및 스키마 적용
-- Vercel 프로젝트 생성
-- GitHub 저장소 권한(Secrets/Actions) 확보
-- Windows x64 호스트 1대(24/7) 준비
+- Supabase project and schema ready
+- Vercel project connected
+- GitHub repository admin access (Secrets + Actions)
+- `gh` CLI available for manual workflow runs
 
-## 1) 시크릿 설정
+## 1) Configure secrets
 
 ### GitHub Secrets
 
@@ -23,7 +23,7 @@
 - `BYBIT_API_KEY`
 - `BYBIT_API_SECRET`
 
-### Vercel Env
+### Vercel Environment Variables
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -32,32 +32,27 @@
 - `SERVICE_MASTER_KEY`
 - `SERVICE_ADMIN_TOKEN`
 
-## 2) self-hosted runner 설치
-
-```powershell
-.\ops\setup-self-hosted-runner.ps1 -Repo "sheryloe/Automethemoney" -ReplaceExisting
-```
-
-## 3) 배치 1회 실행
+## 2) Run one hosted cycle
 
 ```powershell
 .\ops\run-once-cloud-cycle.ps1 -Repo "sheryloe/Automethemoney" -Workflow "cloud-cycle.yml" -Ref "main"
 ```
 
-## 4) 상태 검증
+## 3) Verify state updates
 
 ```powershell
-.\ops\verify-stack.ps1 -EnvFile ".\\.env" -LookbackHours 1
+.\ops\verify-stack.ps1 -EnvFile ".\.env" -LookbackHours 1 -ExpectedRunner "github-hosted"
 ```
 
-성공 기준:
+Success criteria:
 
-- heartbeat 최신 갱신
-- setup/audit recent count 증가
-- `trade_mode=paper`
-- `bybit_readonly_sync=true`
+- heartbeat updated recently
+- `model_setups.recent > 0`
+- `model_signal_audit.recent > 0`
+- `meta_json.runner = github-hosted`
+- `meta_json.trade_mode = paper`
 
-## 5) 운영 대시보드 확인
+## 4) Check operator surfaces
 
-- Vercel 콘솔: `/`, `/models`, `/positions`, `/settings`
-- GitHub Pages: `/index.html`, `/daily-pnl.html`
+- Vercel console routes: `/`, `/models`, `/positions`, `/settings`
+- GitHub Pages hub: `https://sheryloe.github.io/Automethemoney/`
