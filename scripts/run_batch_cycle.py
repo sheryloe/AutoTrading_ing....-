@@ -187,6 +187,18 @@ def _should_run_bybit_preflight(engine: TradingEngine) -> bool:
     return False
 
 
+def _resolve_runner_identity() -> str:
+    explicit = str(os.environ.get("RUNNER_ROLE") or os.environ.get("ENGINE_RUNNER") or "").strip().lower()
+    if explicit:
+        return explicit
+    runner_environment = str(os.environ.get("RUNNER_ENVIRONMENT") or "").strip().lower()
+    if runner_environment in {"self-hosted", "github-hosted"}:
+        return runner_environment
+    if str(os.environ.get("GITHUB_ACTIONS") or "").strip().lower() == "true":
+        return "github-actions"
+    return "local"
+
+
 def _build_heartbeat_row(
     engine: TradingEngine,
     *,
@@ -205,7 +217,7 @@ def _build_heartbeat_row(
     )[:120]
     meta = dict(row.get("meta_json") or {})
     meta["execution_target"] = str(getattr(engine.settings, "trade_mode", "") or "")
-    meta["runner"] = "github-actions"
+    meta["runner"] = _resolve_runner_identity()
     preflight_info = dict(preflight or {})
     meta["bybit_preflight_ok"] = bool(preflight_info.get("bybit_preflight_ok", False))
     meta["bybit_preflight_public_status"] = int(preflight_info.get("bybit_preflight_public_status", 0) or 0)

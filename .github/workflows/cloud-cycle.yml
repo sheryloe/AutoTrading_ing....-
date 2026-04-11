@@ -3,7 +3,6 @@ name: cloud-cycle
 on:
   workflow_dispatch:
   schedule:
-    # 1분마다 실행
     - cron: "* * * * *"
 
 permissions:
@@ -15,9 +14,13 @@ concurrency:
 
 jobs:
   run-cycle:
-    runs-on: ubuntu-latest
-    # 1분 주기 실행
-    timeout-minutes: 5
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - automethemoney
+    timeout-minutes: 7
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,6 +41,8 @@ jobs:
 
       - name: Run one batch cycle
         env:
+          RUNNER_ROLE: self-hosted
+
           EXECUTION_TARGET: paper
           TRADE_MODE: paper
           ENABLE_AUTOTRADE: "true"
@@ -47,20 +52,19 @@ jobs:
           LIVE_ENABLE_CRYPTO: "false"
           LIVE_EXECUTION_ARMED: "false"
           BYBIT_READONLY_SYNC: "true"
+          BYBIT_SECRET_SOURCE: github
+
           OPENAI_REVIEW_ENABLED: "false"
           GOOGLE_TREND_ENABLED: "false"
-          
-          # [핵심 수정] 실행 주기
+
           SCAN_INTERVAL_SECONDS: "600"
           SIGNAL_COOLDOWN_MINUTES: "10"
           MODEL_AUTOTUNE_INTERVAL_HOURS: "168"
-          
-          # [핵심 수정] 20개 코인 리스트 및 최대 포지션 상향
+
           BYBIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,ENAUSDT,XRPUSDT,BNBUSDT,DOGEUSDT,ADAUSDT,TRXUSDT
           BYBIT_MAX_POSITIONS: "8"
           MACRO_TREND_POOL_SIZE: "8"
-          
-          # [핵심 수정] Universe 모드 변경 (시총조회 API 의존성 제거)
+
           CRYPTO_UNIVERSE_MODE: fixed_symbols
           CRYPTO_DATA_SOURCE_ORDER: binance,bybit,coingecko
           CRYPTO_USE_BINANCE_DATA: "true"
@@ -68,10 +72,10 @@ jobs:
           CRYPTO_USE_COINGECKO_DATA: "true"
           CRYPTO_DERIV_DATA_ENABLED: "false"
           MACRO_UNIVERSE_SOURCE: exchange
-          
+
           CRYPTO_AUTOTRADE_MODELS: A,B,C,D
           LIVE_CRYPTO_MODELS: A,B,C,D
-          
+
           GIT_DAILY_REPORTS_ENABLED: "true"
           GIT_DAILY_REPORTS_AUTOCOMMIT: "true"
           GIT_DAILY_REPORTS_AUTOPUSH: "true"
@@ -79,13 +83,13 @@ jobs:
           GIT_DAILY_REPORTS_BRANCH: main
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          
+
           SUPABASE_SYNC_ENABLED: "true"
           SUPABASE_SYNC_STRICT: "true"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SERVICE_MASTER_KEY: ${{ secrets.SERVICE_MASTER_KEY }}
-          BYBIT_SECRET_SOURCE: github
+
           BYBIT_API_KEY: ${{ secrets.BYBIT_API_KEY }}
           BYBIT_API_SECRET: ${{ secrets.BYBIT_API_SECRET }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}

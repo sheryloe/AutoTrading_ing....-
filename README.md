@@ -1,110 +1,100 @@
-﻿# Automethemoney
+# Automethemoney
 
-Automethemoney는 Python 트레이딩 엔진, Supabase 상태 원장, Next.js 운영 콘솔, GitHub Pages 리포트를 묶어 운용하는 자동매매 프로젝트입니다.
+Automethemoney는 **Self-hosted Runner + Supabase + Vercel** 3계층으로 운영하는 paper 자동매매 프로젝트입니다.
 
-- Repository: `https://github.com/sheryloe/Automethemoney`
-- GitHub Pages: `https://sheryloe.github.io/Automethemoney/`
+- Repository: https://github.com/sheryloe/Automethemoney
+- GitHub Pages: https://sheryloe.github.io/Automethemoney/
 
-## 현재 운영 기준 (2026-03-21)
+## 1) 운영 아키텍처 (고정 기준)
 
-- 유니버스: `CRYPTO_UNIVERSE_MODE=rank_lock` (시총 상위 1~20 고정 운용)
-- 모델: `A/B/C/D` 동시 운용, `long/short` 시그널 생성
-- 사이클: 1분 주기 (`SCAN_INTERVAL_SECONDS=60`)
-- 데모 시드: 모델별 `10000 USDT`
-- GitHub Actions: `cloud-cycle` 주기 실행
+| 계층 | 역할 | 배포 위치 |
+| --- | --- | --- |
+| Self-hosted Runner | `cloud-cycle` 배치 실행, 시그널/포지션 계산 | Windows x64 (24/7) |
+| Supabase | 상태 원장 (`engine_heartbeat`, `model_setups`, `positions`, `daily_model_pnl`) | Supabase |
+| Vercel | 운영 콘솔 UI/API (`/`, `/models`, `/positions`, `/settings`) | Vercel |
+| GitHub Pages | 운영문서 + 상태허브 + Daily PnL 공개 뷰 | `docs/` |
 
-## 아키텍처
+## 2) 필수 시크릿/환경 변수
 
-1. `scripts/run_batch_cycle.py` 또는 GitHub Actions가 1회 사이클 실행
-2. 엔진이 시그널/포지션/손익 상태 계산
-3. 결과를 Supabase(`engine_heartbeat`, `model_setups`, `positions`, `daily_model_pnl`)에 동기화
-4. Next.js 콘솔과 GitHub Pages가 Supabase를 조회해 대시보드 반영
+### GitHub Secrets (`cloud-cycle`)
 
-## 런타임 설정 우선순위
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SERVICE_MASTER_KEY`
+- `BYBIT_API_KEY`
+- `BYBIT_API_SECRET`
 
-1. ENV
-2. runtime profile (`runtime_settings.json`)
-3. 코드 기본값
+### Vercel Environment Variables
 
-## 웹 UI 라우트
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SERVICE_MASTER_KEY`
+- `SERVICE_ADMIN_TOKEN`
 
-- Next.js 콘솔: `/`, `/models`, `/positions`, `/settings`
-- Flask 운영 패널: `/models`, `/paper`, `/live`, `/settings`
+### 로컬 `.env` (운영 스크립트 실행용)
 
-## 데모 초기화 (권장: Supabase SQL Editor)
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- 필요 시 `SERVICE_MASTER_KEY`
 
-```sql
-begin;
+## 3) Self-hosted Runner 구축 (PowerShell)
 
-insert into public.engine_state_blobs (blob_key, payload_json)
-values ('engine_state', '{}'::jsonb)
-on conflict (blob_key) do nothing;
+```powershell
+# 0) gh auth 확인
+gh auth status
 
-delete from public.positions;
-delete from public.model_setups;
-delete from public.daily_model_pnl;
-delete from public.model_runtime_tunes;
-
-update public.engine_state_blobs
-set payload_json =
-  jsonb_set(
-    jsonb_set(
-      jsonb_set(
-        jsonb_set(
-          jsonb_set(
-            jsonb_set(
-              jsonb_set(
-                jsonb_set(coalesce(payload_json, '{}'::jsonb), '{cash_usd}', '10000'::jsonb, true),
-                '{demo_seed_usdt}', '10000'::jsonb, true
-              ),
-              '{positions}', '{}'::jsonb, true
-            ),
-            '{trades}', '[]'::jsonb, true
-          ),
-          '{daily_pnl}', '[]'::jsonb, true
-        ),
-        '{last_cycle_ts}', '0'::jsonb, true
-      ),
-      '{last_wallet_sync_ts}', '0'::jsonb, true
-    ),
-    '{last_bybit_sync_ts}', '0'::jsonb, true
-  )
-where blob_key = 'engine_state';
-
-commit;
+# 1) 러너 설치/등록/서비스 시작 (관리자 PowerShell)
+.\ops\setup-self-hosted-runner.ps1 -Repo "sheryloe/Automethemoney" -ReplaceExisting
 ```
 
-## 저장소 구조
+러너 라벨 기준:
 
-- `src/`: 트레이딩 엔진 및 데이터/동기화 로직
-- `scripts/`: 배치 실행, 리포트, 유지보수 스크립트
-- `frontend/`: Next.js 운영 콘솔
-- `docs/`: GitHub Pages 및 공개 데이터
-- `wiki/`: 운영 문서
+- `self-hosted`
+- `windows`
+- `x64`
+- `automethemoney`
 
-## 빠른 시작 (로컬)
+`cloud-cycle.yml`은 위 라벨이 없으면 실행되지 않습니다.
 
-```bash
-pip install -r requirements.txt
-copy .env.example .env
-copy runtime_settings.example.json runtime_settings.json
-python scripts/run_batch_cycle.py
-python web_app.py
+## 4) 배포/실행 순서
+
+```powershell
+# 1) 의존성
+python -m pip install --upgrade pip
+pip install -r .\requirements.txt
+
+# 2) 수동 1회 실행 (workflow_dispatch)
+.\ops\run-once-cloud-cycle.ps1 -Repo "sheryloe/Automethemoney" -Workflow "cloud-cycle.yml" -Ref "main"
+
+# 3) 스택 검증
+.\ops\verify-stack.ps1 -EnvFile ".\\.env" -LookbackHours 1
 ```
 
-## Daily PnL Pages
+## 5) 운영 검증 기준
 
-- `docs/data/daily_pnl/summary_4col.json`이 기본 소스
-- `docs/daily-pnl.html`에서 일자 + A/B/C/D 누적 손익 표시
+정상 상태:
 
-## Supabase 관련 문서
+- `engine_heartbeat` 최신 갱신
+- `model_setups.recent > 0`
+- `model_signal_audit.recent > 0`
+- `trade_mode=paper`
+- `bybit_readonly_sync=true`
+- 가능 환경에서는 `last_bybit_sync_ts > 0`
 
-- `docs/SUPABASE_CORE_SCHEMA_20260315.sql`
-- `docs/SUPABASE_SCHEMA_20260315.sql`
-- `docs/SUPABASE_PATCH_TOP20_20260320.sql`
-- `docs/VERCEL_SUPABASE_SETUP_20260315.md`
+Bybit가 막힌 경우에도 배치는 계속 돌아야 하며, 원인은 heartbeat `meta_json.bybit_preflight_*`로 판단합니다.
 
-## Security Notes
+## 6) 장애 대응 요약
 
-- Flask control endpoints와 `/api/settings/secrets`는 `SERVICE_ADMIN_TOKEN` 필요
-- `SUPABASE_SERVICE_ROLE_KEY`, `SERVICE_MASTER_KEY`, `SERVICE_ADMIN_TOKEN`는 클라이언트 코드에 노출 금지
+1. 러너 오프라인: GitHub > Actions > Runners에서 상태 확인 후 서비스 재시작.
+2. `last_bybit_sync_ts=0`: `bybit_preflight_public_status/auth_status`로 401/403/경로 문제 분리.
+3. 데이터 미갱신: `ops/verify-stack.ps1` 실행 후 `model_setups`, `model_signal_audit`, `engine_heartbeat` 순서로 점검.
+
+## 7) 주요 경로
+
+- 배치 엔트리: `scripts/run_batch_cycle.py`
+- 워크플로우: `.github/workflows/cloud-cycle.yml`
+- 운영 스크립트: `ops/*.ps1`
+- GitHub Pages: `docs/index.html`, `docs/daily-pnl.html`
+- 위키 소스: `docs/wiki-src/*.md`

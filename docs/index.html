@@ -1,653 +1,220 @@
-﻿<!DOCTYPE html>
-<html lang="ko" data-theme="night">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automethemoney Pro | Live</title>
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Automethemoney | 운영문서 + 상태허브</title>
+    <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body { font-family: "Pretendard", sans-serif; background: #0b0f1a; color: #cbd5e1; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; } }
-        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .pnl-plus { color: #10b981; }
-        .pnl-minus { color: #f43f5e; }
-    </style>
-</head>
-<body class="min-h-screen">
-    <header class="sticky top-0 z-50 bg-[#0b0f1a]/95 border-b border-white/5 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="text-left">
-                <h1 class="text-2xl font-black italic text-white uppercase tracking-tighter text-left">Automethemoney Pro</h1>
-                <p class="text-[10px] text-primary font-bold mt-1 uppercase text-left" id="headline-status">3월 20일부터 계속 동작중</p>
-            </div>
-            <div class="tabs tabs-boxed bg-slate-900 border border-white/10 p-1">
-                <button class="tab tab-active px-6 font-bold text-left" id="btn-leaderboard" onclick="switchTab('leaderboard')">Overview</button>
-                <button class="tab px-6 font-bold text-left" id="btn-guide" onclick="switchTab('guide')">GUIDE</button>
-            </div>
+  </head>
+  <body>
+    <main class="hub-shell">
+      <header class="hub-header card">
+        <p class="eyebrow">Operations Hub</p>
+        <h1>Self-hosted Runner + Supabase + Vercel</h1>
+        <p class="muted">
+          본 페이지는 운영 기준 문서와 실시간 상태 요약을 한 화면에서 제공합니다.
+          실행은 self-hosted runner, 상태 저장은 Supabase, UI/API는 Vercel 기준으로 고정합니다.
+        </p>
+        <div class="inline-links">
+          <a href="./daily-pnl.html">Daily PnL</a>
+          <a href="https://github.com/sheryloe/Automethemoney">Repository</a>
+          <a href="https://github.com/sheryloe/Automethemoney/wiki">Wiki</a>
         </div>
-    </header>
+      </header>
 
-    <main class="max-w-7xl mx-auto p-6">
-        <div id="tab-leaderboard" class="tab-content active space-y-8">
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-indigo-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model A PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-a">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-emerald-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model B PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-b">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-amber-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model C PnL</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-c">0.00%</div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border-l-4 border-cyan-500 text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-1 text-left">Model D PnL Rev.01</div>
-                    <div class="text-2xl font-black text-white text-left" id="stat-model-d">0.00%</div>
-                </div>
-            </div>
-            <div class="glass-panel p-8 rounded-3xl">
-                <div id="multi-model-chart" style="min-height: 400px;"></div>
-            </div>
+      <section class="status-grid">
+        <article class="card stat-card">
+          <span>Heartbeat (KST)</span>
+          <strong id="hb-time">-</strong>
+          <small id="hb-engine">-</small>
+        </article>
+        <article class="card stat-card">
+          <span>Runner / Mode</span>
+          <strong id="hb-runner">-</strong>
+          <small id="hb-mode">-</small>
+        </article>
+        <article class="card stat-card">
+          <span>Open Positions</span>
+          <strong id="open-positions">0</strong>
+          <small>table: positions(status=open)</small>
+        </article>
+        <article class="card stat-card">
+          <span>Latest Signals</span>
+          <strong id="latest-signals">0</strong>
+          <small id="latest-cycle">cycle -</small>
+        </article>
+        <article class="card stat-card">
+          <span>Bybit Readonly Sync</span>
+          <strong id="bybit-sync">-</strong>
+          <small id="bybit-sync-ts">ts 0</small>
+        </article>
+        <article class="card stat-card">
+          <span>Latest Realized PnL</span>
+          <strong id="latest-realized">$0.00</strong>
+          <small id="latest-pnl-day">day -</small>
+        </article>
+      </section>
+
+      <section class="card split-card">
+        <div>
+          <p class="eyebrow">Bybit Preflight</p>
+          <h2>연결/권한 상태</h2>
+          <table class="compact-table">
+            <tbody>
+              <tr><th>public_status</th><td id="preflight-public">-</td></tr>
+              <tr><th>auth_status</th><td id="preflight-auth">-</td></tr>
+              <tr><th>error</th><td id="preflight-error">-</td></tr>
+            </tbody>
+          </table>
         </div>
-
-        <div id="tab-guide" class="tab-content space-y-12 py-10">
-            <div class="max-w-4xl mx-auto space-y-12 text-left">
-                <h2 class="text-3xl font-black italic text-white border-b-2 border-indigo-500 pb-4 text-left">GUIDE</h2>
-                <div class="glass-panel p-6 rounded-2xl border border-white/5">
-                    <h3 class="font-bold text-white mb-3 text-left">이 페이지에서 보는 값</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-sm">
-                        <div class="p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                            <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Model Cards</div>
-                            <p class="opacity-70">모델 A-D별 현재 손익률입니다. 최근 일자 실현 손익과 현재 오픈 포지션 미실현 손익을 합쳐서 보여줍니다.</p>
-                        </div>
-                        <div class="p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                            <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Graph</div>
-                            <p class="opacity-70">모델별 손익 추이를 날짜 기준으로 그립니다. 최신 포인트는 현재 포지션 기준 값으로 갱신됩니다.</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-indigo-500/20 text-left">
-                        <h3 class="font-bold text-indigo-400 mb-2 text-left">MODEL A: Trend Follower</h3>
-                        <p class="text-xs opacity-60 text-left">EMA 정배열 기반 장기 추세 추종 전략.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-emerald-500/20 text-left">
-                        <h3 class="font-bold text-emerald-400 mb-2 text-left">MODEL B: Mean Reversion</h3>
-                        <p class="text-xs opacity-60 text-left">볼린저 밴드 하단 이탈 시 기술적 반등 매매.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-amber-500/20 text-left">
-                        <h3 class="font-bold text-amber-400 mb-2 text-left">MODEL C: Volatility Breakout</h3>
-                        <p class="text-xs opacity-60 text-left">전일 변동폭 기반 당일 돌파 전략.</p>
-                    </div>
-                    <div class="p-6 bg-slate-800/50 rounded-2xl border border-cyan-500/20 text-left">
-                        <h3 id="guide-model-d-title" class="font-bold text-cyan-400 mb-2 text-left">MODEL D REV.01: Deep Learning</h3>
-                        <p class="text-xs opacity-60 text-left">LSTM 신경망 기반 가격 방향성 예측.</p>
-                    </div>
-                </div>
-                <div class="glass-panel p-6 rounded-2xl border border-white/5">
-                    <h3 class="font-bold text-white mb-3 text-left">업데이트 방식</h3>
-                    <ul class="list-disc list-inside text-sm opacity-75 leading-7">
-                        <li>Supabase realtime 이벤트가 들어오면 화면을 즉시 다시 조회합니다.</li>
-                        <li>이벤트가 없더라도 15초마다 한 번씩 최신 상태를 재확인합니다.</li>
-                        <li>데이터 소스는 `daily_model_pnl`, `positions`, `engine_heartbeat` 입니다.</li>
-                    </ul>
-                </div>
-            </div>
+        <div>
+          <p class="eyebrow">운영 체크</p>
+          <h2>즉시 점검 순서</h2>
+          <ol class="check-list">
+            <li>Heartbeat가 최근 2분 내 갱신되는지 확인</li>
+            <li>`model_setups`/`model_signal_audit` 최신 cycle 증가 확인</li>
+            <li>`last_bybit_sync_ts`와 preflight 상태 확인</li>
+            <li>오류 시 self-hosted runner 서비스 상태 확인</li>
+          </ol>
         </div>
+      </section>
 
-        <!-- Bottom quick links: repository / wiki -->
-        <section class="mt-12 pb-6">
-            <div class="glass-panel rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div class="text-left">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Quick Links</div>
-                    <p class="text-sm opacity-70">배포 페이지 하단에서 바로 저장소와 위키로 이동할 수 있게 연결했습니다.</p>
-                </div>
-                <!-- Footer buttons implementation -->
-                <div class="flex flex-wrap gap-3">
-                    <a
-                        href="https://github.com/sheryloe/Automethemoney"
-                        target="_blank"
-                        rel="noreferrer"
-                        class="btn btn-sm bg-slate-900 text-white border border-white/10 hover:bg-slate-800"
-                    >
-                        Repository
-                    </a>
-                    <a
-                        href="https://github.com/sheryloe/Automethemoney/wiki"
-                        target="_blank"
-                        rel="noreferrer"
-                        class="btn btn-sm bg-slate-900 text-white border border-white/10 hover:bg-slate-800"
-                    >
-                        Wiki
-                    </a>
-                </div>
-            </div>
-        </section>
+      <section class="card docs-card">
+        <p class="eyebrow">구축 방법</p>
+        <h2>PowerShell 기준 배포/운영 명령</h2>
+        <pre><code># runner 설치/등록 (관리자 PowerShell)
+.\ops\setup-self-hosted-runner.ps1 -Repo "sheryloe/Automethemoney" -ReplaceExisting
 
-        <section class="pb-16">
-            <div class="glass-panel rounded-3xl p-6">
-                <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-2 text-left">
-                    <div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase mb-2">Daily PNL Log</div>
-                        <h3 class="text-lg font-black text-white">일자별 손익 로그</h3>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button id="btn-daily-mode-cumulative" class="btn btn-xs bg-slate-900 text-slate-300 border border-white/10" onclick="setDailyTableMode('cumulative')">누적</button>
-                        <button id="btn-daily-mode-delta" class="btn btn-xs bg-cyan-500 text-white border-0" onclick="setDailyTableMode('delta')">증분</button>
-                    </div>
-                </div>
-                <p id="daily-pnl-mode-note" class="mt-2 text-xs opacity-60">현재: 일별 증분 (전일 대비 변화, 리셋일은 당일 total 반영)</p>
-                <div class="mt-4 overflow-x-auto">
-                    <table class="w-full text-sm border border-white/10 rounded-xl overflow-hidden">
-                        <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
-                            <tr>
-                                <th class="px-3 py-2 text-left font-bold">Day</th>
-                                <th class="px-3 py-2 text-left font-bold">Model A</th>
-                                <th class="px-3 py-2 text-left font-bold">Model B</th>
-                                <th class="px-3 py-2 text-left font-bold">Model C</th>
-                                <th id="daily-model-d-header" class="px-3 py-2 text-left font-bold">Model D Rev.01</th>
-                            </tr>
-                        </thead>
-                        <tbody id="daily-pnl-table-body" class="divide-y divide-white/10 bg-slate-900/40">
-                            <tr>
-                                <td colspan="5" class="px-3 py-3 text-slate-400">데이터를 불러오는 중입니다.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
+# cloud-cycle 수동 1회 실행
+.\ops\run-once-cloud-cycle.ps1 -Repo "sheryloe/Automethemoney" -Workflow "cloud-cycle.yml" -Ref "main"
+
+# Supabase 반영 검증
+.\ops\verify-stack.ps1 -EnvFile ".\\.env" -LookbackHours 1
+</code></pre>
+      </section>
+
+      <section class="card docs-card">
+        <p class="eyebrow">아키텍처</p>
+        <h2>서비스 구성</h2>
+        <ul class="bullet-list">
+          <li>Self-hosted runner: 스케줄 배치 실행 (`cloud-cycle`)</li>
+          <li>Supabase: 상태 원장 (`engine_heartbeat`, `model_setups`, `positions`, `daily_model_pnl`)</li>
+          <li>Vercel: 운영 콘솔/설정 API</li>
+          <li>GitHub Pages: 운영문서 + 상태허브</li>
+        </ul>
+      </section>
     </main>
 
     <script>
-        lucide.createIcons();
+      const SUPABASE_URL = "{{SUPABASE_URL}}";
+      const SUPABASE_ANON_KEY = "{{SUPABASE_ANON_KEY}}";
 
-        const S_URL = "{{SUPABASE_URL}}";
-        const S_KEY = "{{SUPABASE_ANON_KEY}}";
-        const MODEL_IDS = ["A", "B", "C", "D"];
-        const MODEL_BASE_LABELS = { A: "Model A", B: "Model B", C: "Model C", D: "Model D Rev.01" };
-        let MODEL_LABELS = { ...MODEL_BASE_LABELS };
-        const MODEL_TARGETS = { A: "stat-model-a", B: "stat-model-b", C: "stat-model-c", D: "stat-model-d" };
-        const EQUITY_BASE = 10000;
-        const DAILY_PNL_HISTORY_DAYS = 60;
-        const DAILY_PNL_ROWS_LIMIT = DAILY_PNL_HISTORY_DAYS * MODEL_IDS.length;
+      const $ = (id) => document.getElementById(id);
 
-        let _supabase;
-        let _chart;
-        let _lastDisplaySeries = null;
-        let DAILY_TABLE_MODE = "delta";
+      const formatInt = (v) => new Intl.NumberFormat("ko-KR").format(Number(v || 0));
+      const formatMoney = (v) => new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      }).format(Number(v || 0));
 
-        if (S_URL.startsWith("http") && S_KEY && !S_URL.includes("{{") && !S_KEY.includes("{{")) {
-            _supabase = supabase.createClient(S_URL, S_KEY, {
-                auth: {
-                    persistSession: false,
-                    autoRefreshToken: false,
-                    detectSessionInUrl: false,
-                },
-            });
-            console.log("✅ Supabase 연결 성공");
-        } else {
-            console.error("❌ 치환 실패:", S_URL);
+      const formatKst = (isoText) => {
+        if (!isoText) return "-";
+        const d = new Date(isoText);
+        if (Number.isNaN(d.getTime())) return "-";
+        return new Intl.DateTimeFormat("ko-KR", {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).format(d);
+      };
+
+      function pickLatestDaily(rows) {
+        const map = new Map();
+        for (const row of rows || []) {
+          const model = String(row?.model_id || "").trim().toUpperCase();
+          if (!model) continue;
+          const prev = map.get(model);
+          const day = String(row?.day || "");
+          const prevDay = String(prev?.day || "");
+          const updated = String(row?.updated_at || "");
+          const prevUpdated = String(prev?.updated_at || "");
+          const newer = !prev || day > prevDay || (day === prevDay && updated > prevUpdated);
+          if (newer) map.set(model, row);
+        }
+        return Array.from(map.values());
+      }
+
+      async function loadHub() {
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_URL.includes("{{") || SUPABASE_ANON_KEY.includes("{{")) {
+          $("preflight-error").textContent = "Supabase public config is not injected";
+          return;
         }
 
-        function formatUsd(value) {
-            return new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: "USD",
-                maximumFractionDigits: 2,
-            }).format(Number(value || 0));
+        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const [hbRes, posRes, setupHeadRes, dailyRes] = await Promise.all([
+          client.from("engine_heartbeat").select("*").order("updated_at", { ascending: false }).limit(1),
+          client.from("positions").select("id", { count: "exact", head: true }).eq("status", "open"),
+          client.from("model_setups").select("cycle_at").order("cycle_at", { ascending: false }).limit(1),
+          client.from("daily_model_pnl").select("model_id,day,total_pnl_usd,realized_pnl_usd,updated_at").order("day", { ascending: false }).limit(64),
+        ]);
+
+        if (hbRes.error) {
+          $("preflight-error").textContent = hbRes.error.message;
+          return;
         }
 
-        function formatSignedUsd(value) {
-            const num = Number(value || 0);
-            return `${num >= 0 ? "+" : "-"}${formatUsd(Math.abs(num))}`;
-        }
+        const heartbeat = hbRes.data?.[0] || null;
+        const meta = heartbeat?.meta_json || {};
 
-        function parseRevFromVariant(variantId) {
-            const raw = String(variantId || "").trim();
-            if (!raw) {
-                return "";
+        let latestSignalCount = 0;
+        let latestCycleAt = "";
+        if (!setupHeadRes.error) {
+          latestCycleAt = setupHeadRes.data?.[0]?.cycle_at || "";
+          if (latestCycleAt) {
+            const setupCountRes = await client
+              .from("model_setups")
+              .select("id", { count: "exact", head: true })
+              .eq("cycle_at", latestCycleAt);
+            if (!setupCountRes.error) {
+              latestSignalCount = Number(setupCountRes.count || 0);
             }
-            const match = raw.match(/rev\.(\d+)/i);
-            if (!match) {
-                return "";
-            }
-            return `rev.${String(match[1]).padStart(2, "0")}`;
+          }
         }
 
-        function resolveModelDLabel(dailyRows) {
-            return MODEL_BASE_LABELS.D;
-        }
+        const latestDailyRows = pickLatestDaily(dailyRes.data || []);
+        const latestRealizedTotal = latestDailyRows.reduce((sum, row) => sum + Number(row?.realized_pnl_usd || 0), 0);
+        const latestDay = latestDailyRows.map((r) => String(r?.day || "")).sort().pop() || "-";
 
-        function applyModelDLabelOverrides(dailyRows) {
-            const modelDLabel = resolveModelDLabel(dailyRows);
-            MODEL_LABELS = { ...MODEL_BASE_LABELS, D: modelDLabel };
-            const header = document.getElementById("daily-model-d-header");
-            if (header) {
-                header.textContent = modelDLabel;
-            }
-            const guide = document.getElementById("guide-model-d-title");
-            if (guide) {
-                guide.textContent = `${String(modelDLabel).toUpperCase()}: Deep Learning`;
-            }
-        }
+        $("hb-time").textContent = formatKst(heartbeat?.last_seen_at);
+        $("hb-engine").textContent = heartbeat?.engine_name || "-";
+        $("hb-runner").textContent = String(meta.runner || "-");
+        $("hb-mode").textContent = `trade_mode=${String(meta.trade_mode || "-")}`;
+        $("open-positions").textContent = formatInt(posRes.count || 0);
+        $("latest-signals").textContent = formatInt(latestSignalCount);
+        $("latest-cycle").textContent = latestCycleAt ? `cycle ${formatKst(latestCycleAt)}` : "cycle -";
 
-        function formatPct(value) {
-            const num = Number(value || 0);
-            return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
-        }
+        const bybitReadonly = String(meta.bybit_readonly_sync || "false").toLowerCase() === "true";
+        $("bybit-sync").textContent = bybitReadonly ? "ON (read-only)" : "OFF";
+        $("bybit-sync-ts").textContent = `ts ${Number(meta.last_bybit_sync_ts || 0)}`;
 
-        function escapeHtml(value) {
-            return String(value || "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll("\"", "&quot;")
-                .replaceAll("'", "&#39;");
-        }
+        $("latest-realized").textContent = formatMoney(latestRealizedTotal);
+        $("latest-pnl-day").textContent = `day ${latestDay}`;
 
-        function dateLabel(value) {
-            if (!value) return "-";
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return String(value);
-            return new Intl.DateTimeFormat("ko-KR", {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }).format(date);
-        }
+        $("preflight-public").textContent = String(meta.bybit_preflight_public_status ?? "-");
+        $("preflight-auth").textContent = String(meta.bybit_preflight_auth_status ?? "-");
+        $("preflight-error").textContent = String(meta.bybit_preflight_error || "-");
+      }
 
-        function parseRestartSeedFromRow(row) {
-            const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
-            const candidates = [
-                row?.seed_usd,
-                row?.bybit_rebuild_restart_seed_usd,
-                sourceJson.bybit_rebuild_restart_seed_usd,
-                sourceJson.rebuild_restart_seed_usd,
-                sourceJson.seed_usd,
-                sourceJson.bybit_seed_usd,
-                sourceJson.rebuild_seed_usd,
-            ];
-            for (const value of candidates) {
-                const num = Number(value);
-                if (Number.isFinite(num) && num > 0) {
-                    return num;
-                }
-            }
-            return Number(EQUITY_BASE);
-        }
-
-        function modelReturnPct(totalPnlUsd, baseUsd) {
-            const base = Number(baseUsd);
-            const safeBase = Number.isFinite(base) && base > 0 ? base : Number(EQUITY_BASE);
-            return (Number(totalPnlUsd || 0) / safeBase) * 100;
-        }
-
-        function buildDisplayDailySeries(dailyRows) {
-            const rawLookup = {};
-            const rebuildLookup = {};
-            const restartVariantLookup = {};
-            const noteLookup = {};
-            const seedLookup = {};
-            MODEL_IDS.forEach((modelId) => {
-                rawLookup[modelId] = {};
-                rebuildLookup[modelId] = {};
-                restartVariantLookup[modelId] = {};
-                noteLookup[modelId] = {};
-                seedLookup[modelId] = {};
-            });
-            const activeSeedByModel = {
-                A: Number(EQUITY_BASE),
-                B: Number(EQUITY_BASE),
-                C: Number(EQUITY_BASE),
-                D: Number(EQUITY_BASE),
-            };
-
-            const orderedInputRows = [...dailyRows].sort((left, right) =>
-                String(left?.day || "").slice(0, 10).localeCompare(String(right?.day || "").slice(0, 10))
-            );
-            orderedInputRows.forEach((row) => {
-                const modelId = String(row.model_id || "").toUpperCase();
-                const day = String(row.day || "").slice(0, 10);
-                if (!MODEL_IDS.includes(modelId) || !day) return;
-                rawLookup[modelId][day] = Number(row.total_pnl_usd || 0);
-                const sourceJson = row?.source_json && typeof row.source_json === "object" ? row.source_json : {};
-                const rebuildSource = String(
-                    row.rebuild_source ||
-                        sourceJson.rebuild_source ||
-                        sourceJson.rebuild_reason ||
-                        ""
-                ).trim();
-                if (rebuildSource) {
-                    rebuildLookup[modelId][day] = rebuildSource;
-                }
-                const restartVariant = String(
-                    row?.bybit_rebuild_restart_variant_id ||
-                        sourceJson.bybit_rebuild_restart_variant_id ||
-                        sourceJson.rebuild_restart_variant_id ||
-                        ""
-                ).trim();
-                if (restartVariant) {
-                    restartVariantLookup[modelId][day] = restartVariant;
-                }
-                const hasRestartMarker = rebuildSource === "drawdown_50pct_rebuild_restart" || Boolean(restartVariant);
-                if (modelId === "D" && hasRestartMarker) {
-                    activeSeedByModel[modelId] = parseRestartSeedFromRow(row);
-                }
-                seedLookup[modelId][day] = Number(activeSeedByModel[modelId]);
-                const restartNote = String(
-                    sourceJson.rebuild_restart_note_ko || sourceJson.restart_note_ko || sourceJson.restart_note || ""
-                ).trim();
-                if (restartNote && modelId === "D") {
-                    noteLookup[modelId][day] = restartNote;
-                }
-            });
-
-            const orderedDays = [...new Set(orderedInputRows.map((row) => String(row.day || "").slice(0, 10)))]
-                .filter(Boolean)
-                .sort((a, b) => a.localeCompare(b));
-            const latestByModel = new Map();
-            const latestBaseByModel = new Map();
-            const entries = [];
-            const prevTotalsByModel = { A: null, B: null, C: null, D: null };
-
-            orderedDays.forEach((day) => {
-                const entry = { day, A: 0, B: 0, C: 0, D: 0, D_note: "", base: {}, delta: {} };
-                MODEL_IDS.forEach((modelId) => {
-                    const raw = Number(rawLookup[modelId][day] ?? 0);
-                    const effectiveSeed = Number(seedLookup[modelId][day] || activeSeedByModel[modelId] || EQUITY_BASE);
-                    const rebuildSource = String(rebuildLookup[modelId][day] || "");
-                    const restartVariant = String(restartVariantLookup[modelId][day] || "");
-                    const hasRestartMarker = rebuildSource === "drawdown_50pct_rebuild_restart" || Boolean(restartVariant);
-                    entry[modelId] = Number(raw.toFixed(6));
-                    entry.base[modelId] = Number(effectiveSeed);
-                    const previousTotal = prevTotalsByModel[modelId];
-                    const deltaValue =
-                        previousTotal === null || (modelId === "D" && hasRestartMarker)
-                            ? entry[modelId]
-                            : entry[modelId] - Number(previousTotal);
-                    entry.delta[modelId] = Number(deltaValue.toFixed(6));
-                    prevTotalsByModel[modelId] = entry[modelId];
-                    if (modelId === "D" && noteLookup.D[day]) {
-                        entry.D_note = String(noteLookup.D[day]);
-                    }
-                    latestByModel.set(modelId, Number(raw.toFixed(6)));
-                    latestBaseByModel.set(modelId, Number(effectiveSeed));
-                });
-                entries.push(entry);
-            });
-            return { orderedDays, entries, latestByModel, latestBaseByModel };
-        }
-
-        function buildOpenPositionsByModel(positions) {
-            const map = new Map();
-            MODEL_IDS.forEach((modelId) => map.set(modelId, []));
-            for (const row of positions) {
-                const modelId = String(row.model_id || "").toUpperCase();
-                if (!map.has(modelId)) map.set(modelId, []);
-                map.get(modelId).push(row);
-            }
-            return map;
-        }
-
-        function setHeadline(heartbeat, positions) {
-            const target = document.getElementById("headline-status");
-            if (!target) return;
-            if (!heartbeat?.last_seen_at) {
-                target.innerText = "3월 20일부터 계속 동작중 · Supabase 연결 대기 중";
-                return;
-            }
-            target.innerText = `3월 20일부터 계속 동작중 · 최근 동기화 ${dateLabel(heartbeat.last_seen_at)} · OPEN ${positions.length}건`;
-        }
-
-        function renderSummaryCards(latestByModel, latestBaseByModel) {
-            MODEL_IDS.forEach((modelId) => {
-                const latestTotalPnl = Number(latestByModel.get(modelId) || 0);
-                const el = document.getElementById(MODEL_TARGETS[modelId]);
-                if (!el) return;
-                const base = Number(latestBaseByModel?.get(modelId) || EQUITY_BASE);
-                const pct = modelReturnPct(latestTotalPnl, base);
-                el.innerText = formatPct(pct);
-                el.classList.toggle("pnl-plus", pct >= 0);
-                el.classList.toggle("pnl-minus", pct < 0);
-            });
-        }
-
-        function renderChart(displaySeries) {
-            const mount = document.querySelector("#multi-model-chart");
-            if (!mount) return;
-            const orderedDays = Array.isArray(displaySeries?.orderedDays) ? displaySeries.orderedDays : [];
-            const entries = Array.isArray(displaySeries?.entries) ? displaySeries.entries : [];
-
-            if (!orderedDays.length) {
-                if (_chart) {
-                    _chart.destroy();
-                    _chart = null;
-                }
-                mount.innerHTML = '<div class="min-h-[400px] flex items-center justify-center text-sm text-slate-400">표시할 모델 손익 데이터가 아직 없습니다.</div>';
-                return;
-            }
-
-            const lookup = {};
-            MODEL_IDS.forEach((modelId) => {
-                lookup[modelId] = {};
-            });
-
-            entries.forEach((entry) => {
-                const day = String(entry.day || "");
-                if (!day) return;
-                MODEL_IDS.forEach((modelId) => {
-                    const base = Number(entry.base?.[modelId] || EQUITY_BASE);
-                    lookup[modelId][day] = Number(modelReturnPct(entry[modelId], base).toFixed(2));
-                });
-            });
-
-            const options = {
-                series: MODEL_IDS.map((modelId) => ({
-                    name: MODEL_LABELS[modelId],
-                    data: orderedDays.map((day) => lookup[modelId][day] ?? 0),
-                })),
-                chart: {
-                    height: 400,
-                    type: "line",
-                    toolbar: { show: false },
-                    background: "transparent",
-                    foreColor: "#64748b",
-                },
-                colors: ["#6366f1", "#10b981", "#f59e0b", "#06b6d4"],
-                stroke: { curve: "smooth", width: 3 },
-                xaxis: { categories: orderedDays, axisBorder: { show: false } },
-                yaxis: {
-                    labels: {
-                        formatter: (value) => `${Number(value).toFixed(1)}%`,
-                    },
-                },
-                tooltip: {
-                    y: {
-                        formatter: (value) => `${Number(value).toFixed(2)}%`,
-                    },
-                },
-                theme: { mode: "dark" },
-            };
-
-            mount.innerHTML = "";
-            if (_chart) {
-                _chart.destroy();
-            }
-            _chart = new ApexCharts(mount, options);
-            _chart.render();
-        }
-
-        function setDailyTableMode(mode) {
-            DAILY_TABLE_MODE = mode === "delta" ? "delta" : "cumulative";
-            const btnCumulative = document.getElementById("btn-daily-mode-cumulative");
-            const btnDelta = document.getElementById("btn-daily-mode-delta");
-            const modeNote = document.getElementById("daily-pnl-mode-note");
-            if (btnCumulative) {
-                btnCumulative.className =
-                    DAILY_TABLE_MODE === "cumulative"
-                        ? "btn btn-xs bg-cyan-500 text-white border-0"
-                        : "btn btn-xs bg-slate-900 text-slate-300 border border-white/10";
-            }
-            if (btnDelta) {
-                btnDelta.className =
-                    DAILY_TABLE_MODE === "delta"
-                        ? "btn btn-xs bg-cyan-500 text-white border-0"
-                        : "btn btn-xs bg-slate-900 text-slate-300 border border-white/10";
-            }
-            if (modeNote) {
-                modeNote.textContent =
-                    DAILY_TABLE_MODE === "delta"
-                        ? "현재: 일별 증분 (전일 대비 변화, 리셋일은 당일 total 반영)"
-                        : "현재: 누적 PnL (일자 기준 total)";
-            }
-            renderDailyPnlTable(_lastDisplaySeries);
-        }
-
-        function todayKstDay() {
-            return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
-        }
-
-        function renderDailyPnlTable(displaySeries) {
-            const mount = document.getElementById("daily-pnl-table-body");
-            if (!mount) return;
-            const entries = Array.isArray(displaySeries?.entries) ? displaySeries.entries : [];
-            const ordered = [...entries]
-                .sort((a, b) => b.day.localeCompare(a.day))
-                .slice(0, 45);
-
-            if (!ordered.length) {
-                mount.innerHTML =
-                    '<tr><td colspan="5" class="px-3 py-3 text-slate-400">기록된 일별 PNL 데이터가 아직 없습니다.</td></tr>';
-                return;
-            }
-
-            const today = todayKstDay();
-            mount.innerHTML = ordered
-                .map((entry) => {
-                    const isToday = entry.day === today;
-                    const rowClass = isToday ? "bg-cyan-500/10" : "";
-                    const dayCell = `<td class="px-3 py-2 font-bold text-white">${entry.day}</td>`;
-                    const modelCells = MODEL_IDS.map((modelId) => {
-                        const value =
-                            DAILY_TABLE_MODE === "delta"
-                                ? Number(entry?.delta?.[modelId] || 0)
-                                : Number(entry[modelId] || 0);
-                        const cls = value >= 0 ? "pnl-plus" : "pnl-minus";
-                        const note = modelId === "D" ? String(entry.D_note || "").trim() : "";
-                        const text =
-                            modelId === "D" && note
-                                ? `${formatSignedUsd(value)}(${escapeHtml(note)})`
-                                : formatSignedUsd(value);
-                        return `<td class="px-3 py-2 font-mono ${cls}">${text}</td>`;
-                    }).join("");
-                    return `<tr class="${rowClass}">${dayCell}${modelCells}</tr>`;
-                })
-                .join("");
-        }
-
-        async function loadDailyModelPnlRows() {
-            const withVariant = _supabase
-                .from("daily_model_pnl")
-                .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json,bybit_rebuild_restart_variant_id,bybit_rebuild_restart_seed_usd")
-                .eq("market", "crypto")
-                .order("day", { ascending: false })
-                .limit(DAILY_PNL_ROWS_LIMIT);
-            const withoutVariant = _supabase
-                .from("daily_model_pnl")
-                .select("day,model_id,total_pnl_usd,realized_pnl_usd,source_json")
-                .eq("market", "crypto")
-                .order("day", { ascending: false })
-                .limit(DAILY_PNL_ROWS_LIMIT);
-            const primary = await withVariant;
-            if (!primary.error) {
-                return primary;
-            }
-            console.warn("daily_model_pnl variant_id 컬럼 미존재, 폴백 조회 사용:", primary.error?.message || primary.error);
-            return await withoutVariant;
-        }
-
-        async function fetchTradingData() {
-            if (!_supabase) {
-                return;
-            }
-
-            const [dailyRes, positionsRes, heartbeatRes] = await Promise.all([
-                loadDailyModelPnlRows(),
-                _supabase
-                    .from("positions")
-                    .select("model_id,unrealized_pnl_usd")
-                    .eq("status", "open")
-                    .limit(80),
-                _supabase
-                    .from("engine_heartbeat")
-                    .select("last_seen_at")
-                    .order("last_seen_at", { ascending: false })
-                    .limit(1),
-            ]);
-
-            const error = dailyRes.error || positionsRes.error || heartbeatRes.error;
-            if (error) {
-                console.error(error.message);
-                const mount = document.querySelector("#multi-model-chart");
-                if (mount) {
-                    mount.innerHTML = `<div class="min-h-[400px] flex items-center justify-center text-sm text-rose-400">${error.message}</div>`;
-                }
-                return;
-            }
-
-            const dailyRows = Array.isArray(dailyRes.data) ? dailyRes.data : [];
-            const positions = Array.isArray(positionsRes.data) ? positionsRes.data : [];
-            const heartbeat = heartbeatRes.data?.[0] || null;
-            const positionsByModel = buildOpenPositionsByModel(positions);
-            applyModelDLabelOverrides(dailyRows);
-            const displaySeries = buildDisplayDailySeries(dailyRows);
-            _lastDisplaySeries = displaySeries;
-
-            setHeadline(heartbeat, positions);
-            renderSummaryCards(displaySeries.latestByModel, displaySeries.latestBaseByModel);
-            renderChart(displaySeries);
-            renderDailyPnlTable(displaySeries);
-        }
-
-        function subscribeRealtime() {
-            if (!_supabase) return;
-            try {
-                const channel = _supabase.channel("pages-live-dashboard");
-                ["daily_model_pnl", "positions", "engine_heartbeat"].forEach((table) => {
-                    channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {
-                        fetchTradingData();
-                    });
-                });
-                channel.subscribe();
-            } catch (error) {
-                console.warn("Realtime subscribe failed", error);
-            }
-        }
-
-        function switchTab(id) {
-            document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
-            document.querySelectorAll(".tab").forEach((t) => t.classList.remove("tab-active"));
-            document.getElementById(`tab-${id}`).classList.add("active");
-            document.getElementById(`btn-${id}`).classList.add("tab-active");
-            if (id === "leaderboard") fetchTradingData();
-        }
-
-        fetchTradingData();
-        subscribeRealtime();
-        setInterval(fetchTradingData, 15000);
+      loadHub();
+      setInterval(loadHub, 15000);
     </script>
-</body>
+  </body>
 </html>
-

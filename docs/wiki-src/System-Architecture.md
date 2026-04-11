@@ -1,73 +1,45 @@
-﻿# 시스템 아키텍처
+# 시스템 아키텍처
 
 > [Prev: Quick Start](https://github.com/sheryloe/Automethemoney/wiki/Quick-Start) | [Wiki Home](https://github.com/sheryloe/Automethemoney/wiki) | [Next: Console Screens](https://github.com/sheryloe/Automethemoney/wiki/Console-Screens)
 
 ---
 
-AI_Auto는 운영 콘솔, 상태 저장, 배치 실행을 분리한 서비스형 구조입니다.
+현재 운영 기준은 **Self-hosted Runner + Supabase + Vercel + GitHub Pages**입니다.
 
 ## 레이어별 역할
 
-| 레이어 | 담당 역할 | 운영 포인트 |
+| 레이어 | 역할 | 핵심 테이블/자원 |
 | --- | --- | --- |
-| Vercel | 운영 콘솔 UI, Service control API | `/settings` 저장과 화면 렌더링 |
-| Supabase | 상태 원장, provider vault, runtime profile | heartbeat, setup, 포지션, 일별 PnL 저장 |
-| Python 배치 | 분석, intrabar 체결 판정, PnL 계산, autotune | 실제 전략 로직과 데모 체결 처리 |
-| GitHub Actions | `cloud-cycle` 스케줄 실행 | 1분 주기, 중복 실행 방지, 일별 commit/push |
+| Self-hosted Runner (`cloud-cycle`) | 1분 주기 배치 실행, 시그널/포지션 계산 | `scripts/run_batch_cycle.py` |
+| Supabase | 상태 원장 및 런타임 저장소 | `engine_heartbeat`, `model_setups`, `positions`, `daily_model_pnl` |
+| Vercel | 운영 콘솔 UI/API | `/`, `/models`, `/positions`, `/settings` |
+| GitHub Pages | 운영문서 + 상태허브 + Daily PnL 뷰 | `docs/index.html`, `docs/daily-pnl.html` |
 
-## 아키텍처 다이어그램
+## 데이터 흐름
 
 ```mermaid
 flowchart LR
-  UI[Vercel 운영 콘솔] --> SB[(Supabase)]
-  GA[GitHub Actions cloud-cycle] --> PY[Python 배치]
-  PY --> SB
-  SB --> UI
-  UI --> API[Service control API]
-  API --> SB
+  GA[GitHub Actions schedule] --> SR[Self-hosted runner]
+  SR --> PY[Python batch engine]
+  PY --> SB[(Supabase)]
+  SB --> VE[Vercel console]
+  SB --> GP[GitHub Pages status hub]
 ```
 
-### Vercel
+## 운영 정책
 
-- 운영 콘솔 UI 제공
-- `/`, `/models`, `/positions`, `/settings` 화면 제공
-- Service control API 라우트 제공
-- provider 저장과 runtime 저장 요청 처리
+- 실행 모드: `paper`
+- 실거래: `ENABLE_LIVE_EXECUTION=false`
+- Bybit 동기화: `BYBIT_READONLY_SYNC=true` (읽기 전용)
+- 키 우선순위: `BYBIT_SECRET_SOURCE=github`
+- 고정 심볼 모드: `CRYPTO_UNIVERSE_MODE=fixed_symbols`
 
-### Supabase
+## 실패 시 원인 분리
 
-- heartbeat 저장
-- model setup 저장
-- 포지션 상태 저장
-- 일별 PnL 저장
-- runtime tune 상태 저장
-- provider vault 암호화 저장
-- runtime profile 저장
+`engine_heartbeat.meta_json`에서 아래 키를 우선 확인합니다.
 
-### Python 배치
-
-- planner 모델 분석
-- intrabar 체결 판정
-- 포지션 업데이트
-- 일별 PnL 계산
-- autotune 실행
-
-### GitHub Actions
-
-- `cloud-cycle` 주기 실행
-- daily report commit / push
-- 배치 실행 자동화
-
-## 운영자가 아키텍처를 읽을 때 보는 순서
-
-- [ ] 화면이 안 뜨면 `Vercel`
-- [ ] 데이터가 안 보이면 `Supabase`
-- [ ] 분석/체결 결과가 이상하면 `Python 배치`
-- [ ] 주기 실행이 안 돌면 `GitHub Actions`
-
-## 현재 아키텍처의 성격
-
-- 실시간 틱 엔진이 아니라 운영 가능한 배치형 데모
-- futures 기준 운영
-- provider 키는 GitHub가 아니라 service vault 중심으로 관리
-- 실거래 전환은 별도 가드 아래에서 검증해야 함
+- `runner`
+- `bybit_preflight_public_status`
+- `bybit_preflight_auth_status`
+- `bybit_preflight_error`
+- `last_bybit_sync_ts`
