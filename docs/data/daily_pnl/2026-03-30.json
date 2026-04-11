@@ -1,0 +1,325 @@
+{
+  "date": "2026-03-30",
+  "generated_from": "engine.daily_pnl",
+  "model_count": 4,
+  "totals": {
+    "crypto_equity_usd": 43686.471087,
+    "crypto_total_pnl_usd": 3686.471087,
+    "crypto_realized_pnl_usd": -1099.532656,
+    "crypto_unrealized_pnl_usd": 4786.003743
+  },
+  "models": [
+    {
+      "date": "2026-03-30",
+      "model_id": "A",
+      "win_rate": 0.0,
+      "closed_trades": 3,
+      "meme_win_rate": 0.0,
+      "replay_window": {
+        "to": "2026-04-01",
+        "from": "2026-03-28"
+      },
+      "total_pnl_usd": -2777.86019,
+      "bybit_win_rate": 0.0,
+      "rebuild_source": "daily_close_replay",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 7222.13981,
+      "realized_pnl_usd": -454.062905,
+      "total_equity_usd": 7222.13981,
+      "bybit_quote_stale": false,
+      "eod_price_sources": {
+        "DOTUSDT": "binance_1d",
+        "NOMUSDT": "binance_1d",
+        "TAOUSDT": "binance_1d",
+        "XAUTUSDT": "binance_1d"
+      },
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": -2323.797285,
+      "bybit_closed_trades": 3,
+      "bybit_quote_symbols": [
+        "DOTUSDT",
+        "NOMUSDT",
+        "TAOUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_total_pnl_usd": -2777.86019,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 4,
+      "bybit_quote_as_of_ts": 1774915199,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1774915199,
+      "bybit_realized_pnl_usd": -454.062905,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": -2323.797285,
+      "bybit_cycle_total_pnl_usd": -2777.86019,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "preserved_nonzero_history": true,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_realtime_sources": [
+        "binance_1d"
+      ],
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_sync_synced_symbols": [
+        "DOTUSDT",
+        "NOMUSDT",
+        "TAOUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_1d": 4
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "DOTUSDT",
+        "NOMUSDT",
+        "TAOUSDT",
+        "XAUTUSDT"
+      ]
+    },
+    {
+      "date": "2026-03-30",
+      "model_id": "B",
+      "win_rate": 0.0,
+      "closed_trades": 2,
+      "meme_win_rate": 0.0,
+      "replay_window": {
+        "to": "2026-04-01",
+        "from": "2026-03-28"
+      },
+      "total_pnl_usd": 8021.838752,
+      "bybit_win_rate": 0.0,
+      "rebuild_source": "daily_close_replay",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 18021.838752,
+      "realized_pnl_usd": -163.761417,
+      "total_equity_usd": 18021.838752,
+      "bybit_quote_stale": false,
+      "eod_price_sources": {
+        "BNBUSDT": "binance_1d",
+        "NOMUSDT": "binance_1d",
+        "ONTUSDT": "binance_1d",
+        "TRXUSDT": "binance_1d",
+        "XRPUSDT": "binance_1d",
+        "NIGHTUSDT": "binance_1d"
+      },
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 8185.600169,
+      "bybit_closed_trades": 2,
+      "bybit_quote_symbols": [
+        "BNBUSDT",
+        "NIGHTUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "bybit_total_pnl_usd": 8021.838752,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 6,
+      "bybit_quote_as_of_ts": 1774915199,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1774915199,
+      "bybit_realized_pnl_usd": -163.761417,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 8185.600169,
+      "bybit_cycle_total_pnl_usd": 8021.838752,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "preserved_nonzero_history": true,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_realtime_sources": [
+        "binance_1d"
+      ],
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_sync_synced_symbols": [
+        "BNBUSDT",
+        "NIGHTUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_1d": 6
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "BNBUSDT",
+        "NIGHTUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ]
+    },
+    {
+      "date": "2026-03-30",
+      "model_id": "C",
+      "win_rate": 0.0,
+      "closed_trades": 0,
+      "meme_win_rate": 0.0,
+      "replay_window": {
+        "to": "2026-04-01",
+        "from": "2026-03-28"
+      },
+      "total_pnl_usd": 1113.363569,
+      "bybit_win_rate": 0.0,
+      "rebuild_source": "daily_close_replay",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 11113.363569,
+      "realized_pnl_usd": 0.0,
+      "total_equity_usd": 11113.363569,
+      "bybit_quote_stale": false,
+      "eod_price_sources": {
+        "CUSDT": "binance_1d",
+        "TRXUSDT": "binance_1d",
+        "PAXGUSDT": "binance_1d",
+        "XAUTUSDT": "binance_1d",
+        "NIGHTUSDT": "binance_1d"
+      },
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 1113.363569,
+      "bybit_closed_trades": 0,
+      "bybit_quote_symbols": [
+        "CUSDT",
+        "NIGHTUSDT",
+        "PAXGUSDT",
+        "TRXUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_total_pnl_usd": 1113.363569,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 5,
+      "bybit_quote_as_of_ts": 1774915199,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1774915199,
+      "bybit_realized_pnl_usd": 0.0,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 1113.363569,
+      "bybit_cycle_total_pnl_usd": 1113.363569,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "preserved_nonzero_history": true,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_realtime_sources": [
+        "binance_1d"
+      ],
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_sync_synced_symbols": [
+        "CUSDT",
+        "NIGHTUSDT",
+        "PAXGUSDT",
+        "TRXUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_1d": 5
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "CUSDT",
+        "NIGHTUSDT",
+        "PAXGUSDT",
+        "TRXUSDT",
+        "XAUTUSDT"
+      ]
+    },
+    {
+      "date": "2026-03-30",
+      "model_id": "D",
+      "win_rate": 0.0,
+      "closed_trades": 3,
+      "meme_win_rate": 0.0,
+      "replay_window": {
+        "to": "2026-04-01",
+        "from": "2026-03-28"
+      },
+      "total_pnl_usd": -2670.871044,
+      "bybit_win_rate": 0.0,
+      "rebuild_source": "daily_close_replay",
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 7329.128956,
+      "realized_pnl_usd": -481.708334,
+      "total_equity_usd": 7329.128956,
+      "bybit_quote_stale": false,
+      "eod_price_sources": {
+        "ADAUSDT": "binance_1d",
+        "NOMUSDT": "binance_1d",
+        "ONTUSDT": "binance_1d",
+        "WLDUSDT": "binance_1d",
+        "PAXGUSDT": "binance_1d",
+        "XAUTUSDT": "binance_1d"
+      },
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": -2189.16271,
+      "bybit_closed_trades": 3,
+      "bybit_quote_symbols": [
+        "ADAUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "PAXGUSDT",
+        "WLDUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_total_pnl_usd": -2670.871044,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 6,
+      "bybit_quote_as_of_ts": 1774915199,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1774915199,
+      "bybit_realized_pnl_usd": -481.708334,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "daily_close_replay",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": -2189.16271,
+      "bybit_cycle_total_pnl_usd": -2670.871044,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "preserved_nonzero_history": true,
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "bybit_quote_fallback_sources": [],
+      "bybit_quote_realtime_sources": [
+        "binance_1d"
+      ],
+      "bybit_quote_stale_after_seconds": 0,
+      "bybit_quote_sync_synced_symbols": [
+        "ADAUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "PAXGUSDT",
+        "WLDUSDT",
+        "XAUTUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "binance_1d": 6
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "ADAUSDT",
+        "NOMUSDT",
+        "ONTUSDT",
+        "PAXGUSDT",
+        "WLDUSDT",
+        "XAUTUSDT"
+      ]
+    }
+  ]
+}

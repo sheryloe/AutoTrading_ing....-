@@ -1,0 +1,307 @@
+{
+  "date": "2026-04-11",
+  "generated_from": "engine.daily_pnl",
+  "model_count": 4,
+  "totals": {
+    "crypto_equity_usd": 57670.239997,
+    "crypto_total_pnl_usd": 17670.239997,
+    "crypto_realized_pnl_usd": -2648.464246,
+    "crypto_unrealized_pnl_usd": 162.895356
+  },
+  "models": [
+    {
+      "date": "2026-04-11",
+      "model_id": "A",
+      "win_rate": 14.5455,
+      "closed_trades": 110,
+      "meme_win_rate": 0.0,
+      "total_pnl_usd": -2731.316026,
+      "bybit_win_rate": 14.5455,
+      "meme_equity_usd": 10000.0,
+      "bybit_equity_usd": 7268.683974,
+      "realized_pnl_usd": -640.925541,
+      "total_equity_usd": 17268.683974,
+      "bybit_quote_stale": false,
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 171.585838,
+      "bybit_closed_trades": 110,
+      "bybit_quote_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "DOGEUSDT"
+      ],
+      "bybit_total_pnl_usd": -2731.316026,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 8,
+      "bybit_quote_as_of_ts": 1775906301,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1775906301,
+      "bybit_realized_pnl_usd": -640.925541,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "cycle_holdings",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 171.585838,
+      "bybit_cycle_total_pnl_usd": -469.339703,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_total_pnl_anchor_usd": -2261.976323,
+      "bybit_quote_fallback_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_realtime_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_stale_after_seconds": 300,
+      "bybit_quote_sync_synced_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "DOGEUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "coingecko_symbol": 8
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "DOGEUSDT"
+      ]
+    },
+    {
+      "date": "2026-04-11",
+      "model_id": "B",
+      "win_rate": 0.0,
+      "closed_trades": 6,
+      "meme_win_rate": 0.0,
+      "total_pnl_usd": 17555.508434,
+      "bybit_win_rate": 0.0,
+      "meme_equity_usd": 10000.0,
+      "bybit_equity_usd": 27555.508434,
+      "realized_pnl_usd": -404.974702,
+      "total_equity_usd": 37555.508434,
+      "bybit_quote_stale": false,
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": -28.74926,
+      "bybit_closed_trades": 6,
+      "bybit_quote_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT",
+        "DOGEUSDT"
+      ],
+      "bybit_total_pnl_usd": 17555.508434,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 8,
+      "bybit_quote_as_of_ts": 1775906301,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1775906301,
+      "bybit_realized_pnl_usd": -404.974702,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "cycle_holdings",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": -28.74926,
+      "bybit_cycle_total_pnl_usd": -433.723962,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_total_pnl_anchor_usd": 17989.232396,
+      "bybit_quote_fallback_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_realtime_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_stale_after_seconds": 300,
+      "bybit_quote_sync_synced_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "DOGEUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "XRPUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "coingecko_symbol": 8
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "DOGEUSDT",
+        "XRPUSDT"
+      ]
+    },
+    {
+      "date": "2026-04-11",
+      "model_id": "C",
+      "win_rate": 25.0,
+      "closed_trades": 12,
+      "meme_win_rate": 0.0,
+      "total_pnl_usd": 3157.955122,
+      "bybit_win_rate": 25.0,
+      "meme_equity_usd": 10000.0,
+      "bybit_equity_usd": 13157.955122,
+      "realized_pnl_usd": -1249.085529,
+      "total_equity_usd": 23157.955122,
+      "bybit_quote_stale": false,
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": -21.512163,
+      "bybit_closed_trades": 12,
+      "bybit_quote_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "DOGEUSDT"
+      ],
+      "bybit_total_pnl_usd": 3157.955122,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 8,
+      "bybit_quote_as_of_ts": 1775906301,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1775906301,
+      "bybit_realized_pnl_usd": -1249.085529,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "cycle_holdings",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": -21.512163,
+      "bybit_cycle_total_pnl_usd": -1270.597692,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_total_pnl_anchor_usd": 4428.552814,
+      "bybit_quote_fallback_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_realtime_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_stale_after_seconds": 300,
+      "bybit_quote_sync_synced_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "DOGEUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "coingecko_symbol": 8
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "ADAUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "ENAUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "TRXUSDT",
+        "DOGEUSDT"
+      ]
+    },
+    {
+      "date": "2026-04-11",
+      "model_id": "D",
+      "win_rate": 36.8421,
+      "closed_trades": 57,
+      "meme_win_rate": 0.0,
+      "total_pnl_usd": -311.907533,
+      "bybit_win_rate": 36.8421,
+      "meme_equity_usd": 0.0,
+      "bybit_equity_usd": 9688.092467,
+      "realized_pnl_usd": -353.478474,
+      "total_equity_usd": 9688.092467,
+      "bybit_quote_stale": false,
+      "bybit_quote_status": "fresh",
+      "meme_closed_trades": 0,
+      "meme_total_pnl_usd": 0.0,
+      "unrealized_pnl_usd": 41.570941,
+      "bybit_closed_trades": 57,
+      "bybit_quote_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XRPUSDT",
+        "DOGEUSDT"
+      ],
+      "bybit_total_pnl_usd": -311.907533,
+      "meme_open_positions": 0,
+      "bybit_open_positions": 6,
+      "bybit_quote_as_of_ts": 1775906301,
+      "meme_realized_pnl_usd": 0.0,
+      "bybit_quote_sync_at_ts": 1775906301,
+      "bybit_realized_pnl_usd": -353.478474,
+      "bybit_quote_age_seconds": 0,
+      "bybit_quote_sync_reason": "cycle_holdings",
+      "meme_unrealized_pnl_usd": 0.0,
+      "bybit_unrealized_pnl_usd": 41.570941,
+      "bybit_cycle_total_pnl_usd": -311.907533,
+      "bybit_quote_guard_symbols": [],
+      "bybit_quote_stale_symbols": [],
+      "bybit_total_pnl_anchor_usd": 0.0,
+      "bybit_quote_fallback_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_realtime_sources": [
+        "coingecko_symbol"
+      ],
+      "bybit_quote_stale_after_seconds": 300,
+      "bybit_quote_sync_synced_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "DOGEUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XRPUSDT"
+      ],
+      "bybit_quote_sync_missing_symbols": [],
+      "bybit_quote_sync_provider_summary": {
+        "coingecko_symbol": 6
+      },
+      "bybit_quote_sync_attempted_symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "XRPUSDT"
+      ]
+    }
+  ]
+}

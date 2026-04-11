@@ -1,0 +1,5 @@
+date,model_id,bybit_equity_usd,bybit_total_pnl_usd,bybit_cycle_total_pnl_usd,bybit_total_pnl_anchor_usd,bybit_realized_pnl_usd,bybit_unrealized_pnl_usd,bybit_win_rate,bybit_closed_trades,total_equity_usd,total_pnl_usd,realized_pnl_usd,unrealized_pnl_usd,win_rate,closed_trades,bybit_rebuild_restart_note_ko,bybit_rebuild_restart_variant_id,bybit_rebuild_restart_seed_usd,bybit_rebuild_restart_ts
+2026-03-30,A,7222.13981,-2777.86019,-2777.86019,0.0,-454.062905,-2323.797285,0.0,3,7222.13981,-2777.86019,-454.062905,-2323.797285,0.0,3,,,,
+2026-03-30,B,18021.838752,8021.838752,8021.838752,0.0,-163.761417,8185.600169,0.0,2,18021.838752,8021.838752,-163.761417,8185.600169,0.0,2,,,,
+2026-03-30,C,11113.363569,1113.363569,1113.363569,0.0,0.0,1113.363569,0.0,0,11113.363569,1113.363569,0.0,1113.363569,0.0,0,,,,
+2026-03-30,D,7329.128956,-2670.871044,-2670.871044,0.0,-481.708334,-2189.16271,0.0,3,7329.128956,-2670.871044,-481.708334,-2189.16271,0.0,3,,,,
